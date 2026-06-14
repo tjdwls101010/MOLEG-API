@@ -5,6 +5,8 @@ from .errors import (
     MolegApiError,
     NoResultError,
     ParseFailureError,
+    RateLimitError,
+    RetryExhaustedError,
     SourceApiError,
     UnsupportedFormatError,
 )
@@ -84,6 +86,8 @@ __all__ = [
     "MolegApiError",
     "NoResultError",
     "ParseFailureError",
+    "RateLimitError",
+    "RetryExhaustedError",
     "SourceApiError",
     "UnsupportedFormatError",
 ]

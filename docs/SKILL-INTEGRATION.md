@@ -56,6 +56,7 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 
 - If MOLEG-API cannot answer because the needed source is outside law.go.kr, use WebSearch.
 - If MOLEG-API finds no law for a bill that has no promulgation bridge, return to `congress-db` and treat the bill as not proven enacted/current.
+- If MOLEG-API raises `RateLimitError` or `RetryExhaustedError`, treat it as a temporary source-access problem, not proof that the legal source does not exist.
 - If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.
 
