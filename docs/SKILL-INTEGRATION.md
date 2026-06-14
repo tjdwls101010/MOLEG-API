@@ -43,6 +43,8 @@ Use MOLEG-API in layers instead of asking one call to load everything:
 
 Do not optimize for the absolute smallest number of public methods. A single maximal API wastes context and hides source-choice decisions. Do not optimize for one method per source endpoint either. The right public method is one Claude can choose by legislative intent.
 
+Do not treat unused law.go.kr endpoints as missing context. If a source is optional, demand-gated, customized, local-only, or outside the user's legislative question, leave it alone until it prevents answering a concrete question.
+
 ## Default Workflow From A Promulgated Bill
 
 1. Query `congress-db` for the bill and its promulgation bridge fields.

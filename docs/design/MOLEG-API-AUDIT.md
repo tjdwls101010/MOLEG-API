@@ -12,6 +12,8 @@ Generated from the local MOLEG OpenAPI catalog SQLite database.
 
 This audit classifies source endpoints by whether they should sit behind a deep legislative-expert interface. `core` does not mean one public function per endpoint; ministry interpretation endpoints, for example, should be registry-backed behind `search_interpretations()` / `get_interpretation()` rather than exposed as dozens of shallow functions.
 
+The classification is not an implementation backlog. `optional` means "wait for a concrete legislative-expert scenario"; `rejected` means "do not use by default unless the classification itself is revisited with new evidence." Full use of all 195 guides is not a success metric.
+
 The first implementation slice should use the current-statutes core: law-name search or a `congress-db` promulgation bridge candidate, normalized law identity, and effective-date text or article retrieval through the public interface.
 
 Implementation note: the law and administrative-rule annex/form list endpoints (`licbyl`, `admbyl`) were initially classified as optional, then promoted into `MolegApi.search_annex_forms()` after the skill goal review identified attached tables, thresholds, amounts, and forms as a common failure mode. Local ordinance annex/forms (`ordinbyl`) remain optional and out of scope.

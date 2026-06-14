@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Endpoint availability is not feature justification
+
+The MOLEG catalog is an input to design, not a backlog that must be exhausted. A source becomes part of MOLEG-API only when a recurring legislative-expert workflow, authority distinction, or demonstrated reasoning failure justifies it; unused optional/rejected endpoints are acceptable.
+
 ## 2026-06-15 — Progressive loading over maximal bundles
 
 Claude needs broad legal-source reach, but not every source detail in the first response. MOLEG-API therefore favors cheap candidate/search interfaces, explicit detail loaders, deferred follow-ups, and budgeted context bundles, balancing a small public surface against context waste from oversized all-in-one calls.
