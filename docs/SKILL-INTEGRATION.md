@@ -59,9 +59,9 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.
 
-## Context Bundle Design
+## Context Bundle
 
-The proposed bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. It recommends staged loading: statutes/articles first, delegated and administrative context next, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
+The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated and administrative context next, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
 
 ## Expected Public Interfaces
 
@@ -83,8 +83,9 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.search_constitutional_decisions()`
 - `MolegApi.get_constitutional_decision()`
 - `MolegApi.expand_legal_query()`
+- `MolegApi.load_legal_context_bundle()`
 
-The first sixteen are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only.
+These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
 
 ## Answering Discipline For The Skill
 
@@ -94,3 +95,4 @@ The first sixteen are implemented across the initial core slices. Administrative
 - Surface ambiguity and no-result states clearly.
 - Move to WebSearch for latest non-legal facts instead of forcing MOLEG-API to answer them.
 - Treat `expand_legal_query()` output as candidate planning context. It can suggest terms, laws, articles, and WebSearch follow-ups, but it is not a source to cite as final authority.
+- Treat `load_legal_context_bundle()` as source loading, not legal reasoning. Claude still decides what each loaded source means and which deferred lookups to run.

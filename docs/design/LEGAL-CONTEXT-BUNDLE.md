@@ -1,14 +1,14 @@
 # Legal Context Bundle Design
 
-This is the proposed contract for #6. It is intentionally a design document, not an implemented interface. The goal is to let the future legislative-expert skill load enough legal context to reason well without turning every user question into an unbounded scrape of law.go.kr.
+This is the implemented contract for #6. The goal is to let the future legislative-expert skill load enough legal context to reason well without turning every user question into an unbounded scrape of law.go.kr.
 
 ## Recommendation
 
 Use a staged bundle, not a monolithic answer object.
 
-`MolegApi.load_legal_context_bundle()` should return loaded official context, deferred follow-up handles, ambiguity records, and WebSearch gaps. It should not produce the legal conclusion. Claude remains responsible for reasoning from the returned sources.
+`MolegApi.load_legal_context_bundle()` returns loaded official context, deferred follow-up handles, ambiguity records, and WebSearch gaps. It does not produce the legal conclusion. Claude remains responsible for reasoning from the returned sources.
 
-## Public Interface Sketch
+## Public Interface
 
 ```python
 MolegApi.load_legal_context_bundle(
@@ -22,7 +22,7 @@ MolegApi.load_legal_context_bundle(
 ) -> LegalContextBundle
 ```
 
-The interface should accept either a user question, a `congress-db` promulgation bridge, or a known law identity. Passing raw MOLEG `target` values should remain unsupported.
+The interface accepts either a user question, a `congress-db` promulgation bridge, or a known law identity. Passing raw MOLEG `target` values remains unsupported.
 
 ## Response Shape
 
@@ -45,6 +45,14 @@ LegalContextBundle(
 `deferred` contains handles for expensive or noisy follow-up calls, such as loading full cases after case search results are ranked.
 
 `gaps` explicitly tells the skill when MOLEG is not the right source, especially for latest social facts, statistics, government announcements, news, or domain context that belongs in WebSearch.
+
+## Implemented Behavior
+
+- `mode="question"` calls `expand_legal_query()`, loads the first law candidate when available, finds delegated rules, searches administrative rules, interpretations, Supreme Court cases, and Constitutional Court decisions, and leaves detail loading for interpretation/case candidates in `deferred`.
+- `mode="promulgated_bill"` starts from `congress-db` bridge fields and calls `resolve_promulgated_law()`. Ambiguity or no-result becomes structured `Ambiguity` plus `manual_review_required` gap instead of a silent best guess.
+- `mode="statute_review"` starts from a supplied law identity and loads the current law text or requested articles.
+- Every bundle with a search query includes a `websearch_required` gap because latest social facts, statistics, policy announcements, and news are outside law.go.kr.
+- `budget="standard"` is the default. `minimal` and `broad` adjust candidate counts but still keep interpretation and judicial full text deferred by default.
 
 ## Default Budgets
 
@@ -78,7 +86,7 @@ Use for ordinary legislative review questions.
 Use only when the user asks for a survey, memo, or risk scan.
 
 - law candidates: up to 5
-- loaded laws/articles: up to 2 laws or 10 article candidates
+- loaded laws/articles: one primary law or up to 10 requested articles
 - delegated/admin/interpretation/case searches: up to 10 hits each
 - full-text loading remains selective; broad should widen candidates before loading every detail
 
@@ -113,7 +121,7 @@ Use only when the user asks for a survey, memo, or risk scan.
 
 ### What should the default bundle size be for a single user question?
 
-Use `budget="standard"`: up to 3 law candidates, one primary law/article load, up to 5 delegated/admin/interpretation/case candidates, and selective full-text loading only when the question demands it. This keeps the first context bundle useful without turning every question into a broad research memo.
+Use `budget="standard"`: up to 3 law candidates, one primary law or up to 5 requested articles, up to 5 delegated/admin/interpretation/case candidates, and selective full-text loading only when the question demands it. This keeps the first context bundle useful without turning every question into a broad research memo.
 
 ### Should the bundle prefer statute/article context first and defer cases?
 

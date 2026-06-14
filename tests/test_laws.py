@@ -874,3 +874,321 @@ def test_expand_legal_query_records_empty_sources_without_failing():
     assert "websearch" not in expansion.empty_sources
     assert expansion.follow_up_searches[-1].interface == "websearch"
     assert "최신" in expansion.follow_up_searches[-1].query
+
+
+def test_load_legal_context_bundle_stages_question_context():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "001234",
+                            "법령명한글": "자동차관리법",
+                            "법령일련번호": "270001",
+                            "시행일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"lstrmAI": [{"법령용어 id": "100", "법령용어명": "자동차"}]},
+            {"dlytrm": [{"일상용어 id": "900", "일상용어명": "차량"}]},
+            {
+                "aiSearch": [
+                    {
+                        "법령ID": "001234",
+                        "법령명": "자동차관리법",
+                        "법령일련번호": "270001",
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                    }
+                ]
+            },
+            {"aiRltLs": []},
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000248758",
+                            "행정규칙명": "무단방치 자동차 처리 규정",
+                            "행정규칙종류": "고시",
+                            "발령일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "330471",
+                            "안건명": "자동차 방치 관련 법령해석례",
+                            "안건번호": "21-0001",
+                            "회신기관명": "법제처",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "228541",
+                            "사건명": "자동차 인도청구",
+                            "사건번호": "2020다12345",
+                            "법원명": "대법원",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "58400",
+                            "사건명": "자동차관리법제26조등위헌확인",
+                            "사건번호": "2020헌마1",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "lstrmRlt": [
+                    {
+                        "법령용어명": "자동차",
+                        "일상용어명": "차량",
+                        "용어관계": "동의어",
+                    }
+                ]
+            },
+            {"dlytrmRlt": []},
+            {
+                "lstrmRltJo": [
+                    {
+                        "법령용어명": "자동차",
+                        "법령명": "자동차관리법",
+                        "조번호": "26",
+                    }
+                ]
+            },
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001234",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "26",
+                                "조문제목": "자동차의 강제처리",
+                                "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "001234",
+                            "법령명": "자동차관리법",
+                            "법령일련번호": "270001",
+                        },
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "26", "조문제목": "자동차의 강제처리"},
+                                "위임정보": {
+                                    "위임구분": "시행령",
+                                    "위임법령제목": "자동차관리법 시행령",
+                                    "라인텍스트": "대통령령으로 정하는 바에 따라",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle("자동차 방치 문제")
+
+    assert bundle.request.mode == "question"
+    assert bundle.request.budget == "standard"
+    assert bundle.loaded.laws[0].identity.name == "자동차관리법"
+    assert bundle.loaded.delegations[0].rules[0].delegated_name == "자동차관리법 시행령"
+    assert bundle.candidates.query_expansion.original_query == "자동차 방치 문제"
+    assert bundle.candidates.administrative_rules[0].identity.name == "무단방치 자동차 처리 규정"
+    assert bundle.candidates.interpretations[0].identity.title == "자동차 방치 관련 법령해석례"
+    assert bundle.candidates.cases[0].identity.title == "자동차 인도청구"
+    assert bundle.candidates.constitutional_decisions[0].identity.source_target == "detc"
+    assert any(item.interface == "get_interpretation" for item in bundle.deferred)
+    assert any(item.interface == "get_case" for item in bundle.deferred)
+    assert bundle.gaps[0].kind == "websearch_required"
+    assert bundle.gaps[0].recommended_interface == "websearch"
+
+
+def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "260001",
+                            "공포번호": "20000",
+                            "공포일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "111111",
+                        "법령명_한글": "데이터기본법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20260101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "이 법은 데이터 경제 활성화에 이바지함을 목적으로 한다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "111111",
+                            "법령명": "데이터기본법",
+                            "법령일련번호": "270001",
+                        },
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "10", "조문제목": "실태조사"},
+                                "위임정보": {
+                                    "위임구분": "시행령",
+                                    "위임법령제목": "데이터기본법 시행령",
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "20250101",
+        },
+        mode="promulgated_bill",
+    )
+
+    assert bundle.loaded.laws[0].identity.name == "데이터기본법"
+    assert bundle.loaded.laws[0].identity.basis == "effective"
+    assert bundle.loaded.delegations[0].rules[0].delegated_name == "데이터기본법 시행령"
+    assert any(item.interface == "trace_law_history" for item in bundle.deferred)
+    assert any(item.interface == "compare_law_versions" for item in bundle.deferred)
+    assert bundle.gaps[-1].kind == "websearch_required"
+    assert source.calls[0] == ("search", "law", {"query": "데이터기본법", "display": 20})
+    assert source.calls[1] == ("service", "eflaw", {"ID": "111111"})
+
+
+def test_load_legal_context_bundle_statute_review_loads_requested_articles_first():
+    identity = LawIdentity(law_id="001234", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "001234",
+                            "법령명": "자동차관리법",
+                        },
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "26"},
+                                "위임정보": {"위임법령제목": "자동차관리법 시행령"},
+                            }
+                        ],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        law_identifier=identity,
+        articles=["제26조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+
+    assert bundle.loaded.laws == []
+    assert bundle.loaded.articles[0].article == "제26조"
+    assert bundle.loaded.delegations[0].rules[0].source_article == "제26조"
+    assert bundle.request.budget == "minimal"
+    assert source.calls[0] == ("service", "eflawjosub", {"ID": "001234", "JO": "002600"})
+
+
+def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {"법령ID": "1", "법령명한글": "데이터기본법", "공포번호": "1"},
+                        {"법령ID": "2", "법령명한글": "데이터기본법", "공포번호": "1"},
+                    ]
+                }
+            }
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={"prom_law_nm": "데이터기본법", "prom_no": "1"},
+        mode="promulgated_bill",
+    )
+
+    assert bundle.loaded.laws == []
+    assert bundle.ambiguities
+    assert bundle.ambiguities[0].kind == "promulgation_bridge"
+    assert "multiple laws" in bundle.ambiguities[0].message
+    assert bundle.gaps[0].kind == "manual_review_required"

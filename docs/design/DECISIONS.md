@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Legal context bundles load sources, not conclusions
+
+The future legislative-expert skill needs a reliable first bundle of legal context, but MOLEG-API should not become a legal-answer generator. `load_legal_context_bundle()` therefore stages statutes/articles, delegations, administrative-rule candidates, interpretation and judicial candidates, ambiguity records, deferred lookups, and WebSearch gaps while leaving legal reasoning to Claude.
+
 ## 2026-06-15 — Query expansion is planning context, not legal authority
 
 Legal-term, everyday-term, related-article, AI search, and related-law surfaces help Claude choose better follow-up calls, but they do not prove the legal answer. MOLEG-API therefore returns `expand_legal_query()` output as candidates and recommended searches, including WebSearch handoff, rather than as citable legal authority.
