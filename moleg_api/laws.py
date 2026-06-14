@@ -11,6 +11,7 @@ from .models import (
     AdministrativeRuleIdentity,
     AdministrativeRuleText,
     Ambiguity,
+    AnnexFormHit,
     ArticleText,
     Basis,
     BundleRequest,
@@ -43,6 +44,7 @@ from .normalization import (
     extract_articles,
     format_article_jo,
     normalize_administrative_rule_identity,
+    normalize_annex_form_identity,
     normalize_article,
     normalize_delegated_rules,
     normalize_diff_changes,
@@ -76,6 +78,7 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
         "articles": 3,
         "delegations": 3,
         "administrative_rules": 3,
+        "annex_forms": 3,
         "interpretations": 3,
         "cases": 3,
         "constitutional_decisions": 2,
@@ -85,6 +88,7 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
         "articles": 5,
         "delegations": 5,
         "administrative_rules": 5,
+        "annex_forms": 5,
         "interpretations": 5,
         "cases": 5,
         "constitutional_decisions": 3,
@@ -94,9 +98,44 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
         "articles": 10,
         "delegations": 10,
         "administrative_rules": 10,
+        "annex_forms": 10,
         "interpretations": 10,
         "cases": 10,
         "constitutional_decisions": 10,
+    },
+}
+
+ANNEX_FORM_TARGETS = {
+    "law": "licbyl",
+    "administrative_rule": "admbyl",
+}
+
+ANNEX_SEARCH_SCOPES = {
+    "title": 1,
+    "source": 2,
+    "body": 3,
+}
+
+ANNEX_TYPE_CODES = {
+    "law": {
+        "annex": "1",
+        "별표": "1",
+        "form": "2",
+        "서식": "2",
+        "attached_form": "3",
+        "별지": "3",
+        "separate": "4",
+        "별도": "4",
+        "appendix": "5",
+        "부록": "5",
+    },
+    "administrative_rule": {
+        "annex": "1",
+        "별표": "1",
+        "form": "2",
+        "서식": "2",
+        "attached_form": "3",
+        "별지": "3",
     },
 }
 
@@ -360,6 +399,41 @@ class MolegApi:
                 raw=row,
             )
             for row in unwrap_search_administrative_rules(payload)
+        ]
+
+    def search_annex_forms(
+        self,
+        query: str,
+        *,
+        source: str = "law",
+        search_scope: str = "source",
+        annex_type: str | None = None,
+        ministry: str | None = None,
+        display: int = 20,
+    ) -> list[AnnexFormHit]:
+        source_type = annex_source_type(source)
+        target = annex_target_for(source_type)
+        params: dict[str, Any] = {
+            "query": query,
+            "display": display,
+            "search": annex_search_scope(search_scope),
+        }
+        if annex_type:
+            params["knd"] = annex_type_code(source_type, annex_type)
+        if ministry:
+            params["org"] = ministry
+
+        payload = self.source.search(target, params)
+        return [
+            AnnexFormHit(
+                identity=normalize_annex_form_identity(
+                    row,
+                    source_type=source_type,
+                    source_target=target,
+                ),
+                raw=row,
+            )
+            for row in unwrap_target_rows(payload, target)
         ]
 
     def get_administrative_rule(
@@ -739,6 +813,7 @@ class MolegApi:
         query_expansion: LegalQueryExpansion | None = None
         law_candidates: list[LawIdentity] = []
         administrative_candidates: list[AdministrativeRuleHit] = []
+        annex_form_candidates: list[AnnexFormHit] = []
         interpretation_candidates: list[InterpretationHit] = []
         case_candidates: list[JudicialDecisionHit] = []
         constitutional_candidates: list[JudicialDecisionHit] = []
@@ -866,6 +941,31 @@ class MolegApi:
                 source_notes,
                 "Constitutional decision search",
             )
+            annex_form_limit = limits["annex_forms"]
+            law_annex_limit = (annex_form_limit + 1) // 2
+            admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
+            annex_form_candidates = [
+                *safe_list(
+                    lambda: self.search_annex_forms(
+                        search_query,
+                        source="law",
+                        search_scope="source",
+                        display=law_annex_limit,
+                    ),
+                    source_notes,
+                    "Law annex/form search",
+                ),
+                *safe_list(
+                    lambda: self.search_annex_forms(
+                        search_query,
+                        source="administrative_rule",
+                        search_scope="source",
+                        display=admin_annex_limit,
+                    ),
+                    source_notes,
+                    "Administrative-rule annex/form search",
+                ),
+            ][:annex_form_limit]
 
         deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
         deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
@@ -904,6 +1004,7 @@ class MolegApi:
                 query_expansion=query_expansion,
                 laws=law_candidates,
                 administrative_rules=administrative_candidates,
+                annex_forms=annex_form_candidates,
                 interpretations=interpretation_candidates,
                 cases=case_candidates,
                 constitutional_decisions=constitutional_candidates,
@@ -931,6 +1032,37 @@ class MolegApi:
 
 def target_for(basis: Basis, kind: str) -> str:
     return TARGETS[basis][kind]
+
+
+def annex_source_type(source: str) -> str:
+    if source in ("law", "statute"):
+        return "law"
+    if source in ("administrative_rule", "admin_rule"):
+        return "administrative_rule"
+    raise UnsupportedFormatError(f"Unsupported annex/form source: {source}")
+
+
+def annex_target_for(source_type: str) -> str:
+    try:
+        return ANNEX_FORM_TARGETS[source_type]
+    except KeyError as exc:
+        raise UnsupportedFormatError(f"Unsupported annex/form source: {source_type}") from exc
+
+
+def annex_search_scope(search_scope: str) -> int:
+    try:
+        return ANNEX_SEARCH_SCOPES[search_scope]
+    except KeyError as exc:
+        raise UnsupportedFormatError(f"Unsupported annex/form search scope: {search_scope}") from exc
+
+
+def annex_type_code(source_type: str, annex_type: str) -> str:
+    try:
+        return ANNEX_TYPE_CODES[source_type][annex_type]
+    except KeyError as exc:
+        raise UnsupportedFormatError(
+            f"Unsupported annex/form type for {source_type}: {annex_type}"
+        ) from exc
 
 
 def identity_from_identifier(identifier: LawIdentity | LawHit | str, *, basis: Basis) -> LawIdentity:

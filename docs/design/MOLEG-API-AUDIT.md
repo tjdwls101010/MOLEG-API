@@ -14,6 +14,8 @@ This audit classifies source endpoints by whether they should sit behind a deep 
 
 The first implementation slice should use the current-statutes core: law-name search or a `congress-db` promulgation bridge candidate, normalized law identity, and effective-date text or article retrieval through the public interface.
 
+Implementation note: the law and administrative-rule annex/form list endpoints (`licbyl`, `admbyl`) were initially classified as optional, then promoted into `MolegApi.search_annex_forms()` after the skill goal review identified attached tables, thresholds, amounts, and forms as a common failure mode. Local ordinance annex/forms (`ordinbyl`) remain optional and out of scope.
+
 ## Counts By Module
 
 | Tier | Module | Count |

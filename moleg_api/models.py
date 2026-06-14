@@ -174,6 +174,41 @@ class AdministrativeRuleText:
 
 
 @dataclass(frozen=True)
+class AnnexFormIdentity:
+    """Normalized law or administrative-rule annex/form identity."""
+
+    annex_id: str | None
+    title: str
+    source_type: str
+    source_target: str
+    related_name: str | None = None
+    related_id: str | None = None
+    related_serial_id: str | None = None
+    annex_number: str | None = None
+    annex_type: str | None = None
+    ministry: str | None = None
+    promulgation_date: str | None = None
+    promulgation_number: str | None = None
+    issued_on: str | None = None
+    issuing_number: str | None = None
+    revision_type: str | None = None
+    law_type: str | None = None
+    rule_type: str | None = None
+    file_link: str | None = None
+    pdf_link: str | None = None
+    detail_link: str | None = None
+    raw_keys: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AnnexFormHit:
+    """Search result carrying a normalized annex/form identity."""
+
+    identity: AnnexFormIdentity
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class InterpretationIdentity:
     """Normalized legal-interpretation identity."""
 
@@ -357,6 +392,7 @@ class CandidateContext:
     query_expansion: LegalQueryExpansion | None = None
     laws: list[LawIdentity] = field(default_factory=list)
     administrative_rules: list[AdministrativeRuleHit] = field(default_factory=list)
+    annex_forms: list[AnnexFormHit] = field(default_factory=list)
     interpretations: list[InterpretationHit] = field(default_factory=list)
     cases: list[JudicialDecisionHit] = field(default_factory=list)
     constitutional_decisions: list[JudicialDecisionHit] = field(default_factory=list)

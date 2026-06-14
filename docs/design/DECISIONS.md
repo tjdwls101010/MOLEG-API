@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Annex/forms are candidate context, not loaded text
+
+Annexes and forms often contain operative tables, thresholds, amounts, and required formats that statute text alone can hide. MOLEG-API exposes law and administrative-rule annex/form search as bounded candidates with file/detail links, but does not download or parse HWP/PDF bodies until a separate parser interface is designed and live-verified.
+
 ## 2026-06-15 — Source adapter owns transient retry semantics
 
 Rate limits and temporary law.go.kr failures are source-access states, not legal no-result states. `LawGoKrClient` performs bounded retries and raises `RateLimitError` or `RetryExhaustedError`, so legal-task interfaces can keep their no-result/ambiguity semantics clean.
