@@ -13,6 +13,8 @@ This repository is only one part of the future legislative-expert skill:
 
 Design for the skill caller, not for the source API. The caller is Claude with a legislative-expert skill, using MOLEG-API together with `congress-db` and WebSearch. It should be able to load useful legal context through task-level calls such as "find the current effective article", "trace what changed", or "find delegated rules"; it should not decide whether to call `law`, `eflaw`, `lawjosub`, `eflawjosub`, `prec`, `detc`, or a ministry-specific target.
 
+Optimize for progressive loading. A public interface should be few enough that Claude can choose it reliably, but split enough that it does not load unrelated legal detail by default. Prefer cheap candidate/search calls, explicit detail loaders, deferred follow-ups, and budgeted context bundles over either endpoint-by-endpoint sprawl or one maximal "load everything" API.
+
 Critical traps to keep in mind during implementation:
 - A proposed National Assembly bill is not law currently in force.
 - Promulgation-date lookup and effective-date lookup are different; current-force questions should default to effective-date reasoning.
