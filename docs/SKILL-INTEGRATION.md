@@ -59,6 +59,10 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.
 
+## Context Bundle Design
+
+The proposed bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. It recommends staged loading: statutes/articles first, delegated and administrative context next, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
+
 ## Expected Public Interfaces
 
 These names may change as implementation settles, but the future skill should expect task-level functions rather than raw MOLEG targets:

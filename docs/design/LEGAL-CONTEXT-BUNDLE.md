@@ -1,0 +1,143 @@
+# Legal Context Bundle Design
+
+This is the proposed contract for #6. It is intentionally a design document, not an implemented interface. The goal is to let the future legislative-expert skill load enough legal context to reason well without turning every user question into an unbounded scrape of law.go.kr.
+
+## Recommendation
+
+Use a staged bundle, not a monolithic answer object.
+
+`MolegApi.load_legal_context_bundle()` should return loaded official context, deferred follow-up handles, ambiguity records, and WebSearch gaps. It should not produce the legal conclusion. Claude remains responsible for reasoning from the returned sources.
+
+## Public Interface Sketch
+
+```python
+MolegApi.load_legal_context_bundle(
+    query: str | None = None,
+    *,
+    promulgation_bridge: dict | None = None,
+    law_identifier=None,
+    articles: list[str | int] | None = None,
+    mode: str = "question",  # "question" | "promulgated_bill" | "statute_review"
+    budget: str = "standard",  # "minimal" | "standard" | "broad"
+) -> LegalContextBundle
+```
+
+The interface should accept either a user question, a `congress-db` promulgation bridge, or a known law identity. Passing raw MOLEG `target` values should remain unsupported.
+
+## Response Shape
+
+```python
+LegalContextBundle(
+    request=BundleRequest(...),
+    loaded=LoadedContext(...),
+    candidates=CandidateContext(...),
+    deferred=list[DeferredLookup],
+    ambiguities=list[Ambiguity],
+    gaps=list[ContextGap],
+    source_notes=list[str],
+)
+```
+
+`loaded` is source material already retrieved and safe for Claude to inspect.
+
+`candidates` are possible next sources, not authority.
+
+`deferred` contains handles for expensive or noisy follow-up calls, such as loading full cases after case search results are ranked.
+
+`gaps` explicitly tells the skill when MOLEG is not the right source, especially for latest social facts, statistics, government announcements, news, or domain context that belongs in WebSearch.
+
+## Default Budgets
+
+### `minimal`
+
+Use when the user asks a narrow citation or lookup question.
+
+- law candidates: 1
+- loaded laws/articles: 1 law or up to 3 requested articles
+- delegated rules: 3
+- administrative rules: 3 search hits, no full text by default
+- interpretations: 3 search hits, no full text by default
+- cases: 3 search hits, no full text by default
+- constitutional decisions: 2 search hits, no full text by default
+
+### `standard` recommended default
+
+Use for ordinary legislative review questions.
+
+- law candidates: up to 3
+- loaded laws/articles: 1 primary law plus up to 5 article candidates
+- history/comparison: only when a promulgation bridge, article, or date is present
+- delegated rules: up to 5 relationships
+- administrative rules: up to 5 hits; load full text only when directly named or delegated
+- interpretations: up to 5 hits; load full text for the top 1 if the question asks legal meaning or application
+- cases: up to 5 hits; load full text for the top 1 only when judicial interpretation matters
+- constitutional decisions: up to 3 hits; load full text for the top 1 only when constitutional risk, 기본권, 위헌, 평등, 과잉금지원칙, or similar terms appear
+
+### `broad`
+
+Use only when the user asks for a survey, memo, or risk scan.
+
+- law candidates: up to 5
+- loaded laws/articles: up to 2 laws or 10 article candidates
+- delegated/admin/interpretation/case searches: up to 10 hits each
+- full-text loading remains selective; broad should widen candidates before loading every detail
+
+## Workflow By Mode
+
+### `promulgated_bill`
+
+1. Resolve `promulgation_bridge` through `resolve_promulgated_law()`.
+2. Load current effective text through `get_law()` or requested `get_article()`.
+3. Use `trace_law_history()` or `compare_law_versions()` when dates/articles make the change traceable.
+4. Use `find_delegated_rules()` to identify enforcement decrees, enforcement rules, notices, and administrative rules.
+5. Search interpretations and judicial context, but defer full-text loading unless the bill raises application or constitutional-risk questions.
+6. Add a WebSearch gap for social context, statistics, or current policy background.
+
+### `question`
+
+1. Call `expand_legal_query()`.
+2. Load a small number of law/article candidates.
+3. Search delegated/admin/interpretation/judicial context using expansion terms.
+4. Keep unresolved candidates and ambiguities visible.
+5. Add WebSearch gaps when the question asks for current facts outside law.go.kr.
+
+### `statute_review`
+
+1. Start from the supplied law identity.
+2. Load the requested articles or the current law text.
+3. Trace delegated rules and administrative rules first.
+4. Search interpretations and cases second.
+5. Search constitutional decisions when the review asks about limits, rights, sanctions, equality, proportionality, or constitutional risk.
+
+## Default Answer To #6 Open Questions
+
+### What should the default bundle size be for a single user question?
+
+Use `budget="standard"`: up to 3 law candidates, one primary law/article load, up to 5 delegated/admin/interpretation/case candidates, and selective full-text loading only when the question demands it. This keeps the first context bundle useful without turning every question into a broad research memo.
+
+### Should the bundle prefer statute/article context first and defer cases?
+
+Yes. Load statute/article context first because it anchors the legal question. Search interpretations and cases in the same bundle, but defer full case text unless legal meaning, application constraints, or constitutional risk are central to the question.
+
+### How should gaps be represented so Claude knows when to invoke WebSearch?
+
+Use explicit `ContextGap` records:
+
+```python
+ContextGap(
+    kind="websearch_required",
+    reason="latest social statistics are outside law.go.kr",
+    query="...",
+    recommended_interface="websearch",
+)
+```
+
+Do not bury gaps in prose. The skill should be able to inspect a structured gap and make a separate WebSearch call.
+
+## Non-Goals
+
+- Do not implement a legal conclusion generator inside MOLEG-API.
+- Do not load every case or interpretation detail by default.
+- Do not treat query expansion candidates as authority.
+- Do not use this bundle to replace `congress-db` SQL for bill facts.
+- Do not make WebSearch optional for current social facts outside law.go.kr.
