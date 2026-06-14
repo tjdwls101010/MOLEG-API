@@ -33,6 +33,16 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - recent government reports
 - non-legal background evidence
 
+## Progressive Loading Rules
+
+Use MOLEG-API in layers instead of asking one call to load everything:
+
+1. Start with candidate/planning interfaces such as `search_laws()`, `expand_legal_query()`, `search_administrative_rules()`, `search_annex_forms()`, `search_interpretations()`, and judicial searches.
+2. Load full text only for sources that are likely to matter: `get_law()`, `get_article()`, `get_administrative_rule()`, `get_interpretation()`, `get_case()`, or `get_constitutional_decision()`.
+3. Use `load_legal_context_bundle()` as a staged first pass when the question is broad or under-specified. Treat its candidates and deferred lookups as the next menu, not as proof that every relevant source body has been inspected.
+
+Do not optimize for the absolute smallest number of public methods. A single maximal API wastes context and hides source-choice decisions. Do not optimize for one method per source endpoint either. The right public method is one Claude can choose by legislative intent.
+
 ## Default Workflow From A Promulgated Bill
 
 1. Query `congress-db` for the bill and its promulgation bridge fields.

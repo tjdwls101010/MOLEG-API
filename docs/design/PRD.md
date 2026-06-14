@@ -14,6 +14,8 @@ The live MOLEG API and the local catalog DB remain authoritative for endpoint be
 
 The primary caller is Claude running the future legislative-expert skill. Interfaces should return enough normalized context for that caller to combine MOLEG legal sources with `congress-db` bill facts and WebSearch social context without loading raw endpoint trivia into the skill prompt.
 
+The public surface must balance two failure modes: too many methods make Claude choose among confusing source-specific tools, while too few methods force oversized responses that waste context. MOLEG-API should expose progressive loading: cheap candidate/search calls first, explicit detail loaders second, and budgeted bundles that stage likely context without pretending to load everything.
+
 ## User Stories
 
 1. As a legislative-expert skill, I want to search current laws by name, so that I can find candidate law identities without choosing raw MOLEG targets.
@@ -52,6 +54,9 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - Live tests are separate from deterministic tests. Normal tests should use fakes, recorded fixtures, or local adapters; live smoke tests should require explicit credentials/marker.
 - The live source adapter distinguishes rate limits and retry exhaustion from legal no-result states.
 - Caching starts small. Do not build a mirror DB until repeated calls prove a speed or cost problem.
+- Add a public method only when it represents a recurring legislative task Claude can choose by intent. Do not expose a method merely because a source endpoint exists.
+- Keep noisy or expensive detail behind explicit loaders or `DeferredLookup` records. Candidate lists and context bundles should reveal what may matter without automatically spending context on every source body.
+- A context bundle is an entry point, not a maximal answer object. It should load high-leverage anchors and bounded candidates, then leave selective follow-up calls visible to Claude.
 
 ## Public Interface Candidates
 

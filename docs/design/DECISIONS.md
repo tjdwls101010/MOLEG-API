@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Progressive loading over maximal bundles
+
+Claude needs broad legal-source reach, but not every source detail in the first response. MOLEG-API therefore favors cheap candidate/search interfaces, explicit detail loaders, deferred follow-ups, and budgeted context bundles, balancing a small public surface against context waste from oversized all-in-one calls.
+
 ## 2026-06-15 — Annex/forms are candidate context, not loaded text
 
 Annexes and forms often contain operative tables, thresholds, amounts, and required formats that statute text alone can hide. MOLEG-API exposes law and administrative-rule annex/form search as bounded candidates with file/detail links, but does not download or parse HWP/PDF bodies until a separate parser interface is designed and live-verified.

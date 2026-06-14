@@ -8,6 +8,8 @@ Use a staged bundle, not a monolithic answer object.
 
 `MolegApi.load_legal_context_bundle()` returns loaded official context, deferred follow-up handles, ambiguity records, and WebSearch gaps. It does not produce the legal conclusion. Claude remains responsible for reasoning from the returned sources.
 
+The bundle should optimize for progressive loading, not maximum payload size. It loads high-leverage anchors first, exposes bounded candidates next, and leaves expensive/noisy detail as explicit follow-up work. If adding a source would make most ordinary bundle calls carry irrelevant text, keep it as a candidate or `DeferredLookup` instead.
+
 ## Public Interface
 
 ```python
