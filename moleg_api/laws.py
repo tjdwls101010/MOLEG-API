@@ -1385,6 +1385,13 @@ def build_follow_up_searches(
             source_type="administrative_rule",
         ),
         FollowUpSearch(
+            interface="search_annex_forms",
+            query=query,
+            reason="Check attached tables, thresholds, amounts, criteria, and forms that may carry operative details.",
+            source_type="annex_form",
+            filters={"sources": ["law", "administrative_rule"], "search_scope": "source"},
+        ),
+        FollowUpSearch(
             interface="search_interpretations",
             query=query,
             reason="Check MOLEG and ministry interpretation constraints.",

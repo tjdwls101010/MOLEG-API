@@ -965,6 +965,16 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
     assert expansion.related_articles[0].article == "제26조"
     assert expansion.related_laws[0].name == "자동차관리법"
     assert expansion.related_laws[1].name == "자동차손해배상 보장법"
+    annex_search = next(
+        search for search in expansion.follow_up_searches if search.interface == "search_annex_forms"
+    )
+    assert annex_search.source_type == "annex_form"
+    assert annex_search.filters == {
+        "sources": ["law", "administrative_rule"],
+        "search_scope": "source",
+    }
+    assert "licbyl" not in str(annex_search.filters)
+    assert "admbyl" not in str(annex_search.filters)
     assert any(search.interface == "websearch" for search in expansion.follow_up_searches)
     assert all("target" not in search.interface for search in expansion.follow_up_searches)
     assert source.calls == [
@@ -1001,6 +1011,8 @@ def test_expand_legal_query_records_empty_sources_without_failing():
     assert "eflaw" in expansion.empty_sources
     assert "lstrmAI" in expansion.empty_sources
     assert "websearch" not in expansion.empty_sources
+    interfaces = [search.interface for search in expansion.follow_up_searches]
+    assert interfaces.index("search_annex_forms") < interfaces.index("websearch")
     assert expansion.follow_up_searches[-1].interface == "websearch"
     assert "최신" in expansion.follow_up_searches[-1].query
 
