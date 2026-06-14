@@ -18,6 +18,9 @@ from .models import (
     InterpretationText,
     JudicialDecisionIdentity,
     JudicialDecisionText,
+    LegalArticleCandidate,
+    LegalLawCandidate,
+    LegalTermCandidate,
     LawDiffChange,
     LawIdentity,
 )
@@ -293,6 +296,90 @@ def normalize_judicial_decision_text(
     )
 
 
+def normalize_term_candidate(
+    row: dict[str, Any],
+    *,
+    source_type: str,
+    source_target: str,
+) -> LegalTermCandidate | None:
+    if source_type == "everyday_term":
+        term = first_value(row, "일상용어명", "법령용어명", "법령용어명_한글")
+    else:
+        term = first_value(row, "법령용어명", "법령용어명_한글", "일상용어명")
+    if not term:
+        return None
+    return LegalTermCandidate(
+        term=str(term),
+        source_type=source_type,
+        source_target=source_target,
+        term_id=string_or_none(
+            first_value(
+                row,
+                "법령용어 id",
+                "법령용어ID",
+                "법령용어 일련번호",
+                "일상용어 id",
+                "연계용어 id",
+            )
+        ),
+        relation=string_or_none(first_value(row, "용어관계", "용어구분")),
+        note=string_or_none(first_value(row, "비고", "동음이의어 내용")),
+        definition=string_or_none(first_value(row, "법령용어정의")),
+        source_title=string_or_none(first_value(row, "출처")),
+        raw=row,
+    )
+
+
+def normalize_related_article_candidate(
+    row: dict[str, Any],
+    *,
+    source_target: str,
+) -> LegalArticleCandidate | None:
+    law_name = string_or_none(first_value(row, "법령명", "행정규칙명"))
+    text = string_or_none(first_value(row, "조문내용"))
+    title = string_or_none(first_value(row, "조문제목"))
+    article = article_label_from_parts(
+        first_value(row, "조문번호", "조번호"),
+        first_value(row, "조문가지번호", "조가지번호"),
+    )
+    if not law_name and not text and not title:
+        return None
+    return LegalArticleCandidate(
+        law_name=law_name,
+        law_id=string_or_none(first_value(row, "법령ID", "행정규칙ID")),
+        article=article,
+        title=title,
+        text=text,
+        source_target=source_target,
+        term=string_or_none(first_value(row, "법령용어명", "일상용어명")),
+        raw=row,
+    )
+
+
+def normalize_related_law_candidate(
+    row: dict[str, Any],
+    *,
+    source_target: str,
+) -> LegalLawCandidate | None:
+    name = first_value(row, "관련법령명", "법령명", "행정규칙명")
+    if not name:
+        return None
+    source_type = "administrative_rule" if first_value(row, "행정규칙ID", "행정규칙명") else "law"
+    return LegalLawCandidate(
+        name=str(name),
+        law_id=string_or_none(first_value(row, "관련법령ID", "법령ID", "행정규칙ID")),
+        source_type=source_type,
+        source_target=source_target,
+        relation=string_or_none(first_value(row, "법령간관계", "제개정구분명", "행정규칙 종류명")),
+        article=article_label_from_parts(
+            first_value(row, "조문번호", "조번호"),
+            first_value(row, "조문가지번호", "조가지번호"),
+        ),
+        article_title=string_or_none(first_value(row, "조문제목")),
+        raw=row,
+    )
+
+
 def unwrap_search_laws(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for envelope in LAW_SEARCH_ENVELOPES:
         if isinstance(payload.get(envelope), dict):
@@ -332,6 +419,18 @@ def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> li
     rows = payload.get(target)
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    return collect_rows(payload, target)
+
+
+def unwrap_target_rows(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
+    rows = payload.get(target)
+    if rows is not None:
+        return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    for value in payload.values():
+        if isinstance(value, dict):
+            nested = value.get(target)
+            if nested is not None:
+                return [row for row in ensure_list(nested) if isinstance(row, dict)]
     return collect_rows(payload, target)
 
 
@@ -577,6 +676,21 @@ def article_label(value: Any) -> str | None:
     if text.isdigit():
         return f"제{int(text)}조"
     return text
+
+
+def article_label_from_parts(number: Any, branch: Any = None) -> str | None:
+    if number in (None, ""):
+        return None
+    text = str(number)
+    if text.startswith("제"):
+        return text
+    if not text.isdigit():
+        return text
+    main = int(text)
+    branch_text = str(branch or "").strip()
+    if branch_text and branch_text.isdigit() and int(branch_text) != 0:
+        return f"제{main}조의{int(branch_text)}"
+    return f"제{main}조"
 
 
 def format_article_jo(article: str | int) -> str:

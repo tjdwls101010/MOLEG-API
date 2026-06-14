@@ -78,9 +78,9 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.get_case()`
 - `MolegApi.search_constitutional_decisions()`
 - `MolegApi.get_constitutional_decision()`
-- `expand_legal_query()`
+- `MolegApi.expand_legal_query()`
 
-The first fifteen are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion is the remaining planned core surface.
+The first sixteen are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only.
 
 ## Answering Discipline For The Skill
 
@@ -89,3 +89,4 @@ The first fifteen are implemented across the initial core slices. Administrative
 - Cite source type and identity metadata with legal text.
 - Surface ambiguity and no-result states clearly.
 - Move to WebSearch for latest non-legal facts instead of forcing MOLEG-API to answer them.
+- Treat `expand_legal_query()` output as candidate planning context. It can suggest terms, laws, articles, and WebSearch follow-ups, but it is not a source to cite as final authority.

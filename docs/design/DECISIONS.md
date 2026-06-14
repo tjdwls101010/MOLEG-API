@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Query expansion is planning context, not legal authority
+
+Legal-term, everyday-term, related-article, AI search, and related-law surfaces help Claude choose better follow-up calls, but they do not prove the legal answer. MOLEG-API therefore returns `expand_legal_query()` output as candidates and recommended searches, including WebSearch handoff, rather than as citable legal authority.
+
 ## 2026-06-15 — Keep cases and Constitutional Court decisions separate
 
 The source catalog exposes ordinary cases through `prec` and Constitutional Court decisions through `detc`, with different date fields and authority meaning. MOLEG-API exposes both as judicial context but keeps separate public methods and source labels so the legislative-expert skill does not treat constitutional review as ordinary precedent.
