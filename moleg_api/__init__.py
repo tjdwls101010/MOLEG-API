@@ -10,6 +10,10 @@ from .errors import (
 )
 from .laws import MolegApi
 from .models import (
+    AdministrativeRuleArticleText,
+    AdministrativeRuleHit,
+    AdministrativeRuleIdentity,
+    AdministrativeRuleText,
     ArticleText,
     DelegatedRule,
     DelegationGraph,
@@ -25,6 +29,10 @@ from .source import LawGoKrClient
 
 __all__ = [
     "AmbiguousLawError",
+    "AdministrativeRuleArticleText",
+    "AdministrativeRuleHit",
+    "AdministrativeRuleIdentity",
+    "AdministrativeRuleText",
     "ArticleText",
     "DelegatedRule",
     "DelegationGraph",

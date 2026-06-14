@@ -19,3 +19,13 @@ def test_live_search_and_get_law_smoke():
     assert law.identity.law_id
     assert law.identity.name
     assert law.articles
+
+
+@pytest.mark.skipif(not os.environ.get("MOLEG_OC"), reason="MOLEG_OC is required")
+def test_live_search_administrative_rules_smoke():
+    api = MolegApi(LawGoKrClient())
+
+    hits = api.search_administrative_rules("학교", display=3)
+
+    assert hits
+    assert hits[0].identity.name

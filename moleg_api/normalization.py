@@ -8,6 +8,8 @@ from typing import Any
 
 from .errors import ParseFailureError
 from .models import (
+    AdministrativeRuleArticleText,
+    AdministrativeRuleIdentity,
     ArticleText,
     Basis,
     DelegatedRule,
@@ -92,6 +94,41 @@ def normalize_law_identity(row: dict[str, Any], *, basis: Basis) -> LawIdentity:
     )
 
 
+def normalize_administrative_rule_identity(row: dict[str, Any]) -> AdministrativeRuleIdentity:
+    info = row.get("기본정보") if isinstance(row.get("기본정보"), dict) else row
+    name = first_value(info, "행정규칙명", "신구법명", "LM")
+    if not name:
+        raise ParseFailureError("Administrative-rule identity is missing a name")
+
+    raw_keys = {
+        key: info.get(key)
+        for key in (
+            "행정규칙 일련번호",
+            "행정규칙일련번호",
+            "행정규칙ID",
+            "ID",
+            "LID",
+            "행정규칙 상세링크",
+            "신구법 상세링크",
+        )
+        if info.get(key) not in (None, "")
+    }
+    return AdministrativeRuleIdentity(
+        serial_id=string_or_none(first_value(info, "행정규칙 일련번호", "행정규칙일련번호", "ID", "admrul id")),
+        rule_id=string_or_none(first_value(info, "행정규칙ID", "LID")),
+        name=str(name),
+        rule_type=string_or_none(first_value(info, "행정규칙종류", "법령구분명")),
+        issuing_date=string_or_none(compact_date(first_value(info, "발령일자"))),
+        issuing_number=string_or_none(first_value(info, "발령번호")),
+        effective_date=string_or_none(compact_date(first_value(info, "시행일자"))),
+        ministry=string_or_none(first_value(info, "소관부처명")),
+        ministry_code=string_or_none(first_value(info, "소관부처코드")),
+        current_status=string_or_none(first_value(info, "현행여부", "현행연혁구분")),
+        revision_type=string_or_none(first_value(info, "제개정구분명")),
+        raw_keys=raw_keys,
+    )
+
+
 def unwrap_search_laws(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for envelope in LAW_SEARCH_ENVELOPES:
         if isinstance(payload.get(envelope), dict):
@@ -99,6 +136,17 @@ def unwrap_search_laws(payload: dict[str, Any]) -> list[dict[str, Any]]:
             return [row for row in ensure_list(rows) if isinstance(row, dict)]
     rows = payload.get("law")
     return [row for row in ensure_list(rows) if isinstance(row, dict)]
+
+
+def unwrap_search_administrative_rules(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    for envelope in ("AdmRulSearch", "admrulSearch", "AdmrulSearch", "AdmRulSearchService"):
+        if isinstance(payload.get(envelope), dict):
+            rows = payload[envelope].get("admrul")
+            return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    rows = payload.get("admrul")
+    if rows is not None:
+        return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    return collect_rows(payload, "admrul")
 
 
 def unwrap_service_payload(payload: dict[str, Any], target: str) -> dict[str, Any]:
@@ -135,6 +183,45 @@ def extract_articles(raw_law: dict[str, Any], identity: LawIdentity) -> list[Art
     return articles
 
 
+def extract_administrative_rule_articles(
+    raw_rule: dict[str, Any],
+    identity: AdministrativeRuleIdentity,
+) -> list[AdministrativeRuleArticleText]:
+    article_container = raw_rule.get("조문")
+    if isinstance(article_container, dict):
+        rows = ensure_list(
+            article_container.get("조문단위")
+            or article_container.get("조문")
+            or article_container
+        )
+    else:
+        rows = ensure_list(article_container)
+
+    articles: list[AdministrativeRuleArticleText] = []
+    for row in rows:
+        if isinstance(row, dict):
+            article = normalize_administrative_rule_article(row, identity)
+            if article:
+                articles.append(article)
+
+    if articles:
+        return articles
+
+    flat_text = first_value(raw_rule, "조문내용", "본문", "내용")
+    if flat_text:
+        articles.append(
+            AdministrativeRuleArticleText(
+                identity=identity,
+                article=article_label(first_value(raw_rule, "조문번호", "조번호")),
+                title=string_or_none(first_value(raw_rule, "조문제목", "제목")),
+                text=str(flat_text),
+                effective_date=string_or_none(compact_date(first_value(raw_rule, "시행일자"))),
+                raw=raw_rule,
+            )
+        )
+    return articles
+
+
 def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText | None:
     number = first_value(row, "조문번호", "조번호", "JO")
     text = first_value(row, "조문내용", "조문본문", "내용")
@@ -145,6 +232,25 @@ def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText
     return ArticleText(
         identity=identity,
         article=article,
+        title=string_or_none(title),
+        text=str(text or ""),
+        effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
+        raw=row,
+    )
+
+
+def normalize_administrative_rule_article(
+    row: dict[str, Any],
+    identity: AdministrativeRuleIdentity,
+) -> AdministrativeRuleArticleText | None:
+    number = first_value(row, "조문번호", "조번호", "JO")
+    text = first_value(row, "조문내용", "조문본문", "내용", "content")
+    title = first_value(row, "조문제목", "제목", "title")
+    if number is None and text is None and title is None:
+        return None
+    return AdministrativeRuleArticleText(
+        identity=identity,
+        article=article_label(number),
         title=string_or_none(title),
         text=str(text or ""),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),

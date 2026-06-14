@@ -40,8 +40,9 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 4. Call `get_law(..., basis="effective")` or `get_article(..., basis="effective")` to inspect the text currently in force.
 5. Call `trace_law_history()` or `compare_law_versions()` to explain what the bill changed.
 6. Call `find_delegated_rules()` to inspect enforcement decrees, enforcement rules, notices, and administrative rules.
-7. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
-8. Use WebSearch only for current social facts or context outside law.go.kr.
+7. Call `search_administrative_rules()` and `get_administrative_rule()` when delegated or practical execution criteria may live in notices, directives, established rules, or other administrative rules.
+8. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
+9. Use WebSearch only for current social facts or context outside law.go.kr.
 
 ## Query Planning Rules
 
@@ -69,15 +70,15 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.trace_law_history()`
 - `MolegApi.compare_law_versions()`
 - `MolegApi.find_delegated_rules()`
-- `search_administrative_rules()`
-- `get_administrative_rule()`
+- `MolegApi.search_administrative_rules()`
+- `MolegApi.get_administrative_rule()`
 - `search_interpretations()`
 - `get_interpretation()`
 - `search_cases()`
 - `get_case()`
 - `expand_legal_query()`
 
-The first seven are implemented across the initial core slices. Administrative rules, interpretations, cases, and query expansion are planned expansion surfaces.
+The first nine are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretations, cases, and query expansion are planned expansion surfaces.
 
 ## Answering Discipline For The Skill
 

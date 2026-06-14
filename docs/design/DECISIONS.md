@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Administrative-rule search exposes issuing-date filter honestly
+
+The `admrul` list catalog supports `date` as 행정규칙 발령일자, while detail payloads separately expose 시행일자. MOLEG-API therefore exposes this filter as `issued_on` instead of `as_of`, so the legislative-expert skill does not mistake a promulgation/issuing-date lookup for effective-date reasoning.
+
 ## 2026-06-15 — Optimize interfaces for Claude skill context loading
 
 The primary caller is not a human browsing law.go.kr and not a generic SDK consumer; it is Claude running a legislative-expert skill alongside `congress-db` and WebSearch. Public functions should return normalized legal context and source authority labels that the skill can reason with directly, while source endpoint trivia stays inside implementation and docs.

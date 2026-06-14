@@ -123,3 +123,51 @@ class DelegationGraph:
     identity: LawIdentity
     rules: list[DelegatedRule]
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AdministrativeRuleIdentity:
+    """Normalized administrative-rule identity."""
+
+    serial_id: str | None
+    name: str
+    rule_id: str | None = None
+    rule_type: str | None = None
+    issuing_date: str | None = None
+    issuing_number: str | None = None
+    effective_date: str | None = None
+    ministry: str | None = None
+    ministry_code: str | None = None
+    current_status: str | None = None
+    revision_type: str | None = None
+    raw_keys: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AdministrativeRuleHit:
+    """Search result carrying a normalized administrative-rule identity."""
+
+    identity: AdministrativeRuleIdentity
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AdministrativeRuleArticleText:
+    """Normalized administrative-rule article or text section."""
+
+    identity: AdministrativeRuleIdentity
+    article: str | None
+    text: str
+    title: str | None = None
+    effective_date: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AdministrativeRuleText:
+    """Normalized administrative-rule text."""
+
+    identity: AdministrativeRuleIdentity
+    text: str
+    articles: list[AdministrativeRuleArticleText]
+    raw: dict[str, Any] = field(default_factory=dict)
