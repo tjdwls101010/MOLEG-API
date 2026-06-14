@@ -49,6 +49,7 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - `congress-db` is introspected read-only from the Neon `congress_ro` role and documented under `docs/design/congress-db-introspection/`; it is a reference fact DB, not this repository's implementation database.
 - The promulgation bridge currently lives in `public.bill_final_outcomes` with `prom_law_nm`, `prom_no`, and `promulgation_dt`.
 - Live tests are separate from deterministic tests. Normal tests should use fakes, recorded fixtures, or local adapters; live smoke tests should require explicit credentials/marker.
+- The live source adapter distinguishes rate limits and retry exhaustion from legal no-result states.
 - Caching starts small. Do not build a mirror DB until repeated calls prove a speed or cost problem.
 
 ## Public Interface Candidates
@@ -98,6 +99,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.expand_legal_query()` combines law-name search, legal terms, everyday terms, related terms, related articles, AI search, and related-law surfaces into query-planning candidates and follow-up search recommendations. Its output is not final legal authority.
 - `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
+- `LawGoKrClient` performs bounded retries for transient law.go.kr failures and raises `RateLimitError` or `RetryExhaustedError` instead of collapsing temporary source-access failures into legal no-result states.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
 
 ## Out of Scope

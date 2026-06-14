@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Source adapter owns transient retry semantics
+
+Rate limits and temporary law.go.kr failures are source-access states, not legal no-result states. `LawGoKrClient` performs bounded retries and raises `RateLimitError` or `RetryExhaustedError`, so legal-task interfaces can keep their no-result/ambiguity semantics clean.
+
 ## 2026-06-15 — Legal context bundles load sources, not conclusions
 
 The future legislative-expert skill needs a reliable first bundle of legal context, but MOLEG-API should not become a legal-answer generator. `load_legal_context_bundle()` therefore stages statutes/articles, delegations, administrative-rule candidates, interpretation and judicial candidates, ambiguity records, deferred lookups, and WebSearch gaps while leaving legal reasoning to Claude.
