@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .errors import AmbiguousLawError, NoResultError, UnsupportedFormatError
@@ -12,6 +13,9 @@ from .models import (
     ArticleText,
     Basis,
     DelegationGraph,
+    InterpretationHit,
+    InterpretationIdentity,
+    InterpretationText,
     LawDiff,
     LawHit,
     LawHistory,
@@ -28,8 +32,11 @@ from .normalization import (
     normalize_delegated_rules,
     normalize_diff_changes,
     normalize_history_events,
+    normalize_interpretation_identity,
+    normalize_interpretation_text,
     normalize_law_identity,
     unwrap_search_administrative_rules,
+    unwrap_search_interpretations,
     unwrap_search_laws,
     unwrap_service_payload,
 )
@@ -39,6 +46,63 @@ from .source import LawGoKrClient, MolegSource
 TARGETS: dict[Basis, dict[str, str]] = {
     "effective": {"list": "eflaw", "detail": "eflaw", "article": "eflawjosub"},
     "promulgated": {"list": "law", "detail": "law", "article": "lawjosub"},
+}
+
+
+@dataclass(frozen=True)
+class InterpretationSourceSpec:
+    source_type: str
+    target: str
+    ministry: str | None = None
+    can_get: bool = True
+
+
+OFFICIAL_INTERPRETATION_SOURCE = InterpretationSourceSpec(
+    source_type="moleg",
+    target="expc",
+)
+
+
+MINISTRY_INTERPRETATION_SOURCES: dict[str, InterpretationSourceSpec] = {
+    "경찰청": InterpretationSourceSpec("ministry", "npaCgmExpc", "경찰청"),
+    "고용노동부": InterpretationSourceSpec("ministry", "moelCgmExpc", "고용노동부"),
+    "과학기술정보통신부": InterpretationSourceSpec("ministry", "msitCgmExpc", "과학기술정보통신부"),
+    "관세청": InterpretationSourceSpec("ministry", "kcsCgmExpc", "관세청"),
+    "교육부": InterpretationSourceSpec("ministry", "moeCgmExpc", "교육부"),
+    "국가데이터처": InterpretationSourceSpec("ministry", "kostatCgmExpc", "국가데이터처"),
+    "국가보훈부": InterpretationSourceSpec("ministry", "mpvaCgmExpc", "국가보훈부"),
+    "국가유산청": InterpretationSourceSpec("ministry", "khsCgmExpc", "국가유산청"),
+    "국방부": InterpretationSourceSpec("ministry", "mndCgmExpc", "국방부"),
+    "국세청": InterpretationSourceSpec("ministry", "ntsCgmExpc", "국세청", can_get=False),
+    "국토교통부": InterpretationSourceSpec("ministry", "molitCgmExpc", "국토교통부"),
+    "기상청": InterpretationSourceSpec("ministry", "kmaCgmExpc", "기상청"),
+    "기후에너지환경부": InterpretationSourceSpec("ministry", "meCgmExpc", "기후에너지환경부"),
+    "농림축산식품부": InterpretationSourceSpec("ministry", "mafraCgmExpc", "농림축산식품부"),
+    "농촌진흥청": InterpretationSourceSpec("ministry", "rdaCgmExpc", "농촌진흥청"),
+    "문화체육관광부": InterpretationSourceSpec("ministry", "mcstCgmExpc", "문화체육관광부"),
+    "방위사업청": InterpretationSourceSpec("ministry", "dapaCgmExpc", "방위사업청"),
+    "법무부": InterpretationSourceSpec("ministry", "mojCgmExpc", "법무부"),
+    "법제처": InterpretationSourceSpec("ministry", "molegCgmExpc", "법제처"),
+    "병무청": InterpretationSourceSpec("ministry", "mmaCgmExpc", "병무청"),
+    "보건복지부": InterpretationSourceSpec("ministry", "mohwCgmExpc", "보건복지부"),
+    "산림청": InterpretationSourceSpec("ministry", "kfsCgmExpc", "산림청"),
+    "산업통상부": InterpretationSourceSpec("ministry", "motieCgmExpc", "산업통상부"),
+    "성평등가족부": InterpretationSourceSpec("ministry", "mogefCgmExpc", "성평등가족부"),
+    "소방청": InterpretationSourceSpec("ministry", "nfaCgmExpc", "소방청"),
+    "식품의약품안전처": InterpretationSourceSpec("ministry", "mfdsCgmExpc", "식품의약품안전처"),
+    "외교부": InterpretationSourceSpec("ministry", "mofaCgmExpc", "외교부"),
+    "인사혁신처": InterpretationSourceSpec("ministry", "mpmCgmExpc", "인사혁신처"),
+    "재외동포청": InterpretationSourceSpec("ministry", "okaCgmExpc", "재외동포청"),
+    "재정경제부": InterpretationSourceSpec("ministry", "moefCgmExpc", "재정경제부", can_get=False),
+    "조달청": InterpretationSourceSpec("ministry", "ppsCgmExpc", "조달청"),
+    "중소벤처기업부": InterpretationSourceSpec("ministry", "mssCgmExpc", "중소벤처기업부"),
+    "지식재산처": InterpretationSourceSpec("ministry", "kipoCgmExpc", "지식재산처"),
+    "질병관리청": InterpretationSourceSpec("ministry", "kdcaCgmExpc", "질병관리청"),
+    "통일부": InterpretationSourceSpec("ministry", "mouCgmExpc", "통일부"),
+    "해양경찰청": InterpretationSourceSpec("ministry", "kcgCgmExpc", "해양경찰청"),
+    "해양수산부": InterpretationSourceSpec("ministry", "mofCgmExpc", "해양수산부"),
+    "행정안전부": InterpretationSourceSpec("ministry", "moisCgmExpc", "행정안전부"),
+    "행정중심복합도시건설청": InterpretationSourceSpec("ministry", "naaccCgmExpc", "행정중심복합도시건설청"),
 }
 
 
@@ -275,6 +339,76 @@ class MolegApi:
             raw=raw_rule if include_metadata else {},
         )
 
+    def search_interpretations(
+        self,
+        query: str,
+        *,
+        source: str = "moleg",
+        ministry: str | None = None,
+        search_body: bool = False,
+        interpreted_on: str | None = None,
+        display: int = 20,
+    ) -> list[InterpretationHit]:
+        specs = interpretation_sources_for(source, ministry)
+        hits: list[InterpretationHit] = []
+        for spec in specs:
+            params: dict[str, Any] = {
+                "query": query,
+                "display": display,
+                "search": 2 if search_body else 1,
+            }
+            if interpreted_on:
+                params["explYd"] = compact_date(interpreted_on)
+            payload = self.source.search(spec.target, params)
+            hits.extend(
+                InterpretationHit(
+                    identity=normalize_interpretation_identity(
+                        row,
+                        source_type=spec.source_type,
+                        source_target=spec.target,
+                        ministry=spec.ministry,
+                    ),
+                    raw=row,
+                )
+                for row in unwrap_search_interpretations(payload, spec.target)
+            )
+        return hits
+
+    def get_interpretation(
+        self,
+        identifier: InterpretationIdentity | InterpretationHit | str,
+        *,
+        source: str | None = None,
+        ministry: str | None = None,
+        include_metadata: bool = True,
+    ) -> InterpretationText:
+        spec = interpretation_source_for_identifier(identifier, source=source, ministry=ministry)
+        if not spec.can_get:
+            raise UnsupportedFormatError(
+                f"{spec.ministry or spec.target} interpretation source has no cataloged detail endpoint"
+            )
+        identity_hint = interpretation_identity_from_identifier(identifier, spec)
+        params = interpretation_identity_params(identity_hint)
+        payload = self.source.service(spec.target, params)
+        raw_interpretation = unwrap_service_payload(payload, spec.target)
+        text = normalize_interpretation_text(
+            raw_interpretation,
+            source_type=spec.source_type,
+            source_target=spec.target,
+            ministry=spec.ministry,
+        )
+        if not include_metadata:
+            return InterpretationText(
+                identity=text.identity,
+                question=text.question,
+                answer=text.answer,
+                reason=text.reason,
+                related_laws=text.related_laws,
+                text=text.text,
+                raw={},
+            )
+        return text
+
 
 def target_for(basis: Basis, kind: str) -> str:
     return TARGETS[basis][kind]
@@ -387,3 +521,75 @@ def article_label_for_filter(article: str | int) -> str:
     if text.isdigit():
         return f"제{int(text)}조"
     return text
+
+
+def interpretation_sources_for(source: str, ministry: str | None) -> list[InterpretationSourceSpec]:
+    if source == "moleg":
+        return [OFFICIAL_INTERPRETATION_SOURCE]
+    if source == "ministry":
+        return [ministry_interpretation_source(ministry)]
+    if source == "all":
+        specs = [OFFICIAL_INTERPRETATION_SOURCE]
+        if ministry:
+            specs.append(ministry_interpretation_source(ministry))
+        return specs
+    raise UnsupportedFormatError(f"Unsupported interpretation source: {source}")
+
+
+def ministry_interpretation_source(ministry: str | None) -> InterpretationSourceSpec:
+    if not ministry:
+        raise NoResultError("ministry is required for ministry interpretation search")
+    if ministry in MINISTRY_INTERPRETATION_SOURCES:
+        return MINISTRY_INTERPRETATION_SOURCES[ministry]
+    for spec in MINISTRY_INTERPRETATION_SOURCES.values():
+        if ministry == spec.target:
+            return spec
+    raise UnsupportedFormatError(f"Unsupported ministry interpretation source: {ministry}")
+
+
+def interpretation_source_for_identifier(
+    identifier: InterpretationIdentity | InterpretationHit | str,
+    *,
+    source: str | None,
+    ministry: str | None,
+) -> InterpretationSourceSpec:
+    if isinstance(identifier, InterpretationHit):
+        return interpretation_source_for_identifier(identifier.identity, source=source, ministry=ministry)
+    if isinstance(identifier, InterpretationIdentity):
+        if identifier.source_target == OFFICIAL_INTERPRETATION_SOURCE.target:
+            return OFFICIAL_INTERPRETATION_SOURCE
+        for spec in MINISTRY_INTERPRETATION_SOURCES.values():
+            if spec.target == identifier.source_target:
+                return spec
+        return InterpretationSourceSpec(
+            source_type=identifier.source_type,
+            target=identifier.source_target,
+            ministry=identifier.ministry,
+        )
+    return interpretation_sources_for(source or "moleg", ministry)[0]
+
+
+def interpretation_identity_from_identifier(
+    identifier: InterpretationIdentity | InterpretationHit | str,
+    spec: InterpretationSourceSpec,
+) -> InterpretationIdentity:
+    if isinstance(identifier, InterpretationHit):
+        return identifier.identity
+    if isinstance(identifier, InterpretationIdentity):
+        return identifier
+    text = str(identifier)
+    if not text.isdigit():
+        raise NoResultError("Interpretation detail lookup requires a source interpretation ID")
+    return InterpretationIdentity(
+        interpretation_id=text,
+        title=text,
+        source_type=spec.source_type,
+        source_target=spec.target,
+        ministry=spec.ministry,
+    )
+
+
+def interpretation_identity_params(identity: InterpretationIdentity) -> dict[str, Any]:
+    if identity.interpretation_id:
+        return {"ID": identity.interpretation_id}
+    raise NoResultError("Interpretation identity has no source interpretation ID")

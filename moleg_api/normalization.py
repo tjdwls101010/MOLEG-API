@@ -14,6 +14,8 @@ from .models import (
     Basis,
     DelegatedRule,
     HistoryEvent,
+    InterpretationIdentity,
+    InterpretationText,
     LawDiffChange,
     LawIdentity,
 )
@@ -129,6 +131,84 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
     )
 
 
+def normalize_interpretation_identity(
+    row: dict[str, Any],
+    *,
+    source_type: str,
+    source_target: str,
+    ministry: str | None = None,
+) -> InterpretationIdentity:
+    info = row.get("기본정보") if isinstance(row.get("기본정보"), dict) else row
+    title = first_value(info, "안건명", "법령해석례명", "법령해석명", "LM")
+    if not title:
+        raise ParseFailureError("Interpretation identity is missing a title")
+
+    raw_keys = {
+        key: info.get(key)
+        for key in (
+            "법령해석례일련번호",
+            "법령해석일련번호",
+            "ID",
+            "expc id",
+            "법령해석례 상세링크",
+            "법령해석 상세링크",
+        )
+        if info.get(key) not in (None, "")
+    }
+    return InterpretationIdentity(
+        interpretation_id=string_or_none(first_value(info, "법령해석례일련번호", "법령해석일련번호", "ID", "expc id")),
+        title=str(title),
+        source_type=source_type,
+        source_target=source_target,
+        case_number=string_or_none(first_value(info, "안건번호")),
+        interpretation_date=string_or_none(compact_date(first_value(info, "해석일자", "회신일자"))),
+        reply_agency=string_or_none(first_value(info, "회신기관명", "해석기관명")),
+        reply_agency_code=string_or_none(first_value(info, "회신기관코드", "해석기관코드")),
+        inquiry_agency=string_or_none(first_value(info, "질의기관명")),
+        inquiry_agency_code=string_or_none(first_value(info, "질의기관코드")),
+        ministry=ministry,
+        data_timestamp=string_or_none(first_value(info, "데이터기준일시", "등록일시")),
+        raw_keys=raw_keys,
+    )
+
+
+def normalize_interpretation_text(
+    row: dict[str, Any],
+    *,
+    source_type: str,
+    source_target: str,
+    ministry: str | None = None,
+) -> InterpretationText:
+    identity = normalize_interpretation_identity(
+        row,
+        source_type=source_type,
+        source_target=source_target,
+        ministry=ministry,
+    )
+    question = string_or_none(first_value(row, "질의요지", "질의"))
+    answer = string_or_none(first_value(row, "회답", "답변", "해석"))
+    reason = string_or_none(first_value(row, "이유", "해석이유"))
+    related_laws = string_or_none(first_value(row, "관련법령", "관련 법령"))
+    parts = []
+    if question:
+        parts.append(f"질의요지\n{question}")
+    if answer:
+        parts.append(f"회답\n{answer}")
+    if reason:
+        parts.append(f"이유\n{reason}")
+    if related_laws:
+        parts.append(f"관련법령\n{related_laws}")
+    return InterpretationText(
+        identity=identity,
+        question=question,
+        answer=answer,
+        reason=reason,
+        related_laws=related_laws,
+        text="\n\n".join(parts),
+        raw=row,
+    )
+
+
 def unwrap_search_laws(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for envelope in LAW_SEARCH_ENVELOPES:
         if isinstance(payload.get(envelope), dict):
@@ -147,6 +227,17 @@ def unwrap_search_administrative_rules(payload: dict[str, Any]) -> list[dict[str
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]
     return collect_rows(payload, "admrul")
+
+
+def unwrap_search_interpretations(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
+    for envelope in ("ExpcSearch", "expcSearch", "CgmExpcSearch", "cgmExpcSearch"):
+        if isinstance(payload.get(envelope), dict):
+            rows = payload[envelope].get(target) or payload[envelope].get("expc")
+            return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    rows = payload.get(target) or payload.get("expc")
+    if rows is not None:
+        return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    return collect_rows(payload, target, "expc")
 
 
 def unwrap_service_payload(payload: dict[str, Any], target: str) -> dict[str, Any]:
