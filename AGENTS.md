@@ -4,6 +4,8 @@ This project builds the MOLEG-API layer that a future legislative-expert skill w
 
 The goal is not to wrap every MOLEG OpenAPI endpoint as a shallow SDK. Most source endpoints are duplicated, view-specific, demand-gated, or too narrow for direct skill use. Build small, deep interfaces for recurring legislative work, and keep raw `target` values, `ID`/`MST`/`LID` details, format quirks, and fallback rules inside the implementation and design docs.
 
+Do not treat full law.go.kr catalog coverage as a project goal. A MOLEG endpoint earns public surface only when it answers a recurring legislative-expert need, closes a real source gap, or prevents a demonstrated reasoning failure; optional and rejected catalog surfaces may remain unused indefinitely.
+
 The live MOLEG API, the current codebase, and the local OpenAPI catalog DB are authoritative. Before choosing an endpoint or interpreting a key, inspect `.Seongjin/DataBases/법제처 api.db` and prefer live sample calls when credentials are available. Project docs explain scope, decisions, and query recipes; they are not a frozen replacement for the current catalog or live behavior.
 
 This repository is only one part of the future legislative-expert skill:

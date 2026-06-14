@@ -16,6 +16,8 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 
 The public surface must balance two failure modes: too many methods make Claude choose among confusing source-specific tools, while too few methods force oversized responses that waste context. MOLEG-API should expose progressive loading: cheap candidate/search calls first, explicit detail loaders second, and budgeted bundles that stage likely context without pretending to load everything.
 
+Completeness means covering the legal-source paths a legislative expert repeatedly needs, not using every law.go.kr OpenAPI. Catalog entries that are local, customized, narrow, duplicated, user-specific, or outside national legislative analysis should remain optional or rejected until a concrete skill scenario proves their value.
+
 ## User Stories
 
 1. As a legislative-expert skill, I want to search current laws by name, so that I can find candidate law identities without choosing raw MOLEG targets.
@@ -55,6 +57,7 @@ The public surface must balance two failure modes: too many methods make Claude 
 - The live source adapter distinguishes rate limits and retry exhaustion from legal no-result states.
 - Caching starts small. Do not build a mirror DB until repeated calls prove a speed or cost problem.
 - Add a public method only when it represents a recurring legislative task Claude can choose by intent. Do not expose a method merely because a source endpoint exists.
+- Before promoting an optional source, document the legislative-expert scenario it serves and the reasoning failure it prevents. Otherwise, leave it out of the public surface.
 - Keep noisy or expensive detail behind explicit loaders or `DeferredLookup` records. Candidate lists and context bundles should reveal what may matter without automatically spending context on every source body.
 - A context bundle is an entry point, not a maximal answer object. It should load high-leverage anchors and bounded candidates, then leave selective follow-up calls visible to Claude.
 
