@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.DS_Store
+.Seongjin/
+.agents/
+.claude
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
