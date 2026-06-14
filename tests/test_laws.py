@@ -390,6 +390,135 @@ def test_search_administrative_rules_normalizes_current_rule_hits():
     )
 
 
+def test_search_annex_forms_normalizes_law_candidates_without_exposing_targets():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "220000001",
+                        "별표일련번호": "300001",
+                        "관련법령일련번호": "270001",
+                        "관련법령ID": "001234",
+                        "별표명": "자동차등록번호판의 기준",
+                        "관련법령명": "자동차관리법",
+                        "별표번호": "별표 1",
+                        "별표종류": "별표",
+                        "소관부처명": "국토교통부",
+                        "공포일자": "20250101",
+                        "공포번호": "제2025-1호",
+                        "제개정구분명": "일부개정",
+                        "법령종류": "법률",
+                        "별표서식 파일링크": "https://example.test/annex.hwp",
+                        "별표서식 PDF파일링크": "https://example.test/annex.pdf",
+                        "별표법령 상세링크": "https://example.test/detail",
+                    }
+                ]
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_annex_forms(
+        "자동차",
+        source="law",
+        search_scope="source",
+        annex_type="annex",
+        display=3,
+    )
+
+    assert len(hits) == 1
+    identity = hits[0].identity
+    assert identity.annex_id == "220000001"
+    assert identity.title == "자동차등록번호판의 기준"
+    assert identity.source_type == "law"
+    assert identity.source_target == "licbyl"
+    assert identity.related_name == "자동차관리법"
+    assert identity.related_id == "001234"
+    assert identity.related_serial_id == "270001"
+    assert identity.annex_number == "별표 1"
+    assert identity.annex_type == "별표"
+    assert identity.ministry == "국토교통부"
+    assert identity.promulgation_date == "20250101"
+    assert identity.file_link == "https://example.test/annex.hwp"
+    assert identity.pdf_link == "https://example.test/annex.pdf"
+    assert identity.detail_link == "https://example.test/detail"
+    assert source.calls[0] == (
+        "search",
+        "licbyl",
+        {"query": "자동차", "display": 3, "search": 2, "knd": "1"},
+    )
+
+
+def test_search_annex_forms_normalizes_administrative_rule_candidates():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulBylSearch": {
+                    "admbyl": [
+                        {
+                            "admrulbyl id": "330000001",
+                            "별표일련번호": "400001",
+                            "관련행정규칙 일련번호": "2100000248758",
+                            "관련법령ID": "001234",
+                            "별표명": "무단방치 자동차 처리 서식",
+                            "관련행정규칙명": "무단방치 자동차 처리 규정",
+                            "별표번호": "서식 2",
+                            "별표종류": "서식",
+                            "소관부처명": "국토교통부",
+                            "발령일자": "20250203",
+                            "발령번호": "제2025-2호",
+                            "행정규칙종류": "고시",
+                            "별표서식파일링크": "https://example.test/form.hwp",
+                            "별표행정규칙 상세링크": "https://example.test/rule-detail",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_annex_forms(
+        "자동차",
+        source="administrative_rule",
+        search_scope="body",
+        annex_type="form",
+        ministry="국토교통부",
+        display=5,
+    )
+
+    identity = hits[0].identity
+    assert identity.annex_id == "330000001"
+    assert identity.title == "무단방치 자동차 처리 서식"
+    assert identity.source_type == "administrative_rule"
+    assert identity.source_target == "admbyl"
+    assert identity.related_name == "무단방치 자동차 처리 규정"
+    assert identity.related_id == "001234"
+    assert identity.related_serial_id == "2100000248758"
+    assert identity.issued_on == "20250203"
+    assert identity.issuing_number == "제2025-2호"
+    assert identity.rule_type == "고시"
+    assert identity.file_link == "https://example.test/form.hwp"
+    assert identity.detail_link == "https://example.test/rule-detail"
+    assert source.calls[0] == (
+        "search",
+        "admbyl",
+        {
+            "query": "자동차",
+            "display": 5,
+            "search": 3,
+            "knd": "2",
+            "org": "국토교통부",
+        },
+    )
+
+
+def test_search_annex_forms_rejects_unsupported_source():
+    source = FakeSource()
+
+    with pytest.raises(UnsupportedFormatError):
+        MolegApi(source).search_annex_forms("자동차", source="ordinance")
+
+
 def test_get_administrative_rule_loads_structured_articles_and_filters():
     source = FakeSource(
         service_payloads=[
@@ -952,6 +1081,30 @@ def test_load_legal_context_bundle_stages_question_context():
                     ]
                 }
             },
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "220000001",
+                        "별표명": "무단방치 자동차 처리 기준",
+                        "관련법령명": "자동차관리법",
+                        "관련법령ID": "001234",
+                        "별표종류": "별표",
+                        "별표법령 상세링크": "https://example.test/annex-detail",
+                    }
+                ]
+            },
+            {
+                "admbyl": [
+                    {
+                        "admrulbyl id": "330000001",
+                        "별표명": "무단방치 자동차 처리 서식",
+                        "관련행정규칙명": "무단방치 자동차 처리 규정",
+                        "관련행정규칙 일련번호": "2100000248758",
+                        "별표종류": "서식",
+                        "별표서식파일링크": "https://example.test/rule-form.hwp",
+                    }
+                ]
+            },
         ],
         service_payloads=[
             {
@@ -1027,6 +1180,9 @@ def test_load_legal_context_bundle_stages_question_context():
     assert bundle.candidates.interpretations[0].identity.title == "자동차 방치 관련 법령해석례"
     assert bundle.candidates.cases[0].identity.title == "자동차 인도청구"
     assert bundle.candidates.constitutional_decisions[0].identity.source_target == "detc"
+    assert bundle.candidates.annex_forms[0].identity.title == "무단방치 자동차 처리 기준"
+    assert bundle.candidates.annex_forms[0].identity.source_target == "licbyl"
+    assert bundle.candidates.annex_forms[1].identity.source_target == "admbyl"
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     assert bundle.gaps[0].kind == "websearch_required"
@@ -1053,6 +1209,8 @@ def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
             {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
             {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
         ],
         service_payloads=[
             {
@@ -1124,6 +1282,8 @@ def test_load_legal_context_bundle_statute_review_loads_requested_articles_first
             {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
             {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
         ],
         service_payloads=[
             {

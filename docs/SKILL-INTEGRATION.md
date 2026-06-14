@@ -20,6 +20,7 @@ Use MOLEG-API for legal sources from law.go.kr:
 - promulgation-date and effective-date law identity resolution
 - law history and before/after comparison
 - delegated enforcement decrees, enforcement rules, notices, and administrative rules
+- annex/form candidates for statutes and administrative rules
 - MOLEG official interpretations and ministry first-instance interpretations
 - Supreme Court cases and Constitutional Court decisions
 - law terms, related terms, related articles, related laws, and query expansion
@@ -41,8 +42,9 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 5. Call `trace_law_history()` or `compare_law_versions()` to explain what the bill changed.
 6. Call `find_delegated_rules()` to inspect enforcement decrees, enforcement rules, notices, and administrative rules.
 7. Call `search_administrative_rules()` and `get_administrative_rule()` when delegated or practical execution criteria may live in notices, directives, established rules, or other administrative rules.
-8. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
-9. Use WebSearch only for current social facts or context outside law.go.kr.
+8. Call `search_annex_forms()` when the legal question may depend on attached tables, thresholds, amounts, criteria, application formats, or other 별표ㆍ서식 material.
+9. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
+10. Use WebSearch only for current social facts or context outside law.go.kr.
 
 ## Query Planning Rules
 
@@ -50,6 +52,7 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - Use promulgation-date basis when resolving a `congress-db` promulgation bridge or reconstructing historical promulgation context.
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority.
+- Treat annex/form search as candidate discovery. The current interface exposes metadata and file/detail links; it does not prove the content of an attached HWP/PDF body by itself.
 - Preserve source authority labels in answers: MOLEG interpretation, ministry interpretation, Supreme Court case, and Constitutional Court decision are different source types.
 
 ## Fallback Rules
@@ -59,10 +62,11 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - If MOLEG-API raises `RateLimitError` or `RetryExhaustedError`, treat it as a temporary source-access problem, not proof that the legal source does not exist.
 - If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.
+- If a result points to annex/form files that likely carry the operative criteria, surface that limitation or run a future annex-body parser instead of pretending statute text is complete.
 
 ## Context Bundle
 
-The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated and administrative context next, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
+The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated and administrative context next, annex/form candidates when attached material may matter, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
 
 ## Expected Public Interfaces
 
@@ -77,6 +81,7 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.find_delegated_rules()`
 - `MolegApi.search_administrative_rules()`
 - `MolegApi.get_administrative_rule()`
+- `MolegApi.search_annex_forms()`
 - `MolegApi.search_interpretations()`
 - `MolegApi.get_interpretation()`
 - `MolegApi.search_cases()`
@@ -86,7 +91,7 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.expand_legal_query()`
 - `MolegApi.load_legal_context_bundle()`
 
-These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
+These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
 
 ## Answering Discipline For The Skill
 
@@ -95,5 +100,6 @@ These interfaces are implemented across the initial core slices. Administrative-
 - Cite source type and identity metadata with legal text.
 - Surface ambiguity and no-result states clearly.
 - Move to WebSearch for latest non-legal facts instead of forcing MOLEG-API to answer them.
+- When annex/form candidates appear, mention them as possible operative attached material unless the answer has actually inspected the linked body.
 - Treat `expand_legal_query()` output as candidate planning context. It can suggest terms, laws, articles, and WebSearch follow-ups, but it is not a source to cite as final authority.
 - Treat `load_legal_context_bundle()` as source loading, not legal reasoning. Claude still decides what each loaded source means and which deferred lookups to run.

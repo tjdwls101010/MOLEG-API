@@ -61,6 +61,23 @@ def test_live_administrative_rule_search_and_detail_smoke():
     assert text.text
 
 
+def test_live_annex_form_search_smoke():
+    api = live_api()
+
+    hit = first_hit_or_skip(
+        api.search_annex_forms("자동차", source="law", display=3),
+        "law annex/form",
+    )
+    admin_hits = api.search_annex_forms("자동차", source="administrative_rule", display=3)
+
+    assert hit.identity.title
+    assert hit.identity.source_target == "licbyl"
+    assert hit.identity.related_name or hit.identity.related_id
+    if admin_hits:
+        assert admin_hits[0].identity.source_target == "admbyl"
+        assert admin_hits[0].identity.title
+
+
 def test_live_interpretation_search_and_detail_smoke():
     api = live_api()
 

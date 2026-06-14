@@ -40,7 +40,7 @@ LegalContextBundle(
 
 `loaded` is source material already retrieved and safe for Claude to inspect.
 
-`candidates` are possible next sources, not authority.
+`candidates` are possible next sources, not authority. This includes annex/form candidates whose linked files may need separate inspection.
 
 `deferred` contains handles for expensive or noisy follow-up calls, such as loading full cases after case search results are ranked.
 
@@ -48,7 +48,7 @@ LegalContextBundle(
 
 ## Implemented Behavior
 
-- `mode="question"` calls `expand_legal_query()`, loads the first law candidate when available, finds delegated rules, searches administrative rules, interpretations, Supreme Court cases, and Constitutional Court decisions, and leaves detail loading for interpretation/case candidates in `deferred`.
+- `mode="question"` calls `expand_legal_query()`, loads the first law candidate when available, finds delegated rules, searches administrative rules, law/admin-rule annex forms, interpretations, Supreme Court cases, and Constitutional Court decisions, and leaves detail loading for interpretation/case candidates in `deferred`.
 - `mode="promulgated_bill"` starts from `congress-db` bridge fields and calls `resolve_promulgated_law()`. Ambiguity or no-result becomes structured `Ambiguity` plus `manual_review_required` gap instead of a silent best guess.
 - `mode="statute_review"` starts from a supplied law identity and loads the current law text or requested articles.
 - Every bundle with a search query includes a `websearch_required` gap because latest social facts, statistics, policy announcements, and news are outside law.go.kr.
@@ -64,6 +64,7 @@ Use when the user asks a narrow citation or lookup question.
 - loaded laws/articles: 1 law or up to 3 requested articles
 - delegated rules: 3
 - administrative rules: 3 search hits, no full text by default
+- annex/forms: 3 search hits, linked file/body parsing deferred
 - interpretations: 3 search hits, no full text by default
 - cases: 3 search hits, no full text by default
 - constitutional decisions: 2 search hits, no full text by default
@@ -77,6 +78,7 @@ Use for ordinary legislative review questions.
 - history/comparison: only when a promulgation bridge, article, or date is present
 - delegated rules: up to 5 relationships
 - administrative rules: up to 5 hits; load full text only when directly named or delegated
+- annex/forms: up to 5 hits; inspect linked file/body only when the question turns on attached criteria, tables, amounts, or forms
 - interpretations: up to 5 hits; load full text for the top 1 if the question asks legal meaning or application
 - cases: up to 5 hits; load full text for the top 1 only when judicial interpretation matters
 - constitutional decisions: up to 3 hits; load full text for the top 1 only when constitutional risk, 기본권, 위헌, 평등, 과잉금지원칙, or similar terms appear
@@ -87,7 +89,7 @@ Use only when the user asks for a survey, memo, or risk scan.
 
 - law candidates: up to 5
 - loaded laws/articles: one primary law or up to 10 requested articles
-- delegated/admin/interpretation/case searches: up to 10 hits each
+- delegated/admin/annex-form/interpretation/case searches: up to 10 hits each
 - full-text loading remains selective; broad should widen candidates before loading every detail
 
 ## Workflow By Mode
@@ -98,14 +100,15 @@ Use only when the user asks for a survey, memo, or risk scan.
 2. Load current effective text through `get_law()` or requested `get_article()`.
 3. Use `trace_law_history()` or `compare_law_versions()` when dates/articles make the change traceable.
 4. Use `find_delegated_rules()` to identify enforcement decrees, enforcement rules, notices, and administrative rules.
-5. Search interpretations and judicial context, but defer full-text loading unless the bill raises application or constitutional-risk questions.
-6. Add a WebSearch gap for social context, statistics, or current policy background.
+5. Search annex/forms when operative standards may live in attached tables, thresholds, amounts, or forms.
+6. Search interpretations and judicial context, but defer full-text loading unless the bill raises application or constitutional-risk questions.
+7. Add a WebSearch gap for social context, statistics, or current policy background.
 
 ### `question`
 
 1. Call `expand_legal_query()`.
 2. Load a small number of law/article candidates.
-3. Search delegated/admin/interpretation/judicial context using expansion terms.
+3. Search delegated/admin/annex-form/interpretation/judicial context using expansion terms.
 4. Keep unresolved candidates and ambiguities visible.
 5. Add WebSearch gaps when the question asks for current facts outside law.go.kr.
 
@@ -114,14 +117,15 @@ Use only when the user asks for a survey, memo, or risk scan.
 1. Start from the supplied law identity.
 2. Load the requested articles or the current law text.
 3. Trace delegated rules and administrative rules first.
-4. Search interpretations and cases second.
-5. Search constitutional decisions when the review asks about limits, rights, sanctions, equality, proportionality, or constitutional risk.
+4. Search annex/forms when the loaded text references 별표, 서식, 기준표, 금액, 요건, 신청서, or similar attached material.
+5. Search interpretations and cases second.
+6. Search constitutional decisions when the review asks about limits, rights, sanctions, equality, proportionality, or constitutional risk.
 
 ## Default Answer To #6 Open Questions
 
 ### What should the default bundle size be for a single user question?
 
-Use `budget="standard"`: up to 3 law candidates, one primary law or up to 5 requested articles, up to 5 delegated/admin/interpretation/case candidates, and selective full-text loading only when the question demands it. This keeps the first context bundle useful without turning every question into a broad research memo.
+Use `budget="standard"`: up to 3 law candidates, one primary law or up to 5 requested articles, up to 5 delegated/admin/annex-form/interpretation/case candidates, and selective full-text loading only when the question demands it. This keeps the first context bundle useful without turning every question into a broad research memo.
 
 ### Should the bundle prefer statute/article context first and defer cases?
 
@@ -146,6 +150,7 @@ Do not bury gaps in prose. The skill should be able to inspect a structured gap 
 
 - Do not implement a legal conclusion generator inside MOLEG-API.
 - Do not load every case or interpretation detail by default.
+- Do not download or parse every annex/form file by default.
 - Do not treat query expansion candidates as authority.
 - Do not use this bundle to replace `congress-db` SQL for bill facts.
 - Do not make WebSearch optional for current social facts outside law.go.kr.

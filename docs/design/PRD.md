@@ -8,7 +8,7 @@ A shallow SDK with one function per endpoint would push source complexity onto t
 
 ## Solution
 
-Build MOLEG-API as a small set of deep task-level interfaces for legislative work. The implementation may call many source endpoints internally, but the public surface should speak in legal tasks: search laws, resolve promulgated law identity, get effective text, get an article, trace history, compare versions, find delegated rules, search administrative rules, search interpretations, search cases, and expand legal queries.
+Build MOLEG-API as a small set of deep task-level interfaces for legislative work. The implementation may call many source endpoints internally, but the public surface should speak in legal tasks: search laws, resolve promulgated law identity, get effective text, get an article, trace history, compare versions, find delegated rules, search administrative rules, search annex/forms, search interpretations, search cases, and expand legal queries.
 
 The live MOLEG API and the local catalog DB remain authoritative for endpoint behavior. Design docs record scope, traps, and decisions, but implementation should verify source behavior through the current catalog and live samples when credentials are available.
 
@@ -29,14 +29,15 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 11. As a legislative-expert skill, I want to find delegated rules from a statute or article, so that I do not miss enforcement decrees, enforcement rules, notices, or administrative rules.
 12. As a legislative-expert skill, I want to search administrative rules, so that I can find practical execution criteria not visible in statute text alone.
 13. As a legislative-expert skill, I want to retrieve administrative-rule text, so that I can cite notices, directives, and established rules.
-14. As a legislative-expert skill, I want to search MOLEG official interpretations, so that I can identify official interpretation constraints.
-15. As a legislative-expert skill, I want to search ministry first-instance interpretations by ministry/source registry, so that the public interface does not expose dozens of ministry-specific functions.
-16. As a legislative-expert skill, I want to search Supreme Court cases, so that I can identify judicial interpretations and limits.
-17. As a legislative-expert skill, I want to search Constitutional Court decisions separately, so that constitutional-risk analysis keeps authority labels intact.
-18. As a legislative-expert skill, I want legal-term and related-law expansion, so that I can plan better searches without treating expansion results as final authority.
-19. As a legislative-expert skill, I want a staged legal context bundle, so that I can load statutes, delegations, administrative rules, interpretations, cases, Constitutional Court decisions, ambiguity records, and WebSearch gaps without memorizing source call order.
-20. As a legislative-expert skill, I want clear error types for no result, ambiguity, unsupported format, source API error, parse failure, and retry exhaustion, so that I can decide whether to ask the user, retry, or fall back.
-21. As a legislative-expert skill, I want guidance on when to use WebSearch instead, so that latest social context is not incorrectly searched in MOLEG.
+14. As a legislative-expert skill, I want to search law and administrative-rule annex/form candidates, so that I do not miss attached tables, thresholds, amounts, criteria, or required forms.
+15. As a legislative-expert skill, I want to search MOLEG official interpretations, so that I can identify official interpretation constraints.
+16. As a legislative-expert skill, I want to search ministry first-instance interpretations by ministry/source registry, so that the public interface does not expose dozens of ministry-specific functions.
+17. As a legislative-expert skill, I want to search Supreme Court cases, so that I can identify judicial interpretations and limits.
+18. As a legislative-expert skill, I want to search Constitutional Court decisions separately, so that constitutional-risk analysis keeps authority labels intact.
+19. As a legislative-expert skill, I want legal-term and related-law expansion, so that I can plan better searches without treating expansion results as final authority.
+20. As a legislative-expert skill, I want a staged legal context bundle, so that I can load statutes, delegations, administrative rules, annex/form candidates, interpretations, cases, Constitutional Court decisions, ambiguity records, and WebSearch gaps without memorizing source call order.
+21. As a legislative-expert skill, I want clear error types for no result, ambiguity, unsupported format, source API error, parse failure, and retry exhaustion, so that I can decide whether to ask the user, retry, or fall back.
+22. As a legislative-expert skill, I want guidance on when to use WebSearch instead, so that latest social context is not incorrectly searched in MOLEG.
 
 ## Implementation Decisions
 
@@ -62,6 +63,7 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - `find_delegated_rules(law_identifier, *, article=None)`
 - `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
 - `get_administrative_rule(identifier, *, articles=None)`
+- `search_annex_forms(query, *, source="law", search_scope="source", annex_type=None, ministry=None)`
 - `search_interpretations(query, *, source="moleg", ministry=None)`
 - `get_interpretation(identifier, *, source=None)`
 - `search_cases(query, *, court="all", court_name=None, decided_on=None, case_number=None)`
@@ -92,12 +94,13 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
+- `MolegApi.search_annex_forms()` searches law and administrative-rule annex/form candidates through `licbyl` and `admbyl`, preserving related source identity, annex name/number/type, ministry/date metadata, and file/detail links while hiding source target and numeric code choices.
 - `MolegApi.search_interpretations()` searches official MOLEG interpretations through `expc` and ministry first-instance interpretations through a registry-backed `*CgmExpc` source family.
 - `MolegApi.get_interpretation()` loads one interpretation by source ID and preserves source type, source target, ministry, case number, interpretation date, inquiry agency, reply/interpretation agency, question, answer, reason, and related-law text.
 - `MolegApi.search_cases()` and `MolegApi.get_case()` load Supreme Court/lower-court case context through `prec`, including case number, decision date, court, case type, holdings, summary, referenced statutes, referenced cases, and full text.
 - `MolegApi.search_constitutional_decisions()` and `MolegApi.get_constitutional_decision()` load Constitutional Court decision context through `detc`, preserving constitutional source labels, final date, case number, holdings, summary, reviewed statutes, referenced statutes, referenced cases, and full text.
 - `MolegApi.expand_legal_query()` combines law-name search, legal terms, everyday terms, related terms, related articles, AI search, and related-law surfaces into query-planning candidates and follow-up search recommendations. Its output is not final legal authority.
-- `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
+- `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded administrative-rule, annex/form, interpretation, and judicial candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - `LawGoKrClient` performs bounded retries for transient law.go.kr failures and raises `RateLimitError` or `RetryExhaustedError` instead of collapsing temporary source-access failures into legal no-result states.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
@@ -108,4 +111,5 @@ Names may change to match code style, but the interface principle should not: on
 - Direct SQL access to `congress-db`.
 - Web search, news, statistics, or social-context retrieval.
 - Local ordinance, treaty, administrative appeal, special administrative appeal, and committee-decision modules until repeated skill scenarios justify them.
+- Downloading or parsing annex/form HWP/PDF bodies; the current interface exposes candidate metadata and links only.
 - A large local mirror database.
