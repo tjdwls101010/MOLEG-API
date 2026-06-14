@@ -2,7 +2,7 @@ import pytest
 
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
 from moleg_api.errors import UnsupportedFormatError
-from moleg_api.models import LawIdentity
+from moleg_api.models import JudicialDecisionIdentity, LawIdentity
 from moleg_api.normalization import format_article_jo
 
 
@@ -580,3 +580,151 @@ def test_get_interpretation_refuses_ministry_without_detail_target():
             source="ministry",
             ministry="국세청",
         )
+
+
+def test_search_cases_normalizes_case_hits_and_court_filter():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "228541",
+                            "사건명": "손해배상",
+                            "사건번호": "2020다12345",
+                            "선고일자": "20240115",
+                            "법원명": "대법원",
+                            "법원종류코드": "400201",
+                            "사건종류명": "민사",
+                            "판결유형": "판결",
+                            "데이터출처명": "대법원",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_cases("손해배상", court="supreme", display=5)
+
+    assert hits[0].identity.decision_id == "228541"
+    assert hits[0].identity.source_type == "case"
+    assert hits[0].identity.source_target == "prec"
+    assert hits[0].identity.title == "손해배상"
+    assert hits[0].identity.case_number == "2020다12345"
+    assert hits[0].identity.decision_date == "20240115"
+    assert hits[0].identity.court == "대법원"
+    assert source.calls[0] == (
+        "search",
+        "prec",
+        {"query": "손해배상", "display": 5, "search": 1, "org": "400201"},
+    )
+
+
+def test_get_case_loads_case_text_by_source_id():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "prec": {
+                    "판례정보일련번호": "228541",
+                    "사건명": "손해배상",
+                    "사건번호": "2020다12345",
+                    "선고일자": "20240115",
+                    "법원명": "대법원",
+                    "판시사항": "불법행위 손해배상책임의 성립 요건",
+                    "판결요지": "위법행위와 손해 사이의 인과관계가 인정되어야 한다.",
+                    "참조조문": "민법 제750조",
+                    "참조판례": "대법원 2019다0000 판결",
+                    "판례내용": "주문 및 이유 전문",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_case("228541")
+
+    assert text.identity.source_type == "case"
+    assert text.identity.decision_id == "228541"
+    assert "손해배상책임" in text.holdings
+    assert "인과관계" in text.summary
+    assert text.referenced_statutes == "민법 제750조"
+    assert "주문 및 이유" in text.full_text
+    assert source.calls[0] == ("service", "prec", {"ID": "228541"})
+
+
+def test_search_constitutional_decisions_normalizes_hits():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "58400",
+                            "사건명": "자동차관리법제26조등위헌확인",
+                            "사건번호": "2020헌마1",
+                            "종국일자": "20240229",
+                            "헌재결정례 상세링크": "/DRF/lawService.do?target=detc&ID=58400",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_constitutional_decisions(
+        "자동차",
+        decided_on="2024-02-29",
+    )
+
+    assert hits[0].identity.source_type == "constitutional"
+    assert hits[0].identity.source_target == "detc"
+    assert hits[0].identity.decision_id == "58400"
+    assert hits[0].identity.decision_date == "20240229"
+    assert source.calls[0] == (
+        "search",
+        "detc",
+        {"query": "자동차", "display": 20, "search": 1, "date": "20240229"},
+    )
+
+
+def test_get_constitutional_decision_loads_decision_text_by_source_id():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "detc": {
+                    "헌재결정례일련번호": "58400",
+                    "사건명": "자동차관리법제26조등위헌확인",
+                    "사건번호": "2020헌마1",
+                    "종국일자": "20240229",
+                    "사건종류명": "헌법소원",
+                    "판시사항": "자동차관리법 조항의 위헌 여부",
+                    "결정요지": "해당 조항은 과잉금지원칙에 위반되지 않는다.",
+                    "심판대상조문": "자동차관리법 제26조",
+                    "참조조문": "헌법 제37조 제2항",
+                    "참조판례": "헌재 2018헌마000 결정",
+                    "전문": "결정 전문",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_constitutional_decision("58400")
+
+    assert text.identity.source_type == "constitutional"
+    assert text.identity.title == "자동차관리법제26조등위헌확인"
+    assert "위헌 여부" in text.holdings
+    assert "과잉금지원칙" in text.summary
+    assert "자동차관리법 제26조" in text.reviewed_statutes
+    assert source.calls[0] == ("service", "detc", {"ID": "58400"})
+
+
+def test_get_case_refuses_constitutional_identity():
+    identity = JudicialDecisionIdentity(
+        decision_id="58400",
+        title="자동차관리법제26조등위헌확인",
+        source_type="constitutional",
+        source_target="detc",
+    )
+
+    with pytest.raises(UnsupportedFormatError):
+        MolegApi(FakeSource()).get_case(identity)

@@ -16,6 +16,8 @@ from .models import (
     HistoryEvent,
     InterpretationIdentity,
     InterpretationText,
+    JudicialDecisionIdentity,
+    JudicialDecisionText,
     LawDiffChange,
     LawIdentity,
 )
@@ -209,6 +211,88 @@ def normalize_interpretation_text(
     )
 
 
+def normalize_judicial_decision_identity(
+    row: dict[str, Any],
+    *,
+    source_type: str,
+    source_target: str,
+) -> JudicialDecisionIdentity:
+    info = row.get("기본정보") if isinstance(row.get("기본정보"), dict) else row
+    title = first_value(info, "사건명", "판례명", "헌재결정례명", "LM")
+    if not title:
+        raise ParseFailureError("Judicial decision identity is missing a title")
+
+    raw_keys = {
+        key: info.get(key)
+        for key in (
+            "판례일련번호",
+            "판례정보일련번호",
+            "헌재결정례일련번호",
+            "ID",
+            "판례상세링크",
+            "헌재결정례 상세링크",
+        )
+        if info.get(key) not in (None, "")
+    }
+    return JudicialDecisionIdentity(
+        decision_id=string_or_none(first_value(info, "판례일련번호", "판례정보일련번호", "헌재결정례일련번호", "ID")),
+        title=str(title),
+        source_type=source_type,
+        source_target=source_target,
+        case_number=string_or_none(first_value(info, "사건번호")),
+        decision_date=string_or_none(compact_date(first_value(info, "선고일자", "종국일자"))),
+        court=string_or_none(first_value(info, "법원명")),
+        court_type_code=string_or_none(first_value(info, "법원종류코드", "재판부구분코드")),
+        case_type=string_or_none(first_value(info, "사건종류명")),
+        decision_type=string_or_none(first_value(info, "판결유형", "선고")),
+        data_source=string_or_none(first_value(info, "데이터출처명")),
+        raw_keys=raw_keys,
+    )
+
+
+def normalize_judicial_decision_text(
+    row: dict[str, Any],
+    *,
+    source_type: str,
+    source_target: str,
+) -> JudicialDecisionText:
+    identity = normalize_judicial_decision_identity(
+        row,
+        source_type=source_type,
+        source_target=source_target,
+    )
+    holdings = string_or_none(first_value(row, "판시사항"))
+    summary = string_or_none(first_value(row, "판결요지", "결정요지"))
+    full_text = string_or_none(first_value(row, "판례내용", "전문"))
+    referenced_statutes = string_or_none(first_value(row, "참조조문"))
+    reviewed_statutes = string_or_none(first_value(row, "심판대상조문"))
+    referenced_cases = string_or_none(first_value(row, "참조판례"))
+    parts = []
+    if holdings:
+        parts.append(f"판시사항\n{holdings}")
+    if summary:
+        parts.append(f"요지\n{summary}")
+    if referenced_statutes:
+        parts.append(f"참조조문\n{referenced_statutes}")
+    if reviewed_statutes:
+        parts.append(f"심판대상조문\n{reviewed_statutes}")
+    if referenced_cases:
+        parts.append(f"참조판례\n{referenced_cases}")
+    if full_text:
+        parts.append(f"전문\n{full_text}")
+    return JudicialDecisionText(
+        identity=identity,
+        holdings=holdings,
+        summary=summary,
+        full_text=full_text,
+        referenced_statutes=referenced_statutes,
+        reviewed_statutes=reviewed_statutes,
+        referenced_cases=referenced_cases,
+        text="\n\n".join(parts),
+        raw=row,
+    )
+
+
 def unwrap_search_laws(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for envelope in LAW_SEARCH_ENVELOPES:
         if isinstance(payload.get(envelope), dict):
@@ -238,6 +322,17 @@ def unwrap_search_interpretations(payload: dict[str, Any], target: str) -> list[
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]
     return collect_rows(payload, target, "expc")
+
+
+def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
+    for envelope in ("PrecSearch", "precSearch", "DetcSearch", "detcSearch"):
+        if isinstance(payload.get(envelope), dict):
+            rows = payload[envelope].get(target)
+            return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    rows = payload.get(target)
+    if rows is not None:
+        return [row for row in ensure_list(rows) if isinstance(row, dict)]
+    return collect_rows(payload, target)
 
 
 def unwrap_service_payload(payload: dict[str, Any], target: str) -> dict[str, Any]:

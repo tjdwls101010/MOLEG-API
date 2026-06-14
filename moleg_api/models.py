@@ -211,3 +211,44 @@ class InterpretationText:
     related_laws: str | None = None
     text: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class JudicialDecisionIdentity:
+    """Normalized court case or Constitutional Court decision identity."""
+
+    decision_id: str | None
+    title: str
+    source_type: str
+    source_target: str
+    case_number: str | None = None
+    decision_date: str | None = None
+    court: str | None = None
+    court_type_code: str | None = None
+    case_type: str | None = None
+    decision_type: str | None = None
+    data_source: str | None = None
+    raw_keys: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class JudicialDecisionHit:
+    """Search result carrying normalized judicial decision identity."""
+
+    identity: JudicialDecisionIdentity
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class JudicialDecisionText:
+    """Normalized court case or Constitutional Court decision text."""
+
+    identity: JudicialDecisionIdentity
+    holdings: str | None = None
+    summary: str | None = None
+    full_text: str | None = None
+    referenced_statutes: str | None = None
+    reviewed_statutes: str | None = None
+    referenced_cases: str | None = None
+    text: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)

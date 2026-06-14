@@ -62,8 +62,10 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - `get_administrative_rule(identifier, *, articles=None)`
 - `search_interpretations(query, *, source="moleg", ministry=None)`
 - `get_interpretation(identifier, *, source=None)`
-- `search_cases(query, *, court="all")`
-- `get_case(identifier, *, court=None)`
+- `search_cases(query, *, court="all", court_name=None, decided_on=None, case_number=None)`
+- `get_case(identifier)`
+- `search_constitutional_decisions(query, *, decided_on=None, case_number=None)`
+- `get_constitutional_decision(identifier)`
 - `expand_legal_query(query)`
 - `resolve_promulgated_law(*, prom_law_nm=None, prom_no=None, promulgation_dt=None)`
 
@@ -89,6 +91,8 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
 - `MolegApi.search_interpretations()` searches official MOLEG interpretations through `expc` and ministry first-instance interpretations through a registry-backed `*CgmExpc` source family.
 - `MolegApi.get_interpretation()` loads one interpretation by source ID and preserves source type, source target, ministry, case number, interpretation date, inquiry agency, reply/interpretation agency, question, answer, reason, and related-law text.
+- `MolegApi.search_cases()` and `MolegApi.get_case()` load Supreme Court/lower-court case context through `prec`, including case number, decision date, court, case type, holdings, summary, referenced statutes, referenced cases, and full text.
+- `MolegApi.search_constitutional_decisions()` and `MolegApi.get_constitutional_decision()` load Constitutional Court decision context through `detc`, preserving constitutional source labels, final date, case number, holdings, summary, reviewed statutes, referenced statutes, referenced cases, and full text.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
 
