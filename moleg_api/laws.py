@@ -5,13 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .errors import AmbiguousLawError, NoResultError, ParseFailureError, UnsupportedFormatError
+from .errors import AmbiguousLawError, MolegApiError, NoResultError, ParseFailureError, UnsupportedFormatError
 from .models import (
     AdministrativeRuleHit,
     AdministrativeRuleIdentity,
     AdministrativeRuleText,
+    Ambiguity,
     ArticleText,
     Basis,
+    BundleRequest,
+    CandidateContext,
+    ContextGap,
+    DeferredLookup,
     DelegationGraph,
     FollowUpSearch,
     InterpretationHit,
@@ -21,9 +26,11 @@ from .models import (
     JudicialDecisionIdentity,
     JudicialDecisionText,
     LegalArticleCandidate,
+    LegalContextBundle,
     LegalLawCandidate,
     LegalQueryExpansion,
     LegalTermCandidate,
+    LoadedContext,
     LawDiff,
     LawHit,
     LawHistory,
@@ -61,6 +68,36 @@ from .source import LawGoKrClient, MolegSource
 TARGETS: dict[Basis, dict[str, str]] = {
     "effective": {"list": "eflaw", "detail": "eflaw", "article": "eflawjosub"},
     "promulgated": {"list": "law", "detail": "law", "article": "lawjosub"},
+}
+
+BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
+    "minimal": {
+        "law_candidates": 1,
+        "articles": 3,
+        "delegations": 3,
+        "administrative_rules": 3,
+        "interpretations": 3,
+        "cases": 3,
+        "constitutional_decisions": 2,
+    },
+    "standard": {
+        "law_candidates": 3,
+        "articles": 5,
+        "delegations": 5,
+        "administrative_rules": 5,
+        "interpretations": 5,
+        "cases": 5,
+        "constitutional_decisions": 3,
+    },
+    "broad": {
+        "law_candidates": 5,
+        "articles": 10,
+        "delegations": 10,
+        "administrative_rules": 10,
+        "interpretations": 10,
+        "cases": 10,
+        "constitutional_decisions": 10,
+    },
 }
 
 
@@ -664,6 +701,219 @@ class MolegApi:
             empty_sources.append(target)
         return rows
 
+    def load_legal_context_bundle(
+        self,
+        query: str | None = None,
+        *,
+        promulgation_bridge: dict[str, Any] | None = None,
+        law_identifier: LawIdentity | LawHit | str | None = None,
+        articles: list[str | int] | None = None,
+        mode: str = "question",
+        budget: str = "standard",
+    ) -> LegalContextBundle:
+        limits = bundle_limits(budget)
+        request = BundleRequest(
+            query=query,
+            mode=mode,
+            budget=budget,
+            articles=list(articles or []),
+            promulgation_bridge=dict(promulgation_bridge or {}),
+            law_identifier=law_identifier,
+        )
+
+        source_notes: list[str] = [
+            "LegalContextBundle is staged context for Claude inspection, not a legal conclusion."
+        ]
+        ambiguities: list[Ambiguity] = []
+        gaps: list[ContextGap] = []
+        deferred: list[DeferredLookup] = []
+        loaded_laws: list[LawText] = []
+        loaded_articles: list[ArticleText] = []
+        loaded_delegations: list[DelegationGraph] = []
+        admin_texts: list[AdministrativeRuleText] = []
+        interpretation_texts: list[InterpretationText] = []
+        case_texts: list[JudicialDecisionText] = []
+        constitutional_texts: list[JudicialDecisionText] = []
+        histories: list[LawHistory] = []
+        diffs: list[LawDiff] = []
+        query_expansion: LegalQueryExpansion | None = None
+        law_candidates: list[LawIdentity] = []
+        administrative_candidates: list[AdministrativeRuleHit] = []
+        interpretation_candidates: list[InterpretationHit] = []
+        case_candidates: list[JudicialDecisionHit] = []
+        constitutional_candidates: list[JudicialDecisionHit] = []
+
+        primary_identity: LawIdentity | None = None
+        search_query = query
+
+        if mode == "question":
+            if not query:
+                raise NoResultError("query is required for question bundles")
+            query_expansion = self.expand_legal_query(query, display=limits["law_candidates"])
+            law_candidates = query_expansion.law_candidates[: limits["law_candidates"]]
+            primary_identity = law_candidates[0] if law_candidates else None
+        elif mode == "promulgated_bill":
+            if not promulgation_bridge:
+                raise NoResultError("promulgation_bridge is required for promulgated_bill bundles")
+            try:
+                primary_identity = self.resolve_promulgated_law(
+                    prom_law_nm=string_value(promulgation_bridge.get("prom_law_nm")),
+                    prom_no=string_value(promulgation_bridge.get("prom_no")),
+                    promulgation_dt=string_value(promulgation_bridge.get("promulgation_dt")),
+                )
+                law_candidates = [primary_identity]
+                search_query = primary_identity.name
+            except AmbiguousLawError as exc:
+                ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
+                gaps.append(
+                    ContextGap(
+                        kind="manual_review_required",
+                        reason="The congress-db promulgation bridge matched multiple MOLEG law identities.",
+                        query=string_value(promulgation_bridge.get("prom_law_nm")),
+                        recommended_interface="resolve_promulgated_law",
+                    )
+                )
+            except NoResultError as exc:
+                ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
+                gaps.append(
+                    ContextGap(
+                        kind="manual_review_required",
+                        reason="The congress-db promulgation bridge did not resolve to a MOLEG law identity.",
+                        query=string_value(promulgation_bridge.get("prom_law_nm")),
+                        recommended_interface="congress-db",
+                    )
+                )
+        elif mode == "statute_review":
+            if law_identifier is None:
+                raise NoResultError("law_identifier is required for statute_review bundles")
+            primary_identity = identity_from_identifier(law_identifier, basis="effective")
+            law_candidates = [primary_identity]
+            search_query = query or primary_identity.name
+        else:
+            raise UnsupportedFormatError(f"Unsupported legal context bundle mode: {mode}")
+
+        if primary_identity:
+            if articles:
+                for article in articles[: limits["articles"]]:
+                    try:
+                        loaded_articles.append(self.get_article(primary_identity, article))
+                    except MolegApiError as exc:
+                        source_notes.append(f"Article load skipped for {article}: {exc}")
+            else:
+                try:
+                    law_text = self.get_law(primary_identity)
+                    loaded_laws.append(law_text)
+                    primary_identity = law_text.identity
+                except MolegApiError as exc:
+                    source_notes.append(f"Primary law load skipped: {exc}")
+
+            try:
+                graph = self.find_delegated_rules(primary_identity)
+                loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
+            except MolegApiError as exc:
+                source_notes.append(f"Delegation lookup skipped: {exc}")
+
+            if mode == "promulgated_bill":
+                deferred.append(
+                    DeferredLookup(
+                        interface="trace_law_history",
+                        query=primary_identity.name,
+                        reason="Trace amendment history once the relevant article or date range is known.",
+                        source_type="law_history",
+                        filters={"law_id": primary_identity.law_id},
+                    )
+                )
+                deferred.append(
+                    DeferredLookup(
+                        interface="compare_law_versions",
+                        query=primary_identity.name,
+                        reason="Compare before/after text when the bill's affected articles are identified.",
+                        source_type="law_diff",
+                        filters={"law_id": primary_identity.law_id},
+                    )
+                )
+
+        if search_query:
+            administrative_candidates = safe_list(
+                lambda: self.search_administrative_rules(
+                    search_query,
+                    display=limits["administrative_rules"],
+                ),
+                source_notes,
+                "Administrative-rule search",
+            )
+            interpretation_candidates = safe_list(
+                lambda: self.search_interpretations(
+                    search_query,
+                    display=limits["interpretations"],
+                ),
+                source_notes,
+                "Interpretation search",
+            )
+            case_candidates = safe_list(
+                lambda: self.search_cases(
+                    search_query,
+                    display=limits["cases"],
+                ),
+                source_notes,
+                "Case search",
+            )
+            constitutional_candidates = safe_list(
+                lambda: self.search_constitutional_decisions(
+                    search_query,
+                    display=limits["constitutional_decisions"],
+                ),
+                source_notes,
+                "Constitutional decision search",
+            )
+
+        deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
+        deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
+        deferred.extend(
+            deferred_from_candidates(
+                constitutional_candidates,
+                "get_constitutional_decision",
+                "constitutional",
+            )
+        )
+
+        if search_query:
+            gaps.append(
+                ContextGap(
+                    kind="websearch_required",
+                    reason="Use WebSearch for latest social facts, statistics, policy announcements, news, or non-MOLEG background.",
+                    query=search_query,
+                    recommended_interface="websearch",
+                )
+            )
+
+        return LegalContextBundle(
+            request=request,
+            loaded=LoadedContext(
+                laws=loaded_laws,
+                articles=loaded_articles,
+                delegations=loaded_delegations,
+                administrative_rules=admin_texts,
+                interpretations=interpretation_texts,
+                cases=case_texts,
+                constitutional_decisions=constitutional_texts,
+                histories=histories,
+                diffs=diffs,
+            ),
+            candidates=CandidateContext(
+                query_expansion=query_expansion,
+                laws=law_candidates,
+                administrative_rules=administrative_candidates,
+                interpretations=interpretation_candidates,
+                cases=case_candidates,
+                constitutional_decisions=constitutional_candidates,
+            ),
+            deferred=deferred,
+            ambiguities=ambiguities,
+            gaps=gaps,
+            source_notes=source_notes,
+        )
+
     def _service_rows(
         self,
         target: str,
@@ -1061,3 +1311,57 @@ def build_follow_up_searches(
             )
         )
     return searches
+
+
+def bundle_limits(budget: str) -> dict[str, int]:
+    try:
+        return BUNDLE_BUDGETS[budget]
+    except KeyError as exc:
+        raise UnsupportedFormatError(f"Unsupported legal context bundle budget: {budget}") from exc
+
+
+def string_value(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def safe_list(fn: Any, source_notes: list[str], label: str) -> list[Any]:
+    try:
+        return fn()
+    except MolegApiError as exc:
+        source_notes.append(f"{label} skipped: {exc}")
+        return []
+
+
+def limit_delegation_graph(graph: DelegationGraph, limit: int) -> DelegationGraph:
+    return DelegationGraph(identity=graph.identity, rules=graph.rules[:limit], raw=graph.raw)
+
+
+def deferred_from_candidates(
+    candidates: list[Any],
+    interface: str,
+    source_type: str,
+) -> list[DeferredLookup]:
+    deferred: list[DeferredLookup] = []
+    for candidate in candidates:
+        identity = getattr(candidate, "identity", None)
+        title = getattr(identity, "title", None) or getattr(identity, "name", None)
+        source_id = (
+            getattr(identity, "interpretation_id", None)
+            or getattr(identity, "decision_id", None)
+            or getattr(identity, "serial_id", None)
+            or getattr(identity, "law_id", None)
+        )
+        if not title and not source_id:
+            continue
+        deferred.append(
+            DeferredLookup(
+                interface=interface,
+                query=str(title or source_id),
+                reason="Load full text only if Claude needs this candidate after ranking the bundle.",
+                source_type=getattr(identity, "source_type", source_type),
+                filters={"id": source_id} if source_id else {},
+            )
+        )
+    return deferred

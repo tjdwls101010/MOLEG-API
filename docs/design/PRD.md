@@ -34,8 +34,9 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 16. As a legislative-expert skill, I want to search Supreme Court cases, so that I can identify judicial interpretations and limits.
 17. As a legislative-expert skill, I want to search Constitutional Court decisions separately, so that constitutional-risk analysis keeps authority labels intact.
 18. As a legislative-expert skill, I want legal-term and related-law expansion, so that I can plan better searches without treating expansion results as final authority.
-19. As a legislative-expert skill, I want clear error types for no result, ambiguity, unsupported format, source API error, parse failure, and retry exhaustion, so that I can decide whether to ask the user, retry, or fall back.
-20. As a legislative-expert skill, I want guidance on when to use WebSearch instead, so that latest social context is not incorrectly searched in MOLEG.
+19. As a legislative-expert skill, I want a staged legal context bundle, so that I can load statutes, delegations, administrative rules, interpretations, cases, Constitutional Court decisions, ambiguity records, and WebSearch gaps without memorizing source call order.
+20. As a legislative-expert skill, I want clear error types for no result, ambiguity, unsupported format, source API error, parse failure, and retry exhaustion, so that I can decide whether to ask the user, retry, or fall back.
+21. As a legislative-expert skill, I want guidance on when to use WebSearch instead, so that latest social context is not incorrectly searched in MOLEG.
 
 ## Implementation Decisions
 
@@ -67,6 +68,7 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - `search_constitutional_decisions(query, *, decided_on=None, case_number=None)`
 - `get_constitutional_decision(identifier)`
 - `expand_legal_query(query)`
+- `load_legal_context_bundle(query=None, *, promulgation_bridge=None, law_identifier=None, articles=None, mode="question", budget="standard")`
 - `resolve_promulgated_law(*, prom_law_nm=None, prom_no=None, promulgation_dt=None)`
 
 Names may change to match code style, but the interface principle should not: one deep module per recurring legal task is better than one shallow function per MOLEG endpoint.
@@ -94,6 +96,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.search_cases()` and `MolegApi.get_case()` load Supreme Court/lower-court case context through `prec`, including case number, decision date, court, case type, holdings, summary, referenced statutes, referenced cases, and full text.
 - `MolegApi.search_constitutional_decisions()` and `MolegApi.get_constitutional_decision()` load Constitutional Court decision context through `detc`, preserving constitutional source labels, final date, case number, holdings, summary, reviewed statutes, referenced statutes, referenced cases, and full text.
 - `MolegApi.expand_legal_query()` combines law-name search, legal terms, everyday terms, related terms, related articles, AI search, and related-law surfaces into query-planning candidates and follow-up search recommendations. Its output is not final legal authority.
+- `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
 
