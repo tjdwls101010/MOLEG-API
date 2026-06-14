@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Keep cases and Constitutional Court decisions separate
+
+The source catalog exposes ordinary cases through `prec` and Constitutional Court decisions through `detc`, with different date fields and authority meaning. MOLEG-API exposes both as judicial context but keeps separate public methods and source labels so the legislative-expert skill does not treat constitutional review as ordinary precedent.
+
 ## 2026-06-15 — Ministry interpretations use a registry, not public functions per ministry
 
 The `cgmExpc...` family is regular but large, and a few ministries expose list-only surfaces without a cataloged detail endpoint. MOLEG-API keeps those source targets in an internal registry with source labels and detail-support flags, so the skill calls one interpretation interface and gets an explicit refusal when a ministry lacks detail support.

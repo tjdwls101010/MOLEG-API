@@ -93,3 +93,4 @@ _Avoid_: trying to answer latest social facts from MOLEG-API
 - "행정규칙 날짜" can mean issuing date or effective date. Resolved for callers: `search_administrative_rules(issued_on=...)` only filters 발령일자; effective date is normalized from returned source metadata.
 - "중앙부처 1차 해석" is not one uniform endpoint. Resolved for callers: use one registry-backed interpretation interface, preserve ministry/source target labels, and refuse detail lookup for list-only ministry sources.
 - "해석 목록 id" may mean search-result row number, not the interpretation ID. Resolved for callers: interpretation detail lookup uses `법령해석례일련번호` or `법령해석일련번호`, not generic `id`.
+- "판례 날짜" and "헌재결정 날짜" use different source fields. Resolved for callers: case decisions use `prec` / 선고일자, while Constitutional Court decisions use `detc` / 종국일자 and keep a separate source label.

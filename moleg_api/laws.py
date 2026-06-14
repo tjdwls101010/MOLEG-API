@@ -16,6 +16,9 @@ from .models import (
     InterpretationHit,
     InterpretationIdentity,
     InterpretationText,
+    JudicialDecisionHit,
+    JudicialDecisionIdentity,
+    JudicialDecisionText,
     LawDiff,
     LawHit,
     LawHistory,
@@ -34,9 +37,12 @@ from .normalization import (
     normalize_history_events,
     normalize_interpretation_identity,
     normalize_interpretation_text,
+    normalize_judicial_decision_identity,
+    normalize_judicial_decision_text,
     normalize_law_identity,
     unwrap_search_administrative_rules,
     unwrap_search_interpretations,
+    unwrap_search_judicial_decisions,
     unwrap_search_laws,
     unwrap_service_payload,
 )
@@ -409,6 +415,143 @@ class MolegApi:
             )
         return text
 
+    def search_cases(
+        self,
+        query: str,
+        *,
+        court: str = "all",
+        court_name: str | None = None,
+        search_body: bool = False,
+        decided_on: str | None = None,
+        case_number: str | None = None,
+        display: int = 20,
+    ) -> list[JudicialDecisionHit]:
+        params: dict[str, Any] = {
+            "query": query,
+            "display": display,
+            "search": 2 if search_body else 1,
+        }
+        court_code = court_filter_code(court)
+        if court_code:
+            params["org"] = court_code
+        if court_name:
+            params["curt"] = court_name
+        if decided_on:
+            params["date"] = compact_date(decided_on)
+        if case_number:
+            params["nb"] = case_number
+
+        payload = self.source.search("prec", params)
+        return [
+            JudicialDecisionHit(
+                identity=normalize_judicial_decision_identity(
+                    row,
+                    source_type="case",
+                    source_target="prec",
+                ),
+                raw=row,
+            )
+            for row in unwrap_search_judicial_decisions(payload, "prec")
+        ]
+
+    def get_case(
+        self,
+        identifier: JudicialDecisionIdentity | JudicialDecisionHit | str,
+        *,
+        include_metadata: bool = True,
+    ) -> JudicialDecisionText:
+        identity_hint = judicial_decision_identity_from_identifier(
+            identifier,
+            source_type="case",
+            source_target="prec",
+        )
+        params = judicial_decision_identity_params(identity_hint)
+        payload = self.source.service("prec", params)
+        raw_case = unwrap_service_payload(payload, "prec")
+        text = normalize_judicial_decision_text(
+            raw_case,
+            source_type="case",
+            source_target="prec",
+        )
+        if include_metadata:
+            return text
+        return JudicialDecisionText(
+            identity=text.identity,
+            holdings=text.holdings,
+            summary=text.summary,
+            full_text=text.full_text,
+            referenced_statutes=text.referenced_statutes,
+            reviewed_statutes=text.reviewed_statutes,
+            referenced_cases=text.referenced_cases,
+            text=text.text,
+            raw={},
+        )
+
+    def search_constitutional_decisions(
+        self,
+        query: str,
+        *,
+        search_body: bool = False,
+        decided_on: str | None = None,
+        case_number: str | None = None,
+        display: int = 20,
+    ) -> list[JudicialDecisionHit]:
+        params: dict[str, Any] = {
+            "query": query,
+            "display": display,
+            "search": 2 if search_body else 1,
+        }
+        if decided_on:
+            params["date"] = compact_date(decided_on)
+        if case_number:
+            params["nb"] = case_number
+
+        payload = self.source.search("detc", params)
+        return [
+            JudicialDecisionHit(
+                identity=normalize_judicial_decision_identity(
+                    row,
+                    source_type="constitutional",
+                    source_target="detc",
+                ),
+                raw=row,
+            )
+            for row in unwrap_search_judicial_decisions(payload, "detc")
+        ]
+
+    def get_constitutional_decision(
+        self,
+        identifier: JudicialDecisionIdentity | JudicialDecisionHit | str,
+        *,
+        include_metadata: bool = True,
+    ) -> JudicialDecisionText:
+        identity_hint = judicial_decision_identity_from_identifier(
+            identifier,
+            source_type="constitutional",
+            source_target="detc",
+        )
+        params = judicial_decision_identity_params(identity_hint)
+        payload = self.source.service("detc", params)
+        raw_decision = unwrap_service_payload(payload, "detc")
+        text = normalize_judicial_decision_text(
+            raw_decision,
+            source_type="constitutional",
+            source_target="detc",
+        )
+        if include_metadata:
+            return text
+        return JudicialDecisionText(
+            identity=text.identity,
+            holdings=text.holdings,
+            summary=text.summary,
+            full_text=text.full_text,
+            referenced_statutes=text.referenced_statutes,
+            reviewed_statutes=text.reviewed_statutes,
+            referenced_cases=text.referenced_cases,
+            text=text.text,
+            raw={},
+        )
+
 
 def target_for(basis: Basis, kind: str) -> str:
     return TARGETS[basis][kind]
@@ -593,3 +736,44 @@ def interpretation_identity_params(identity: InterpretationIdentity) -> dict[str
     if identity.interpretation_id:
         return {"ID": identity.interpretation_id}
     raise NoResultError("Interpretation identity has no source interpretation ID")
+
+
+def court_filter_code(court: str) -> str | None:
+    if court == "all":
+        return None
+    if court == "supreme":
+        return "400201"
+    if court == "lower":
+        return "400202"
+    raise UnsupportedFormatError(f"Unsupported court filter: {court}")
+
+
+def judicial_decision_identity_from_identifier(
+    identifier: JudicialDecisionIdentity | JudicialDecisionHit | str,
+    *,
+    source_type: str,
+    source_target: str,
+) -> JudicialDecisionIdentity:
+    if isinstance(identifier, JudicialDecisionHit):
+        return identifier.identity
+    if isinstance(identifier, JudicialDecisionIdentity):
+        if identifier.source_target != source_target:
+            raise UnsupportedFormatError(
+                f"{identifier.source_target} identity cannot be loaded through {source_target}"
+            )
+        return identifier
+    text = str(identifier)
+    if not text.isdigit():
+        raise NoResultError("Judicial decision detail lookup requires a source decision ID")
+    return JudicialDecisionIdentity(
+        decision_id=text,
+        title=text,
+        source_type=source_type,
+        source_target=source_target,
+    )
+
+
+def judicial_decision_identity_params(identity: JudicialDecisionIdentity) -> dict[str, Any]:
+    if identity.decision_id:
+        return {"ID": identity.decision_id}
+    raise NoResultError("Judicial decision identity has no source decision ID")

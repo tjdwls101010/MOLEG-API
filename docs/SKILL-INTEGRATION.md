@@ -74,11 +74,13 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.get_administrative_rule()`
 - `MolegApi.search_interpretations()`
 - `MolegApi.get_interpretation()`
-- `search_cases()`
-- `get_case()`
+- `MolegApi.search_cases()`
+- `MolegApi.get_case()`
+- `MolegApi.search_constitutional_decisions()`
+- `MolegApi.get_constitutional_decision()`
 - `expand_legal_query()`
 
-The first eleven are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Cases and query expansion are planned expansion surfaces.
+The first fifteen are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion is the remaining planned core surface.
 
 ## Answering Discipline For The Skill
 
