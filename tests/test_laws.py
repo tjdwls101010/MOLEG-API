@@ -728,3 +728,149 @@ def test_get_case_refuses_constitutional_identity():
 
     with pytest.raises(UnsupportedFormatError):
         MolegApi(FakeSource()).get_case(identity)
+
+
+def test_expand_legal_query_builds_planning_context_without_exposing_targets():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "001234",
+                            "법령명한글": "자동차관리법",
+                            "법령일련번호": "270001",
+                            "시행일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {
+                "lstrmAI": [
+                    {
+                        "법령용어 id": "100",
+                        "법령용어명": "자동차",
+                        "동음이의어 존재여부": "N",
+                        "조문간관계 링크": "/DRF/lawService.do?target=lstrmRltJo&query=자동차",
+                    }
+                ]
+            },
+            {
+                "dlytrm": [
+                    {
+                        "일상용어 id": "900",
+                        "일상용어명": "차량",
+                        "출처": "일상용어사전",
+                    }
+                ]
+            },
+            {
+                "aiSearch": [
+                    {
+                        "법령ID": "001234",
+                        "법령명": "자동차관리법",
+                        "법령일련번호": "270001",
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "자동차 소유자는...",
+                    }
+                ]
+            },
+            {
+                "aiRltLs": [
+                    {
+                        "법령ID": "009999",
+                        "법령명": "자동차손해배상 보장법",
+                        "조문번호": "3",
+                        "조문제목": "자동차손해배상책임",
+                    }
+                ]
+            },
+        ],
+        service_payloads=[
+            {
+                "lstrmRlt": [
+                    {
+                        "법령용어명": "자동차",
+                        "연계용어 id": "901",
+                        "일상용어명": "차량",
+                        "용어관계": "동의어",
+                    }
+                ]
+            },
+            {
+                "dlytrmRlt": [
+                    {
+                        "일상용어명": "차량",
+                        "연계용어 id": "101",
+                        "법령용어명": "자동차",
+                        "용어관계": "연관어",
+                    }
+                ]
+            },
+            {
+                "lstrmRltJo": [
+                    {
+                        "법령용어명": "자동차",
+                        "법령명": "자동차관리법",
+                        "조번호": "26",
+                        "조문내용": "자동차의 강제처리 관련 조문",
+                        "용어구분": "정의",
+                    }
+                ]
+            },
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("자동차 방치 문제")
+
+    assert expansion.original_query == "자동차 방치 문제"
+    assert expansion.law_candidates[0].name == "자동차관리법"
+    assert expansion.term_candidates[0].term == "자동차"
+    assert expansion.term_candidates[0].source_type == "legal_term"
+    assert expansion.term_candidates[1].term == "차량"
+    assert expansion.term_candidates[1].source_type == "everyday_term"
+    assert expansion.related_terms[0].term == "차량"
+    assert expansion.related_terms[0].relation == "동의어"
+    assert expansion.related_articles[0].law_name == "자동차관리법"
+    assert expansion.related_articles[0].article == "제26조"
+    assert expansion.related_laws[0].name == "자동차관리법"
+    assert expansion.related_laws[1].name == "자동차손해배상 보장법"
+    assert any(search.interface == "websearch" for search in expansion.follow_up_searches)
+    assert all("target" not in search.interface for search in expansion.follow_up_searches)
+    assert source.calls == [
+        ("search", "eflaw", {"query": "자동차 방치 문제", "display": 5}),
+        ("search", "lstrmAI", {"query": "자동차 방치 문제", "display": 5}),
+        ("search", "dlytrm", {"query": "자동차 방치 문제", "display": 5}),
+        ("service", "lstrmRlt", {"query": "자동차 방치 문제"}),
+        ("service", "dlytrmRlt", {"query": "자동차 방치 문제"}),
+        ("service", "lstrmRltJo", {"query": "자동차 방치 문제"}),
+        ("search", "aiSearch", {"query": "자동차 방치 문제", "display": 5, "search": 0}),
+        ("search", "aiRltLs", {"query": "자동차 방치 문제", "search": 0}),
+    ]
+
+
+def test_expand_legal_query_records_empty_sources_without_failing():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("최신 배달 플랫폼 사고 통계")
+
+    assert expansion.law_candidates == []
+    assert "eflaw" in expansion.empty_sources
+    assert "lstrmAI" in expansion.empty_sources
+    assert "websearch" not in expansion.empty_sources
+    assert expansion.follow_up_searches[-1].interface == "websearch"
+    assert "최신" in expansion.follow_up_searches[-1].query

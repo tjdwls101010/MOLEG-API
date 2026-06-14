@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .errors import AmbiguousLawError, NoResultError, UnsupportedFormatError
+from .errors import AmbiguousLawError, NoResultError, ParseFailureError, UnsupportedFormatError
 from .models import (
     AdministrativeRuleHit,
     AdministrativeRuleIdentity,
@@ -13,12 +13,17 @@ from .models import (
     ArticleText,
     Basis,
     DelegationGraph,
+    FollowUpSearch,
     InterpretationHit,
     InterpretationIdentity,
     InterpretationText,
     JudicialDecisionHit,
     JudicialDecisionIdentity,
     JudicialDecisionText,
+    LegalArticleCandidate,
+    LegalLawCandidate,
+    LegalQueryExpansion,
+    LegalTermCandidate,
     LawDiff,
     LawHit,
     LawHistory,
@@ -40,11 +45,15 @@ from .normalization import (
     normalize_judicial_decision_identity,
     normalize_judicial_decision_text,
     normalize_law_identity,
+    normalize_related_article_candidate,
+    normalize_related_law_candidate,
+    normalize_term_candidate,
     unwrap_search_administrative_rules,
     unwrap_search_interpretations,
     unwrap_search_judicial_decisions,
     unwrap_search_laws,
     unwrap_service_payload,
+    unwrap_target_rows,
 )
 from .source import LawGoKrClient, MolegSource
 
@@ -552,6 +561,123 @@ class MolegApi:
             raw={},
         )
 
+    def expand_legal_query(
+        self,
+        query: str,
+        *,
+        display: int = 5,
+        include_websearch_hint: bool = True,
+    ) -> LegalQueryExpansion:
+        if not query.strip():
+            raise NoResultError("query is required for legal query expansion")
+
+        raw: dict[str, Any] = {}
+        empty_sources: list[str] = []
+
+        law_payload = self.source.search("eflaw", {"query": query, "display": display})
+        raw["eflaw"] = law_payload
+        law_rows = unwrap_search_laws(law_payload)
+        if not law_rows:
+            empty_sources.append("eflaw")
+        law_candidates: list[LawIdentity] = []
+        for row in law_rows:
+            try:
+                law_candidates.append(normalize_law_identity(row, basis="effective"))
+            except ParseFailureError:
+                continue
+
+        legal_term_rows = self._search_rows("lstrmAI", {"query": query, "display": display}, raw, empty_sources)
+        everyday_term_rows = self._search_rows("dlytrm", {"query": query, "display": display}, raw, empty_sources)
+        legal_to_everyday_rows = self._service_rows("lstrmRlt", {"query": query}, raw, empty_sources)
+        everyday_to_legal_rows = self._service_rows("dlytrmRlt", {"query": query}, raw, empty_sources)
+        term_article_rows = self._service_rows("lstrmRltJo", {"query": query}, raw, empty_sources)
+        ai_search_rows = self._search_rows(
+            "aiSearch",
+            {"query": query, "display": display, "search": 0},
+            raw,
+            empty_sources,
+        )
+        ai_related_rows = self._search_rows(
+            "aiRltLs",
+            {"query": query, "search": 0},
+            raw,
+            empty_sources,
+        )
+
+        term_candidates = compact_terms(
+            [
+                *terms_from_rows(legal_term_rows, source_type="legal_term", source_target="lstrmAI"),
+                *terms_from_rows(everyday_term_rows, source_type="everyday_term", source_target="dlytrm"),
+            ]
+        )
+        related_terms = compact_terms(
+            [
+                *terms_from_rows(legal_to_everyday_rows, source_type="everyday_term", source_target="lstrmRlt"),
+                *terms_from_rows(everyday_to_legal_rows, source_type="legal_term", source_target="dlytrmRlt"),
+            ]
+        )
+        related_articles = compact_articles(
+            [
+                *articles_from_rows(term_article_rows, source_target="lstrmRltJo"),
+                *articles_from_rows(ai_search_rows, source_target="aiSearch"),
+                *articles_from_rows(ai_related_rows, source_target="aiRltLs"),
+            ]
+        )
+        related_laws = compact_laws(
+            [
+                *laws_from_rows(ai_search_rows, source_target="aiSearch"),
+                *laws_from_rows(ai_related_rows, source_target="aiRltLs"),
+            ]
+        )
+
+        follow_ups = build_follow_up_searches(
+            query,
+            law_candidates=law_candidates,
+            term_candidates=[*term_candidates, *related_terms],
+            related_laws=related_laws,
+            include_websearch_hint=include_websearch_hint,
+        )
+
+        return LegalQueryExpansion(
+            original_query=query,
+            law_candidates=dedupe_identities(law_candidates),
+            term_candidates=term_candidates,
+            related_terms=related_terms,
+            related_articles=related_articles,
+            related_laws=related_laws,
+            follow_up_searches=follow_ups,
+            empty_sources=empty_sources,
+            raw=raw,
+        )
+
+    def _search_rows(
+        self,
+        target: str,
+        params: dict[str, Any],
+        raw: dict[str, Any],
+        empty_sources: list[str],
+    ) -> list[dict[str, Any]]:
+        payload = self.source.search(target, params)
+        raw[target] = payload
+        rows = unwrap_target_rows(payload, target)
+        if not rows:
+            empty_sources.append(target)
+        return rows
+
+    def _service_rows(
+        self,
+        target: str,
+        params: dict[str, Any],
+        raw: dict[str, Any],
+        empty_sources: list[str],
+    ) -> list[dict[str, Any]]:
+        payload = self.source.service(target, params)
+        raw[target] = payload
+        rows = unwrap_target_rows(payload, target)
+        if not rows:
+            empty_sources.append(target)
+        return rows
+
 
 def target_for(basis: Basis, kind: str) -> str:
     return TARGETS[basis][kind]
@@ -777,3 +903,161 @@ def judicial_decision_identity_params(identity: JudicialDecisionIdentity) -> dic
     if identity.decision_id:
         return {"ID": identity.decision_id}
     raise NoResultError("Judicial decision identity has no source decision ID")
+
+
+def terms_from_rows(
+    rows: list[dict[str, Any]],
+    *,
+    source_type: str,
+    source_target: str,
+) -> list[LegalTermCandidate]:
+    terms: list[LegalTermCandidate] = []
+    for row in rows:
+        term = normalize_term_candidate(row, source_type=source_type, source_target=source_target)
+        if term:
+            terms.append(term)
+    return terms
+
+
+def articles_from_rows(
+    rows: list[dict[str, Any]],
+    *,
+    source_target: str,
+) -> list[LegalArticleCandidate]:
+    articles: list[LegalArticleCandidate] = []
+    for row in rows:
+        article = normalize_related_article_candidate(row, source_target=source_target)
+        if article:
+            articles.append(article)
+    return articles
+
+
+def laws_from_rows(
+    rows: list[dict[str, Any]],
+    *,
+    source_target: str,
+) -> list[LegalLawCandidate]:
+    laws: list[LegalLawCandidate] = []
+    for row in rows:
+        law = normalize_related_law_candidate(row, source_target=source_target)
+        if law:
+            laws.append(law)
+    return laws
+
+
+def compact_terms(terms: list[LegalTermCandidate]) -> list[LegalTermCandidate]:
+    seen: set[tuple[str, str, str | None]] = set()
+    compacted: list[LegalTermCandidate] = []
+    for term in terms:
+        key = (term.term, term.source_type, term.relation)
+        if key in seen:
+            continue
+        seen.add(key)
+        compacted.append(term)
+    return compacted
+
+
+def compact_articles(articles: list[LegalArticleCandidate]) -> list[LegalArticleCandidate]:
+    seen: set[tuple[str | None, str | None, str | None]] = set()
+    compacted: list[LegalArticleCandidate] = []
+    for article in articles:
+        key = (article.law_id, article.law_name, article.article)
+        if key in seen:
+            continue
+        seen.add(key)
+        compacted.append(article)
+    return compacted
+
+
+def compact_laws(laws: list[LegalLawCandidate]) -> list[LegalLawCandidate]:
+    seen: set[tuple[str | None, str, str | None]] = set()
+    compacted: list[LegalLawCandidate] = []
+    for law in laws:
+        key = (law.law_id, law.name, law.article)
+        if key in seen:
+            continue
+        seen.add(key)
+        compacted.append(law)
+    return compacted
+
+
+def build_follow_up_searches(
+    query: str,
+    *,
+    law_candidates: list[LawIdentity],
+    term_candidates: list[LegalTermCandidate],
+    related_laws: list[LegalLawCandidate],
+    include_websearch_hint: bool,
+) -> list[FollowUpSearch]:
+    searches: list[FollowUpSearch] = [
+        FollowUpSearch(
+            interface="search_laws",
+            query=query,
+            reason="Find current-law candidates before loading legal text.",
+            source_type="law",
+        ),
+        FollowUpSearch(
+            interface="search_administrative_rules",
+            query=query,
+            reason="Check practical execution criteria in notices, directives, and established rules.",
+            source_type="administrative_rule",
+        ),
+        FollowUpSearch(
+            interface="search_interpretations",
+            query=query,
+            reason="Check MOLEG and ministry interpretation constraints.",
+            source_type="interpretation",
+        ),
+        FollowUpSearch(
+            interface="search_cases",
+            query=query,
+            reason="Check judicial interpretation and limits.",
+            source_type="case",
+        ),
+        FollowUpSearch(
+            interface="search_constitutional_decisions",
+            query=query,
+            reason="Check constitutional-risk context.",
+            source_type="constitutional",
+        ),
+    ]
+
+    for identity in law_candidates[:3]:
+        searches.append(
+            FollowUpSearch(
+                interface="get_law",
+                query=identity.name,
+                reason="Load the current effective text for a candidate law.",
+                source_type="law",
+                filters={"law_id": identity.law_id, "basis": "effective"},
+            )
+        )
+    for term in term_candidates[:5]:
+        searches.append(
+            FollowUpSearch(
+                interface="search_laws",
+                query=term.term,
+                reason="Use an expanded legal or everyday term as a law-search candidate.",
+                source_type=term.source_type,
+            )
+        )
+    for law in related_laws[:5]:
+        searches.append(
+            FollowUpSearch(
+                interface="search_laws" if law.source_type == "law" else "search_administrative_rules",
+                query=law.name,
+                reason="Follow a related law candidate discovered by query expansion.",
+                source_type=law.source_type,
+                filters={"article": law.article} if law.article else {},
+            )
+        )
+    if include_websearch_hint:
+        searches.append(
+            FollowUpSearch(
+                interface="websearch",
+                query=query,
+                reason="Use for latest social facts, statistics, news, policy announcements, and non-MOLEG background.",
+                source_type="web",
+            )
+        )
+    return searches

@@ -59,3 +59,13 @@ def test_live_search_constitutional_decisions_smoke():
 
     assert hits
     assert hits[0].identity.title
+
+
+@pytest.mark.skipif(not os.environ.get("MOLEG_OC"), reason="MOLEG_OC is required")
+def test_live_expand_legal_query_smoke():
+    api = MolegApi(LawGoKrClient())
+
+    expansion = api.expand_legal_query("자동차 방치", display=2)
+
+    assert expansion.original_query == "자동차 방치"
+    assert expansion.follow_up_searches

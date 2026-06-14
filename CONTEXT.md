@@ -69,7 +69,7 @@ Constitutional Court decision from law.go.kr `detc` endpoints.
 _Avoid_: treating as ordinary precedent
 
 **Legal Query Expansion**:
-Use of law terms, everyday terms, related terms, related articles, intelligent search, and law abbreviations to plan searches.
+Use of law terms, everyday terms, related terms, related articles, related laws, and intelligent search to plan follow-up searches. It may recommend MOLEG-API calls and WebSearch handoff.
 _Avoid_: treating query expansion output as final legal authority
 
 **WebSearch Context**:
@@ -85,6 +85,7 @@ _Avoid_: trying to answer latest social facts from MOLEG-API
 - A **Current Statute** may delegate implementation detail to **Delegated Rules** and **Administrative Rules**.
 - An **Administrative Rule** may have both an **Administrative Rule Issuing Date** and an effective date; they are not interchangeable.
 - **Official Interpretations**, **Ministry First-Instance Interpretations**, **Cases**, and **Constitutional Decisions** are distinct authority types.
+- **Legal Query Expansion** produces planning candidates for those source types, not citable conclusions.
 
 ## Flagged Ambiguities
 
