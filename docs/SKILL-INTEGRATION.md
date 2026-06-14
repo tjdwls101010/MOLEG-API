@@ -51,7 +51,7 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 - Prefer effective-date basis for "current law", "now in force", and "현재 시행" questions.
 - Use promulgation-date basis when resolving a `congress-db` promulgation bridge or reconstructing historical promulgation context.
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
-- Use `expand_legal_query()` for search planning, not as final legal authority.
+- Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. The current interface exposes metadata and file/detail links; it does not prove the content of an attached HWP/PDF body by itself.
 - Preserve source authority labels in answers: MOLEG interpretation, ministry interpretation, Supreme Court case, and Constitutional Court decision are different source types.
 
@@ -91,7 +91,7 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.expand_legal_query()`
 - `MolegApi.load_legal_context_bundle()`
 
-These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, and AI search surfaces as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
+These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, AI search surfaces, and annex/form follow-up recommendations as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
 
 ## Answering Discipline For The Skill
 
