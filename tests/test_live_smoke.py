@@ -29,3 +29,13 @@ def test_live_search_administrative_rules_smoke():
 
     assert hits
     assert hits[0].identity.name
+
+
+@pytest.mark.skipif(not os.environ.get("MOLEG_OC"), reason="MOLEG_OC is required")
+def test_live_search_interpretations_smoke():
+    api = MolegApi(LawGoKrClient())
+
+    hits = api.search_interpretations("자동차", display=3)
+
+    assert hits
+    assert hits[0].identity.title

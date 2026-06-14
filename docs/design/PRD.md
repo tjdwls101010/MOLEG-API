@@ -87,6 +87,8 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
+- `MolegApi.search_interpretations()` searches official MOLEG interpretations through `expc` and ministry first-instance interpretations through a registry-backed `*CgmExpc` source family.
+- `MolegApi.get_interpretation()` loads one interpretation by source ID and preserves source type, source target, ministry, case number, interpretation date, inquiry agency, reply/interpretation agency, question, answer, reason, and related-law text.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
 

@@ -171,3 +171,43 @@ class AdministrativeRuleText:
     text: str
     articles: list[AdministrativeRuleArticleText]
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class InterpretationIdentity:
+    """Normalized legal-interpretation identity."""
+
+    interpretation_id: str | None
+    title: str
+    source_type: str
+    source_target: str
+    case_number: str | None = None
+    interpretation_date: str | None = None
+    reply_agency: str | None = None
+    reply_agency_code: str | None = None
+    inquiry_agency: str | None = None
+    inquiry_agency_code: str | None = None
+    ministry: str | None = None
+    data_timestamp: str | None = None
+    raw_keys: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class InterpretationHit:
+    """Search result carrying a normalized interpretation identity."""
+
+    identity: InterpretationIdentity
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class InterpretationText:
+    """Normalized legal-interpretation full text."""
+
+    identity: InterpretationIdentity
+    question: str | None = None
+    answer: str | None = None
+    reason: str | None = None
+    related_laws: str | None = None
+    text: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)

@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Ministry interpretations use a registry, not public functions per ministry
+
+The `cgmExpc...` family is regular but large, and a few ministries expose list-only surfaces without a cataloged detail endpoint. MOLEG-API keeps those source targets in an internal registry with source labels and detail-support flags, so the skill calls one interpretation interface and gets an explicit refusal when a ministry lacks detail support.
+
 ## 2026-06-15 — Administrative-rule search exposes issuing-date filter honestly
 
 The `admrul` list catalog supports `date` as 행정규칙 발령일자, while detail payloads separately expose 시행일자. MOLEG-API therefore exposes this filter as `issued_on` instead of `as_of`, so the legislative-expert skill does not mistake a promulgation/issuing-date lookup for effective-date reasoning.

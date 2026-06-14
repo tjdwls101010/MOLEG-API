@@ -91,3 +91,5 @@ _Avoid_: trying to answer latest social facts from MOLEG-API
 - "현행법령" can mean promulgation-date or effective-date lookup in the source API. Resolved for callers: MOLEG-API must make the basis explicit and default current-force questions to effective-date reasoning.
 - "법령 ID" can refer to multiple source keys. Resolved for callers: expose a normalized **Law Identity** and keep raw key handling inside implementation/docs.
 - "행정규칙 날짜" can mean issuing date or effective date. Resolved for callers: `search_administrative_rules(issued_on=...)` only filters 발령일자; effective date is normalized from returned source metadata.
+- "중앙부처 1차 해석" is not one uniform endpoint. Resolved for callers: use one registry-backed interpretation interface, preserve ministry/source target labels, and refuse detail lookup for list-only ministry sources.
+- "해석 목록 id" may mean search-result row number, not the interpretation ID. Resolved for callers: interpretation detail lookup uses `법령해석례일련번호` or `법령해석일련번호`, not generic `id`.

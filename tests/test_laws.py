@@ -463,3 +463,120 @@ def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
         "admrul",
         {"LM": "데이터기반행정 활성화 규정"},
     )
+
+
+def test_search_interpretations_defaults_to_official_moleg_source():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "330471",
+                            "안건명": "자동차관리법 관련 법령해석례",
+                            "안건번호": "21-0001",
+                            "질의기관명": "국토교통부",
+                            "회신기관명": "법제처",
+                            "회신일자": "20240115",
+                            "법령해석례 상세링크": "/DRF/lawService.do?target=expc&ID=330471",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations("자동차", display=5)
+
+    assert len(hits) == 1
+    identity = hits[0].identity
+    assert identity.interpretation_id == "330471"
+    assert identity.source_type == "moleg"
+    assert identity.title == "자동차관리법 관련 법령해석례"
+    assert identity.case_number == "21-0001"
+    assert identity.reply_agency == "법제처"
+    assert identity.interpretation_date == "20240115"
+    assert source.calls[0] == (
+        "search",
+        "expc",
+        {"query": "자동차", "display": 5, "search": 1},
+    )
+
+
+def test_search_interpretations_uses_ministry_registry():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "CgmExpcSearch": {
+                    "moeCgmExpc": [
+                        {
+                            "법령해석일련번호": "417984",
+                            "안건명": "학교안전 관련 법령해석",
+                            "안건번호": "교육-1",
+                            "질의기관명": "교육청",
+                            "해석기관명": "교육부",
+                            "해석일자": "20240220",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations(
+        "학교안전",
+        source="ministry",
+        ministry="교육부",
+        search_body=True,
+    )
+
+    assert hits[0].identity.source_type == "ministry"
+    assert hits[0].identity.source_target == "moeCgmExpc"
+    assert hits[0].identity.ministry == "교육부"
+    assert hits[0].identity.reply_agency == "교육부"
+    assert source.calls[0] == (
+        "search",
+        "moeCgmExpc",
+        {"query": "학교안전", "display": 20, "search": 2},
+    )
+
+
+def test_get_interpretation_loads_full_text_by_identity():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "expc": {
+                    "법령해석례일련번호": "330471",
+                    "안건명": "자동차관리법 관련 법령해석례",
+                    "안건번호": "21-0001",
+                    "해석일자": "20240115",
+                    "해석기관명": "법제처",
+                    "질의기관명": "국토교통부",
+                    "질의요지": "자동차 등록 기준은 어떻게 적용되는가?",
+                    "회답": "자동차관리법에 따라 등록 기준을 적용한다.",
+                    "이유": "관련 조문과 입법 취지를 종합하면 그렇다.",
+                    "관련법령": "자동차관리법 제1조",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_interpretation("330471")
+
+    assert text.identity.source_type == "moleg"
+    assert text.identity.interpretation_id == "330471"
+    assert "자동차 등록 기준" in text.question
+    assert "등록 기준을 적용" in text.answer
+    assert "입법 취지" in text.reason
+    assert text.related_laws == "자동차관리법 제1조"
+    assert "질의요지" in text.text
+    assert source.calls[0] == ("service", "expc", {"ID": "330471"})
+
+
+def test_get_interpretation_refuses_ministry_without_detail_target():
+    with pytest.raises(UnsupportedFormatError):
+        MolegApi(FakeSource()).get_interpretation(
+            "123",
+            source="ministry",
+            ministry="국세청",
+        )
