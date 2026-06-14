@@ -78,7 +78,7 @@ Names may change to match code style, but the interface principle should not: on
 
 - Tests should exercise public interfaces, not internal source-target helper functions.
 - The first deterministic tests prove law search, identity normalization, promulgation bridge resolution, law text retrieval, article retrieval, ambiguity handling, and no-result handling through `MolegApi`.
-- Live smoke tests should verify at least one real source response for the first vertical slice when `MOLEG_OC` is available.
+- Live smoke tests should verify representative real source responses across implemented public interfaces when `MOLEG_OC` is available, while remaining skipped in normal deterministic runs without credentials.
 - Parser tests should use recorded source-shaped payloads for JSON and, where needed, XML/HTML.
 
 ## Implemented Core Slices
