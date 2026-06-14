@@ -6,6 +6,9 @@ from typing import Any
 
 from .errors import AmbiguousLawError, NoResultError, UnsupportedFormatError
 from .models import (
+    AdministrativeRuleHit,
+    AdministrativeRuleIdentity,
+    AdministrativeRuleText,
     ArticleText,
     Basis,
     DelegationGraph,
@@ -17,13 +20,16 @@ from .models import (
 )
 from .normalization import (
     compact_date,
+    extract_administrative_rule_articles,
     extract_articles,
     format_article_jo,
+    normalize_administrative_rule_identity,
     normalize_article,
     normalize_delegated_rules,
     normalize_diff_changes,
     normalize_history_events,
     normalize_law_identity,
+    unwrap_search_administrative_rules,
     unwrap_search_laws,
     unwrap_service_payload,
 )
@@ -209,6 +215,66 @@ class MolegApi:
             raise NoResultError("No delegated rules found")
         return DelegationGraph(identity=root_identity, rules=rules, raw=raw_delegation)
 
+    def search_administrative_rules(
+        self,
+        query: str,
+        *,
+        ministry: str | None = None,
+        rule_type: str | None = None,
+        issued_on: str | None = None,
+        include_history: bool = False,
+        display: int = 20,
+    ) -> list[AdministrativeRuleHit]:
+        params: dict[str, Any] = {
+            "query": query,
+            "display": display,
+            "nw": 2 if include_history else 1,
+        }
+        if ministry:
+            params["org"] = ministry
+        if rule_type:
+            params["knd"] = rule_type
+        if issued_on:
+            params["date"] = compact_date(issued_on)
+
+        payload = self.source.search("admrul", params)
+        return [
+            AdministrativeRuleHit(
+                identity=normalize_administrative_rule_identity(row),
+                raw=row,
+            )
+            for row in unwrap_search_administrative_rules(payload)
+        ]
+
+    def get_administrative_rule(
+        self,
+        identifier: AdministrativeRuleIdentity | AdministrativeRuleHit | str,
+        *,
+        articles: list[str | int] | None = None,
+        include_metadata: bool = True,
+    ) -> AdministrativeRuleText:
+        identity_hint = administrative_rule_identity_from_identifier(identifier)
+        params = administrative_rule_identity_params(identity_hint)
+        payload = self.source.service("admrul", params)
+        raw_rule = unwrap_service_payload(payload, "admrul")
+        identity = normalize_administrative_rule_identity(raw_rule)
+        rule_articles = extract_administrative_rule_articles(raw_rule, identity)
+        if articles:
+            wanted = {article_label_for_filter(article) for article in articles}
+            rule_articles = [article for article in rule_articles if article.article in wanted]
+        if not rule_articles:
+            raise NoResultError("No administrative-rule text found")
+        text = "\n\n".join(
+            f"{article.article or ''} {article.title or ''}\n{article.text}".strip()
+            for article in rule_articles
+        )
+        return AdministrativeRuleText(
+            identity=identity,
+            text=text,
+            articles=rule_articles,
+            raw=raw_rule if include_metadata else {},
+        )
+
 
 def target_for(basis: Basis, kind: str) -> str:
     return TARGETS[basis][kind]
@@ -287,3 +353,37 @@ def maybe_identity(row: Any, *, basis: Basis) -> LawIdentity | None:
         return normalize_law_identity(row, basis=basis)
     except Exception:
         return None
+
+
+def administrative_rule_identity_from_identifier(
+    identifier: AdministrativeRuleIdentity | AdministrativeRuleHit | str,
+) -> AdministrativeRuleIdentity:
+    if isinstance(identifier, AdministrativeRuleHit):
+        return identifier.identity
+    if isinstance(identifier, AdministrativeRuleIdentity):
+        return identifier
+    text = str(identifier)
+    if text.isdigit():
+        return AdministrativeRuleIdentity(serial_id=text, name=text)
+    return AdministrativeRuleIdentity(serial_id=None, name=text)
+
+
+def administrative_rule_identity_params(identity: AdministrativeRuleIdentity) -> dict[str, Any]:
+    if identity.serial_id:
+        return {"ID": identity.serial_id}
+    if identity.rule_id:
+        return {"LID": identity.rule_id}
+    if identity.name:
+        return {"LM": identity.name}
+    raise NoResultError("Administrative-rule identity has neither ID, LID, nor exact name")
+
+
+def article_label_for_filter(article: str | int) -> str:
+    if isinstance(article, int):
+        return f"제{article}조"
+    text = str(article)
+    if text.startswith("제"):
+        return text
+    if text.isdigit():
+        return f"제{int(text)}조"
+    return text

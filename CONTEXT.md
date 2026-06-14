@@ -48,6 +48,10 @@ _Avoid_: stopping at statute text when implementation criteria are delegated
 MOLEG administrative-rule sources such as notices, directives, and established rules that often carry practical execution criteria.
 _Avoid_: treating as lower-value by default
 
+**Administrative Rule Issuing Date**:
+The `admrul` search `date` filter means 발령일자, not a general "as of this date" effective-date basis. MOLEG-API exposes it as `issued_on`.
+_Avoid_: using as-of language for administrative-rule issuing-date lookup
+
 **Official Interpretation**:
 MOLEG 법령해석례. It is an official interpretation source but has a different authority from court cases or Constitutional Court decisions.
 _Avoid_: generic "interpretation" that erases source authority
@@ -79,9 +83,11 @@ _Avoid_: trying to answer latest social facts from MOLEG-API
 - A **Law Identity** has one or more **Articles**.
 - A **Current Statute** can be inspected by **Promulgation-Date Basis** or **Effective-Date Basis**.
 - A **Current Statute** may delegate implementation detail to **Delegated Rules** and **Administrative Rules**.
+- An **Administrative Rule** may have both an **Administrative Rule Issuing Date** and an effective date; they are not interchangeable.
 - **Official Interpretations**, **Ministry First-Instance Interpretations**, **Cases**, and **Constitutional Decisions** are distinct authority types.
 
 ## Flagged Ambiguities
 
 - "현행법령" can mean promulgation-date or effective-date lookup in the source API. Resolved for callers: MOLEG-API must make the basis explicit and default current-force questions to effective-date reasoning.
 - "법령 ID" can refer to multiple source keys. Resolved for callers: expose a normalized **Law Identity** and keep raw key handling inside implementation/docs.
+- "행정규칙 날짜" can mean issuing date or effective date. Resolved for callers: `search_administrative_rules(issued_on=...)` only filters 발령일자; effective date is normalized from returned source metadata.

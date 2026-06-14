@@ -331,3 +331,135 @@ def test_find_delegated_rules_normalizes_lower_rule_relationships():
     assert graph.rules[0].delegated_article == "제2조"
     assert "대통령령" in graph.rules[0].text
     assert source.calls[0] == ("service", "lsDelegated", {"ID": "000182"})
+
+
+def test_search_administrative_rules_normalizes_current_rule_hits():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000248758",
+                            "행정규칙ID": "012345",
+                            "행정규칙명": "119항공대 운영 규정",
+                            "행정규칙종류": "훈령",
+                            "발령일자": "20250501",
+                            "발령번호": "제2025-1호",
+                            "소관부처명": "소방청",
+                            "소관부처코드": "1661000",
+                            "현행연혁구분": "현행",
+                            "제개정구분명": "일부개정",
+                            "시행일자": "20250501",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_administrative_rules(
+        "119항공대",
+        ministry="1661000",
+        rule_type="1",
+        issued_on="2025-05-01",
+        display=10,
+    )
+
+    assert len(hits) == 1
+    identity = hits[0].identity
+    assert identity.serial_id == "2100000248758"
+    assert identity.rule_id == "012345"
+    assert identity.name == "119항공대 운영 규정"
+    assert identity.rule_type == "훈령"
+    assert identity.issuing_date == "20250501"
+    assert identity.effective_date == "20250501"
+    assert identity.ministry == "소방청"
+    assert identity.current_status == "현행"
+    assert source.calls[0] == (
+        "search",
+        "admrul",
+        {
+            "query": "119항공대",
+            "display": 10,
+            "nw": 1,
+            "org": "1661000",
+            "knd": "1",
+            "date": "20250501",
+        },
+    )
+
+
+def test_get_administrative_rule_loads_structured_articles_and_filters():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "012345",
+                    "행정규칙명": "119항공대 운영 규정",
+                    "행정규칙종류": "훈령",
+                    "발령일자": "20250501",
+                    "발령번호": "제2025-1호",
+                    "소관부처명": "소방청",
+                    "시행일자": "20250501",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "이 훈령은 119항공대 운영에 필요한 사항을 정한다.",
+                            },
+                            {
+                                "조문번호": "2",
+                                "조문제목": "정의",
+                                "조문내용": "이 훈령에서 사용하는 용어의 뜻은 다음과 같다.",
+                            },
+                        ]
+                    },
+                    "부칙": {"부칙내용": "이 훈령은 발령한 날부터 시행한다."},
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule(
+        "2100000248758",
+        articles=["제2조"],
+    )
+
+    assert text.identity.name == "119항공대 운영 규정"
+    assert text.identity.serial_id == "2100000248758"
+    assert text.articles[0].article == "제2조"
+    assert text.articles[0].title == "정의"
+    assert "용어의 뜻" in text.articles[0].text
+    assert "정의" in text.text
+    assert source.calls[0] == ("service", "admrul", {"ID": "2100000248758"})
+
+
+def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙명": "데이터기반행정 활성화 규정",
+                    "행정규칙종류": "고시",
+                    "발령일자": "20240115",
+                    "조문내용": "제1조(목적) 이 고시는 데이터기반행정 활성화에 필요한 사항을 정한다.",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule("데이터기반행정 활성화 규정")
+
+    assert text.identity.name == "데이터기반행정 활성화 규정"
+    assert text.identity.rule_type == "고시"
+    assert text.identity.issuing_date == "20240115"
+    assert text.articles[0].article is None
+    assert "데이터기반행정" in text.articles[0].text
+    assert source.calls[0] == (
+        "service",
+        "admrul",
+        {"LM": "데이터기반행정 활성화 규정"},
+    )

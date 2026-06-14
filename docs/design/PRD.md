@@ -58,8 +58,8 @@ The primary caller is Claude running the future legislative-expert skill. Interf
 - `trace_law_history(law_identifier, *, date_range=None, article=None)`
 - `compare_law_versions(law_identifier, *, before, after, article=None)`
 - `find_delegated_rules(law_identifier, *, article=None)`
-- `search_administrative_rules(query, *, ministry=None, as_of=None)`
-- `get_administrative_rule(identifier, *, as_of=None, articles=None)`
+- `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
+- `get_administrative_rule(identifier, *, articles=None)`
 - `search_interpretations(query, *, source="moleg", ministry=None)`
 - `get_interpretation(identifier, *, source=None)`
 - `search_cases(query, *, court="all")`
@@ -85,6 +85,8 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.trace_law_history()` currently supports JSON-reachable article/date-range change history and explicitly refuses full `lsHistory` usage until an HTML parser/fallback is designed.
 - `MolegApi.compare_law_versions()` normalizes `oldAndNew` before/after article text behind a public comparison interface.
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
+- `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
+- `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
 
