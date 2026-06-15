@@ -1,15 +1,16 @@
 import pytest
 
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
-from moleg_api.errors import UnsupportedFormatError
+from moleg_api.errors import ParseFailureError, UnsupportedFormatError
 from moleg_api.models import JudicialDecisionIdentity, LawIdentity
 from moleg_api.normalization import format_article_jo
 
 
 class FakeSource:
-    def __init__(self, *, search_payloads=None, service_payloads=None):
+    def __init__(self, *, search_payloads=None, service_payloads=None, search_html_payloads=None):
         self.search_payloads = list(search_payloads or [])
         self.service_payloads = list(service_payloads or [])
+        self.search_html_payloads = list(search_html_payloads or [])
         self.calls = []
 
     def search(self, target, params):
@@ -19,6 +20,10 @@ class FakeSource:
     def service(self, target, params):
         self.calls.append(("service", target, params))
         return self.service_payloads.pop(0)
+
+    def search_html(self, target, params):
+        self.calls.append(("search_html", target, params))
+        return self.search_html_payloads.pop(0)
 
 
 def test_search_laws_defaults_to_effective_basis_and_normalizes_hits():
@@ -310,9 +315,89 @@ def test_trace_law_history_uses_article_change_history_json_surface():
     )
 
 
-def test_trace_law_history_requires_json_reachable_scope():
-    with pytest.raises(UnsupportedFormatError):
-        MolegApi(FakeSource()).trace_law_history("001971")
+def test_trace_law_history_parses_full_law_history_html_surface():
+    identity = LawIdentity(
+        law_id="001823",
+        name="건축법",
+        basis="effective",
+        law_type="법률",
+        ministry="국토교통부",
+    )
+    source = FakeSource(
+        search_html_payloads=[
+            """
+            <html>
+              <div class="num">총<strong>2</strong>건</div>
+              <table summary="법령 연혁정보 목록">
+                <tbody>
+                  <tr>
+                    <td class="ce">1</td>
+                    <td><a href="/DRF/lawService.do?target=lsHistory&amp;MST=276925&amp;type=HTML&amp;efYd=20251001">건축법</a></td>
+                    <td class="ce">국토교통부</td>
+                    <td class="ce">타법개정</td>
+                    <td class="ce">법률</td>
+                    <td class="ce">제 21065호</td>
+                    <td class="ce">2025.10.1</td>
+                    <td class="ce">2025.10.1</td>
+                    <td class="ce">연혁</td>
+                  </tr>
+                  <tr class="gr">
+                    <td class="ce">2</td>
+                    <td><a href="/DRF/lawService.do?target=lsHistory&amp;MST=273437&amp;type=HTML&amp;efYd=20260227">건축법</a></td>
+                    <td class="ce">국토교통부</td>
+                    <td class="ce">일부개정</td>
+                    <td class="ce">법률</td>
+                    <td class="ce">제 21035호</td>
+                    <td class="ce">2025.8.26</td>
+                    <td class="ce">2026.2.27</td>
+                    <td class="ce">현행</td>
+                  </tr>
+                </tbody>
+              </table>
+            </html>
+            """
+        ]
+    )
+
+    history = MolegApi(source).trace_law_history(identity)
+
+    assert len(history.events) == 2
+    assert history.events[0].identity.name == "건축법"
+    assert history.events[0].identity.mst == "276925"
+    assert history.events[0].revision_type == "타법개정"
+    assert history.events[0].changed_date == "20251001"
+    assert history.events[0].promulgation_date == "20251001"
+    assert history.events[0].effective_date == "20251001"
+    assert history.events[1].identity.mst == "273437"
+    assert history.raw["source_target"] == "lsHistory"
+    assert source.calls[0] == (
+        "search_html",
+        "lsHistory",
+        {"query": "건축법", "display": 100, "page": 1},
+    )
+
+
+def test_trace_law_history_raises_parse_failure_for_changed_html_shape():
+    identity = LawIdentity(
+        law_id="001823",
+        name="건축법",
+        basis="effective",
+        law_type="법률",
+        ministry="국토교통부",
+    )
+    source = FakeSource(
+        search_html_payloads=[
+            """
+            <html>
+              <div class="num">총<strong>1</strong>건</div>
+              <table><tbody><tr><td>1</td><td>건축법</td><td>국토교통부</td></tr></tbody></table>
+            </html>
+            """
+        ]
+    )
+
+    with pytest.raises(ParseFailureError):
+        MolegApi(source).trace_law_history(identity)
 
 
 def test_compare_law_versions_normalizes_old_and_new_articles():

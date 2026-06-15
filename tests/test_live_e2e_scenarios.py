@@ -32,6 +32,8 @@ DELEGATION_SCENARIOS = [
     ("의료법 하위규정", "의료법"),
 ]
 
+LAW_HISTORY_SCENARIO = ("건축법 법령연혁", "건축법")
+
 ADMINISTRATIVE_RULE_SCENARIOS = [
     ("자동차 행정규칙", "자동차"),
     ("감염병 행정규칙", "감염병"),
@@ -96,6 +98,7 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
     scenario_count = (
         len(ARTICLE_SCENARIOS)
         + len(DELEGATION_SCENARIOS)
+        + 1  # Full law-level history through lsHistory HTML.
         + len(ADMINISTRATIVE_RULE_SCENARIOS)
         + len(LAW_ANNEX_SCENARIOS)
         + len(INTERPRETATION_SCENARIOS)
@@ -131,6 +134,19 @@ def test_live_e2e_loads_delegated_rule_context(api: MolegApi, description: str, 
     assert graph.identity.name or identity.name
     assert graph.rules, description
     assert any(rule.delegated_name or rule.delegated_type or rule.text for rule in graph.rules)
+
+
+def test_live_e2e_loads_full_law_history_context(api: MolegApi):
+    description, law_name = LAW_HISTORY_SCENARIO
+    identity = exact_law_identity(api, law_name)
+    history = api.trace_law_history(identity)
+
+    assert history.events, description
+    assert any(event.identity.name == law_name for event in history.events)
+    assert any(event.revision_type for event in history.events)
+    assert any(event.promulgation_date for event in history.events)
+    assert any(event.effective_date for event in history.events)
+    assert history.raw["source_target"] == "lsHistory"
 
 
 @pytest.mark.parametrize("description, query", ADMINISTRATIVE_RULE_SCENARIOS)

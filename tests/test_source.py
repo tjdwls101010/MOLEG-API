@@ -108,6 +108,33 @@ def test_law_client_keeps_non_json_as_unsupported_format(monkeypatch):
         client.search("eflaw", {"query": "자동차"})
 
 
+def test_law_client_returns_html_for_html_only_search(monkeypatch):
+    requested_urls = []
+
+    def fake_urlopen(request, timeout, context=None):
+        requested_urls.append(request.full_url)
+        return FakeResponse("<html>history</html>", content_type="text/html;charset=UTF-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    assert client.search_html("lsHistory", {"query": "건축법"}) == "<html>history</html>"
+    assert "type=HTML" in requested_urls[0]
+
+
+def test_law_client_rejects_non_html_for_html_only_search(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout, context=None: FakeResponse('{"not": "html"}', content_type="application/json"),
+    )
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    with pytest.raises(UnsupportedFormatError):
+        client.search_html("lsHistory", {"query": "건축법"})
+
+
 def test_law_client_passes_ssl_context_to_urlopen(monkeypatch):
     contexts = []
     ssl_context = object()

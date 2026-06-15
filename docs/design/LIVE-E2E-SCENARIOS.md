@@ -9,6 +9,7 @@ The executable gate is `tests/test_live_e2e_scenarios.py`.
 The gate exercises:
 
 - Current statute identity and article loading for 13 stable statutes.
+- Full law-level history loading through the HTML-only `lsHistory` list table.
 - Delegated-rule loading for statute-to-lower-rule context.
 - Administrative-rule search and detail loading.
 - Law annex/form candidate discovery.
@@ -27,6 +28,7 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Group | Scenario count | Public interface |
 |---|---:|---|
 | Statute articles | 13 | `search_laws()` -> `get_article()` |
+| Law history | 1 | `trace_law_history()` |
 | Delegation | 3 | `find_delegated_rules()` |
 | Administrative rules | 3 | `search_administrative_rules()` -> `get_administrative_rule()` |
 | Annex/forms | 2 | `search_annex_forms()` |
@@ -50,11 +52,12 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-41 passed in 103.40s (0:01:43)
+42 passed in 108.45s (0:01:48)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
 The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from ministry `dapaCgmExpc` results when `source="all"`.
+The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
 
 ## Operating Notes
 

@@ -62,6 +62,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 
 - Prefer effective-date basis for "current law", "now in force", and "현재 시행" questions.
 - Use promulgation-date basis when resolving a `congress-db` promulgation bridge or reconstructing historical promulgation context.
+- Use `trace_law_history()` without article/date filters when law-level amendment chronology matters. It parses the HTML-only `lsHistory` list table into normalized events; article/date filters still use JSON-reachable history surfaces.
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. The current interface exposes metadata and file/detail links; it does not prove the content of an attached HWP/PDF body by itself.
@@ -73,7 +74,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 - If MOLEG-API finds no law for a bill that has no promulgation bridge, return to `congress-db` and treat the bill as not proven enacted/current.
 - If a `congress-db` promulgation bridge does not exactly resolve but the bundle returns law-name candidates with `source_lag_or_manual_review_required`, explain the source-lag/manual-review state instead of saying the bill was not enacted.
 - If MOLEG-API raises `RateLimitError` or `RetryExhaustedError`, treat it as a temporary source-access problem, not proof that the legal source does not exist.
-- If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
+- If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists. `lsHistory` is supported only through its list table parser, not by treating the law.go.kr UI iframe as stable structured data.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.
 - If a result points to annex/form files that likely carry the operative criteria, surface that limitation or run a future annex-body parser instead of pretending statute text is complete.
 

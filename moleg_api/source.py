@@ -39,6 +39,9 @@ class MolegSource(Protocol):
     def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call a law.go.kr search target."""
 
+    def search_html(self, target: str, params: dict[str, Any]) -> str:
+        """Call a law.go.kr HTML-only search target."""
+
     def service(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call a law.go.kr service/detail target."""
 
@@ -71,11 +74,44 @@ class LawGoKrClient:
     def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         return self._call(self.search_url, target, params)
 
+    def search_html(self, target: str, params: dict[str, Any]) -> str:
+        return self._call_html(self.search_url, target, params)
+
     def service(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         return self._call(self.service_url, target, params)
 
     def _call(self, url: str, target: str, params: dict[str, Any]) -> dict[str, Any]:
-        query = {"OC": self.oc, "target": target, "type": "JSON", **params}
+        content_type, body = self._request(url, target, params, response_type="JSON")
+
+        if "json" not in content_type:
+            snippet = mask_secret(body[:200].replace("\n", " "), self.oc)
+            raise UnsupportedFormatError(
+                f"law.go.kr returned non-JSON content ({content_type or 'unknown'}): {snippet}"
+            )
+
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise SourceApiError("law.go.kr returned invalid JSON") from exc
+
+    def _call_html(self, url: str, target: str, params: dict[str, Any]) -> str:
+        content_type, body = self._request(url, target, params, response_type="HTML")
+        if "html" not in content_type:
+            snippet = mask_secret(body[:200].replace("\n", " "), self.oc)
+            raise UnsupportedFormatError(
+                f"law.go.kr returned non-HTML content ({content_type or 'unknown'}): {snippet}"
+            )
+        return body
+
+    def _request(
+        self,
+        url: str,
+        target: str,
+        params: dict[str, Any],
+        *,
+        response_type: str,
+    ) -> tuple[str, str]:
+        query = {"OC": self.oc, "target": target, "type": response_type, **params}
         request_url = url + "?" + urllib.parse.urlencode(query, doseq=True)
         for attempt in range(self.max_retries + 1):
             request = urllib.request.Request(request_url, headers={"User-Agent": USER_AGENT})
@@ -110,16 +146,7 @@ class LawGoKrClient:
                     raise RetryExhaustedError(message) from exc
                 raise SourceApiError(mask_secret(str(exc), self.oc)) from exc
 
-        if "json" not in content_type:
-            snippet = mask_secret(body[:200].replace("\n", " "), self.oc)
-            raise UnsupportedFormatError(
-                f"law.go.kr returned non-JSON content ({content_type or 'unknown'}): {snippet}"
-            )
-
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError as exc:
-            raise SourceApiError("law.go.kr returned invalid JSON") from exc
+        return content_type, body
 
     def _sleep_before_retry(self) -> None:
         if self.retry_delay_seconds:
