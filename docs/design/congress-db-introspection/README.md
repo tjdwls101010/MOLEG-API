@@ -1,6 +1,6 @@
 # congress-db Live Schema Introspection
 
-Generated at: `2026-06-14T15:14:19Z`
+Generated at: `2026-06-15T01:18:32Z`
 
 ## Connection
 
