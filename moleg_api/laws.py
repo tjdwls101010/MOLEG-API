@@ -830,11 +830,14 @@ class MolegApi:
         elif mode == "promulgated_bill":
             if not promulgation_bridge:
                 raise NoResultError("promulgation_bridge is required for promulgated_bill bundles")
+            prom_law_nm = string_value(promulgation_bridge.get("prom_law_nm"))
+            prom_no = string_value(promulgation_bridge.get("prom_no"))
+            promulgation_dt = string_value(promulgation_bridge.get("promulgation_dt"))
             try:
                 primary_identity = self.resolve_promulgated_law(
-                    prom_law_nm=string_value(promulgation_bridge.get("prom_law_nm")),
-                    prom_no=string_value(promulgation_bridge.get("prom_no")),
-                    promulgation_dt=string_value(promulgation_bridge.get("promulgation_dt")),
+                    prom_law_nm=prom_law_nm,
+                    prom_no=prom_no,
+                    promulgation_dt=promulgation_dt,
                 )
                 law_candidates = [primary_identity]
                 search_query = primary_identity.name
@@ -844,20 +847,57 @@ class MolegApi:
                     ContextGap(
                         kind="manual_review_required",
                         reason="The congress-db promulgation bridge matched multiple MOLEG law identities.",
-                        query=string_value(promulgation_bridge.get("prom_law_nm")),
+                        query=prom_law_nm,
                         recommended_interface="resolve_promulgated_law",
                     )
                 )
             except NoResultError as exc:
-                ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
-                gaps.append(
-                    ContextGap(
-                        kind="manual_review_required",
-                        reason="The congress-db promulgation bridge did not resolve to a MOLEG law identity.",
-                        query=string_value(promulgation_bridge.get("prom_law_nm")),
-                        recommended_interface="congress-db",
+                candidate_hits: list[LawHit] = []
+                if prom_law_nm:
+                    candidate_hits = safe_list(
+                        lambda: self.search_laws(
+                            prom_law_nm,
+                            basis="promulgated",
+                            display=max(2, limits["law_candidates"]),
+                        ),
+                        source_notes,
+                        "Promulgation bridge candidate search",
                     )
-                )
+                law_candidates = dedupe_identities([hit.identity for hit in candidate_hits])
+                search_query = prom_law_nm
+                if law_candidates:
+                    ambiguities.append(
+                        Ambiguity(
+                            kind="promulgation_bridge_lag",
+                            message=(
+                                f"{exc}. Law-name candidates exist, but none matched "
+                                "`prom_no` and `promulgation_dt` exactly."
+                            ),
+                            candidates=law_candidates,
+                        )
+                    )
+                    gaps.append(
+                        ContextGap(
+                            kind="source_lag_or_manual_review_required",
+                            reason=(
+                                "The congress-db bridge did not exactly resolve in MOLEG. "
+                                "This may be source lag or a bridge-field mismatch; do not treat it as proof "
+                                "that the bill was not enacted."
+                            ),
+                            query=prom_law_nm,
+                            recommended_interface="resolve_promulgated_law",
+                        )
+                    )
+                else:
+                    ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
+                    gaps.append(
+                        ContextGap(
+                            kind="manual_review_required",
+                            reason="The congress-db promulgation bridge did not resolve to a MOLEG law identity.",
+                            query=prom_law_nm,
+                            recommended_interface="congress-db",
+                        )
+                    )
         elif mode == "statute_review":
             if law_identifier is None:
                 raise NoResultError("law_identifier is required for statute_review bundles")

@@ -1481,3 +1481,66 @@ def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():
     assert bundle.ambiguities[0].kind == "promulgation_bridge"
     assert "multiple laws" in bundle.ambiguities[0].message
     assert bundle.gaps[0].kind == "manual_review_required"
+
+
+def test_load_legal_context_bundle_preserves_bridge_lag_candidates():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "001747",
+                            "법령명한글": "자동차관리법",
+                            "공포번호": "21182",
+                            "공포일자": "20251202",
+                        }
+                    ]
+                }
+            },
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "001747",
+                            "법령명한글": "자동차관리법",
+                            "공포번호": "21182",
+                            "공포일자": "20251202",
+                        },
+                        {
+                            "법령ID": "001747",
+                            "법령명한글": "자동차관리법",
+                            "공포번호": "20838",
+                            "공포일자": "20250325",
+                        },
+                    ]
+                }
+            },
+            {"AdmRulSearch": {"admrul": []}},
+            {"expc": []},
+            {"prec": []},
+            {"detc": []},
+            {"licbyl": []},
+            {"admbyl": []},
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "자동차관리법",
+            "prom_no": "21412",
+            "promulgation_dt": "2026-02-27",
+        },
+        mode="promulgated_bill",
+        budget="minimal",
+    )
+
+    assert bundle.loaded.laws == []
+    assert bundle.candidates.laws
+    assert bundle.candidates.laws[0].name == "자동차관리법"
+    assert bundle.ambiguities[0].kind == "promulgation_bridge_lag"
+    assert bundle.ambiguities[0].candidates == bundle.candidates.laws
+    assert bundle.gaps[0].kind == "source_lag_or_manual_review_required"
+    assert bundle.gaps[0].recommended_interface == "resolve_promulgated_law"
+    assert source.calls[0] == ("search", "law", {"query": "자동차관리법", "display": 20})
+    assert source.calls[1] == ("search", "law", {"query": "자동차관리법", "display": 2})
