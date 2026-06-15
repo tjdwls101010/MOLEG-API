@@ -37,7 +37,7 @@ def test_law_client_retries_transient_failure_then_returns_json(monkeypatch):
         FakeResponse('{"LawSearch": {"law": []}}'),
     ]
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context=None):
         response = responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -57,7 +57,7 @@ def test_law_client_raises_rate_limit_error_after_allowed_attempts(monkeypatch):
         http_error(429, "still rate limited for secret-oc"),
     ]
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context=None):
         raise responses.pop(0)
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
@@ -78,7 +78,7 @@ def test_law_client_raises_retry_exhausted_after_transient_errors(monkeypatch):
         urllib.error.URLError("network down for secret-oc"),
     ]
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context=None):
         response = responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -99,10 +99,51 @@ def test_law_client_raises_retry_exhausted_after_transient_errors(monkeypatch):
 def test_law_client_keeps_non_json_as_unsupported_format(monkeypatch):
     monkeypatch.setattr(
         "urllib.request.urlopen",
-        lambda request, timeout: FakeResponse("<html>not json</html>", content_type="text/html"),
+        lambda request, timeout, context=None: FakeResponse("<html>not json</html>", content_type="text/html"),
     )
 
     client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
 
     with pytest.raises(UnsupportedFormatError):
         client.search("eflaw", {"query": "자동차"})
+
+
+def test_law_client_passes_ssl_context_to_urlopen(monkeypatch):
+    contexts = []
+    ssl_context = object()
+
+    def fake_urlopen(request, timeout, context=None):
+        contexts.append(context)
+        return FakeResponse('{"LawSearch": {"law": []}}')
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = LawGoKrClient(oc="secret-oc", ssl_context=ssl_context)
+
+    client.search("eflaw", {"query": "자동차"})
+
+    assert contexts == [ssl_context]
+
+
+def test_law_client_uses_fallback_ca_file_when_python_has_no_default(monkeypatch):
+    class VerifyPaths:
+        cafile = None
+        capath = None
+
+    created_with = []
+    ssl_context = object()
+
+    monkeypatch.setattr("moleg_api.source.ssl.get_default_verify_paths", lambda: VerifyPaths())
+    monkeypatch.setattr("moleg_api.source.DEFAULT_CA_FILE_CANDIDATES", ("/tmp/project-ca.pem",))
+    monkeypatch.setattr("moleg_api.source.os.path.exists", lambda path: path == "/tmp/project-ca.pem")
+
+    def fake_create_default_context(*, cafile=None):
+        created_with.append(cafile)
+        return ssl_context
+
+    monkeypatch.setattr("moleg_api.source.ssl.create_default_context", fake_create_default_context)
+
+    client = LawGoKrClient(oc="secret-oc")
+
+    assert client.ssl_context is ssl_context
+    assert created_with == ["/tmp/project-ca.pem"]

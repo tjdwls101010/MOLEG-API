@@ -263,7 +263,7 @@ class MolegApi:
     ) -> LawText:
         identity_hint = identity_from_identifier(identifier, basis=basis)
         target = target_for(basis, "detail")
-        params = identity_params(identity_hint, as_of=as_of, basis=basis)
+        params = law_text_identity_params(identity_hint, as_of=as_of, basis=basis)
         if articles:
             params["JO"] = format_article_jo(articles[0])
 
@@ -1089,6 +1089,20 @@ def identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -
     return params
 
 
+def law_text_identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    if identity.mst:
+        params["MST"] = identity.mst
+    elif identity.law_id:
+        params["ID"] = identity.law_id
+    else:
+        raise NoResultError("Law identity has neither law_id nor mst")
+
+    if basis == "effective" and as_of:
+        params["efYd"] = compact_date(as_of)
+    return params
+
+
 def matches_bridge(
     identity: LawIdentity,
     *,
@@ -1123,6 +1137,14 @@ def dedupe_identities(identities: list[LawIdentity]) -> list[LawIdentity]:
 def article_payload_row(raw_article: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw_article.get("조문"), dict):
         article = raw_article["조문"]
+        article_units = article.get("조문단위")
+        if isinstance(article_units, list):
+            for row in article_units:
+                if isinstance(row, dict) and row.get("조문내용"):
+                    return row
+            for row in article_units:
+                if isinstance(row, dict):
+                    return row
         if isinstance(article.get("조문단위"), dict):
             return article["조문단위"]
         return article

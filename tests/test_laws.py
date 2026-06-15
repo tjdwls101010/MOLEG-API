@@ -156,6 +156,42 @@ def test_get_law_returns_identity_and_articles_from_effective_text():
     assert source.calls[0] == ("service", "eflaw", {"ID": "014152"})
 
 
+def test_get_law_prefers_mst_for_effective_detail_when_available():
+    identity = LawIdentity(
+        law_id="001747",
+        mst="283767",
+        name="자동차관리법",
+        basis="effective",
+    )
+    source = FakeSource(
+        service_payloads=[
+            {
+                "Law": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "283767",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "이 법은 자동차를 효율적으로 관리하는 것을 목적으로 한다.",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    law = MolegApi(source).get_law(identity)
+
+    assert law.identity.name == "자동차관리법"
+    assert source.calls[0] == ("service", "eflaw", {"MST": "283767"})
+
+
 def test_get_article_formats_human_article_notation_and_returns_text():
     identity = LawIdentity(
         law_id="014152",
@@ -187,6 +223,44 @@ def test_get_article_formats_human_article_notation_and_returns_text():
         "eflawjosub",
         {"ID": "014152", "JO": "001002"},
     )
+
+
+def test_get_article_selects_text_row_from_live_article_unit_list():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "법령": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문여부": "전문",
+                                "조문키": "0001000",
+                            },
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "제1조(목적) 이 법은 자동차를 효율적으로 관리한다.",
+                                "조문여부": "조문",
+                                "조문키": "0001001",
+                            },
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    article = MolegApi(source).get_article(identity, "제1조")
+
+    assert article.article == "제1조"
+    assert article.title == "목적"
+    assert "자동차를 효율적으로 관리" in article.text
 
 
 def test_article_jo_format_hides_source_six_digit_rule():
@@ -566,6 +640,38 @@ def test_get_administrative_rule_loads_structured_articles_and_filters():
     assert source.calls[0] == ("service", "admrul", {"ID": "2100000248758"})
 
 
+def test_get_administrative_rule_accepts_live_service_wrapper():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "AdmRulService": {
+                    "행정규칙기본정보": {
+                        "행정규칙일련번호": "2200000037921",
+                        "행정규칙ID": "2077465",
+                        "행정규칙명": "2015년 하이브리드자동차 구매보조금 대상차종",
+                        "행정규칙종류": "공고",
+                        "발령일자": "20150716",
+                        "발령번호": "2015-538",
+                        "소관부처명": "기후에너지환경부",
+                        "시행일자": "20150716",
+                    },
+                    "조문내용": "하이브리드자동차 구매보조금 대상차종은 다음과 같다.",
+                    "첨부파일": {
+                        "첨부파일명": "2015년 하이브리드자동차 구매보조금 대상차종.hwp",
+                    },
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule("2200000037921")
+
+    assert text.identity.name == "2015년 하이브리드자동차 구매보조금 대상차종"
+    assert text.identity.rule_id == "2077465"
+    assert text.articles[0].text == "하이브리드자동차 구매보조금 대상차종은 다음과 같다."
+    assert source.calls[0] == ("service", "admrul", {"ID": "2200000037921"})
+
+
 def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
     source = FakeSource(
         service_payloads=[
@@ -779,6 +885,17 @@ def test_get_case_loads_case_text_by_source_id():
     assert text.referenced_statutes == "민법 제750조"
     assert "주문 및 이유" in text.full_text
     assert source.calls[0] == ("service", "prec", {"ID": "228541"})
+
+
+def test_detail_no_result_message_raises_no_result():
+    source = FakeSource(
+        service_payloads=[
+            {"Law": "일치하는 판례가 없습니다.  판례명을 확인하여 주십시오."}
+        ]
+    )
+
+    with pytest.raises(NoResultError):
+        MolegApi(source).get_case("618859")
 
 
 def test_search_constitutional_decisions_normalizes_hits():
@@ -1283,7 +1400,7 @@ def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     assert any(item.interface == "compare_law_versions" for item in bundle.deferred)
     assert bundle.gaps[-1].kind == "websearch_required"
     assert source.calls[0] == ("search", "law", {"query": "데이터기본법", "display": 20})
-    assert source.calls[1] == ("service", "eflaw", {"ID": "111111"})
+    assert source.calls[1] == ("service", "eflaw", {"MST": "260001"})
 
 
 def test_load_legal_context_bundle_statute_review_loads_requested_articles_first():

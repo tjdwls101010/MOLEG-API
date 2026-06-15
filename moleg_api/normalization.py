@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 from typing import Any
 
-from .errors import ParseFailureError
+from .errors import NoResultError, ParseFailureError
 from .models import (
     AdministrativeRuleArticleText,
     AdministrativeRuleIdentity,
@@ -103,7 +103,12 @@ def normalize_law_identity(row: dict[str, Any], *, basis: Basis) -> LawIdentity:
 
 
 def normalize_administrative_rule_identity(row: dict[str, Any]) -> AdministrativeRuleIdentity:
-    info = row.get("기본정보") if isinstance(row.get("기본정보"), dict) else row
+    if isinstance(row.get("기본정보"), dict):
+        info = row["기본정보"]
+    elif isinstance(row.get("행정규칙기본정보"), dict):
+        info = row["행정규칙기본정보"]
+    else:
+        info = row
     name = first_value(info, "행정규칙명", "신구법명", "LM")
     if not name:
         raise ParseFailureError("Administrative-rule identity is missing a name")
@@ -512,9 +517,17 @@ def unwrap_service_payload(payload: dict[str, Any], target: str) -> dict[str, An
         only = next(iter(payload.values()))
         if isinstance(only, dict):
             return only
+        if is_no_result_message(only):
+            raise NoResultError(str(only))
     if "기본정보" in payload or "조문" in payload:
         return payload
     raise ParseFailureError(f"Could not unwrap service payload for target {target}")
+
+
+def is_no_result_message(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    return "일치하는" in value and "없습니다" in value
 
 
 def extract_articles(raw_law: dict[str, Any], identity: LawIdentity) -> list[ArticleText]:
