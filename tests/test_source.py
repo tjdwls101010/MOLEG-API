@@ -147,3 +147,37 @@ def test_law_client_uses_fallback_ca_file_when_python_has_no_default(monkeypatch
 
     assert client.ssl_context is ssl_context
     assert created_with == ["/tmp/project-ca.pem"]
+
+
+def test_law_client_reads_moleg_oc_from_env_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOLEG_OC", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n# local live key\nMOLEG_OC='file-secret'\nOTHER=value\n",
+        encoding="utf-8",
+    )
+
+    client = LawGoKrClient(ssl_context=object())
+
+    assert client.oc == "file-secret"
+
+
+def test_law_client_env_file_precedence(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOLEG_OC", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("MOLEG_OC=file-secret\n", encoding="utf-8")
+    (tmp_path / ".env.local").write_text('MOLEG_OC=\"local-secret\"\n', encoding="utf-8")
+
+    client = LawGoKrClient(ssl_context=object())
+
+    assert client.oc == "local-secret"
+
+
+def test_law_client_process_env_wins_over_env_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOLEG_OC", "process-secret")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env.local").write_text("MOLEG_OC=local-secret\n", encoding="utf-8")
+
+    client = LawGoKrClient(ssl_context=object())
+
+    assert client.oc == "process-secret"
