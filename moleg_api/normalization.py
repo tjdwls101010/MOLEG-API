@@ -477,14 +477,24 @@ def unwrap_search_administrative_rules(payload: dict[str, Any]) -> list[dict[str
 
 
 def unwrap_search_interpretations(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
-    for envelope in ("ExpcSearch", "expcSearch", "CgmExpcSearch", "cgmExpcSearch"):
+    row_keys = tuple(dict.fromkeys((target, "expc", "cgmExpc")))
+    for envelope in (
+        "ExpcSearch",
+        "expcSearch",
+        "Expc",
+        "expc",
+        "CgmExpcSearch",
+        "cgmExpcSearch",
+        "CgmExpc",
+        "cgmExpc",
+    ):
         if isinstance(payload.get(envelope), dict):
-            rows = payload[envelope].get(target) or payload[envelope].get("expc")
+            rows = next((payload[envelope].get(key) for key in row_keys if key in payload[envelope]), None)
             return [row for row in ensure_list(rows) if isinstance(row, dict)]
-    rows = payload.get(target) or payload.get("expc")
+    rows = next((payload.get(key) for key in row_keys if key in payload), None)
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]
-    return collect_rows(payload, target, "expc")
+    return collect_rows(payload, *row_keys)
 
 
 def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:

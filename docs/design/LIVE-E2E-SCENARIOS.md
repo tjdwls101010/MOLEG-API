@@ -13,6 +13,7 @@ The gate exercises:
 - Administrative-rule search and detail loading.
 - Law annex/form candidate discovery.
 - MOLEG official interpretation search and detail loading.
+- Ministry first-instance interpretation search, detail loading, and source-label separation.
 - Court case search and detail loading.
 - Constitutional Court detail loading through a stable live decision ID.
 - Legal query expansion as planning context, including WebSearch handoff gaps.
@@ -30,6 +31,7 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Administrative rules | 3 | `search_administrative_rules()` -> `get_administrative_rule()` |
 | Annex/forms | 2 | `search_annex_forms()` |
 | Official interpretations | 2 | `search_interpretations()` -> `get_interpretation()` |
+| Ministry interpretations | 1 | `search_interpretations(source="ministry")`, `get_interpretation()`, `search_interpretations(source="all")` |
 | Cases | 3 | `search_cases()` -> `get_case()` |
 | Constitutional decisions | 1 | `get_constitutional_decision()` |
 | Query planning | 5 | `expand_legal_query()` |
@@ -48,10 +50,11 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-40 passed in 154.87s (0:02:34)
+41 passed in 103.40s (0:01:43)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
+The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from ministry `dapaCgmExpc` results when `source="all"`.
 
 ## Operating Notes
 

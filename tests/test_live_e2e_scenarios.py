@@ -48,6 +48,13 @@ INTERPRETATION_SCENARIOS = [
     ("건축 법령해석", "건축"),
 ]
 
+MINISTRY_INTERPRETATION_SCENARIO = (
+    "방위사업청 법령해석",
+    "방위사업청",
+    "기술",
+    "409840",
+)
+
 CASE_SCENARIOS = [
     ("손해배상 판례", "손해배상", False),
     ("근로기준법 판례", "근로기준법", True),
@@ -92,6 +99,7 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
         + len(ADMINISTRATIVE_RULE_SCENARIOS)
         + len(LAW_ANNEX_SCENARIOS)
         + len(INTERPRETATION_SCENARIOS)
+        + 1  # Ministry first-instance interpretation search/detail/source labels.
         + len(CASE_SCENARIOS)
         + len(QUERY_EXPANSION_SCENARIOS)
         + len(BUNDLE_QUESTION_SCENARIOS)
@@ -171,6 +179,29 @@ def test_live_e2e_loads_official_interpretation_context(api: MolegApi, descripti
     assert hit.identity.source_target == "expc"
     assert text.identity.source_type == "moleg"
     assert text.text.strip()
+
+
+def test_live_e2e_loads_ministry_first_instance_interpretation_context(api: MolegApi):
+    description, ministry, query, detail_id = MINISTRY_INTERPRETATION_SCENARIO
+
+    hits = api.search_interpretations(query, source="ministry", ministry=ministry, display=3)
+    assert hits, description
+    assert all(hit.identity.source_type == "ministry" for hit in hits)
+    assert all(hit.identity.source_target == "dapaCgmExpc" for hit in hits)
+    assert all(hit.identity.ministry == ministry for hit in hits)
+    assert any(hit.identity.interpretation_id for hit in hits)
+
+    text = api.get_interpretation(detail_id, source="ministry", ministry=ministry)
+    assert text.identity.source_type == "ministry"
+    assert text.identity.source_target == "dapaCgmExpc"
+    assert text.identity.ministry == ministry
+    assert text.identity.interpretation_id == detail_id
+    assert text.text.strip()
+
+    all_hits = api.search_interpretations(query, source="all", ministry=ministry, display=2)
+    labels = {(hit.identity.source_type, hit.identity.source_target, hit.identity.ministry) for hit in all_hits}
+    assert ("moleg", "expc", None) in labels
+    assert ("ministry", "dapaCgmExpc", ministry) in labels
 
 
 @pytest.mark.parametrize("description, query, search_body", CASE_SCENARIOS)
