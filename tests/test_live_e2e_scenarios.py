@@ -45,6 +45,8 @@ LAW_ANNEX_SCENARIOS = [
     ("식품위생 별표", "식품위생법", "annex"),
 ]
 
+LAW_ANNEX_BODY_SCENARIO = ("식품위생법 시행령 과태료 별표 본문", "식품위생법", "과태료의 부과기준")
+
 INTERPRETATION_SCENARIOS = [
     ("자동차 법령해석", "자동차"),
     ("건축 법령해석", "건축"),
@@ -101,6 +103,7 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
         + 1  # Full law-level history through lsHistory HTML.
         + len(ADMINISTRATIVE_RULE_SCENARIOS)
         + len(LAW_ANNEX_SCENARIOS)
+        + 1  # Law annex/form body text export.
         + len(INTERPRETATION_SCENARIOS)
         + 1  # Ministry first-instance interpretation search/detail/source labels.
         + len(CASE_SCENARIOS)
@@ -181,6 +184,27 @@ def test_live_e2e_surfaces_law_annex_form_candidates(
     assert hit.identity.source_target == "licbyl"
     assert hit.identity.title
     assert hit.identity.related_name or hit.identity.related_id or hit.identity.file_link or hit.identity.detail_link
+
+
+def test_live_e2e_loads_law_annex_form_body(api: MolegApi):
+    description, query, title_fragment = LAW_ANNEX_BODY_SCENARIO
+    hits = api.search_annex_forms(query, source="law", annex_type="annex", display=10)
+    matching_hit = next((hit for hit in hits if title_fragment in hit.identity.title), None)
+    if matching_hit is None:
+        titles = [hit.identity.title for hit in hits[:10]]
+        pytest.fail(f"No live {description} candidate returned; titles={titles}")
+
+    body = api.get_annex_form_body(matching_hit.identity)
+
+    assert body.identity.source_type == "law"
+    assert body.identity.source_target == "licbyl"
+    assert body.identity.annex_id
+    assert body.file_type == "text/plain"
+    assert body.extraction_method == "lsBylTextDownLoad.do"
+    assert body.extraction_confidence == "high"
+    assert title_fragment in body.text
+    assert "식품위생법 시행령" in body.text
+    assert body.text.strip(), description
 
 
 @pytest.mark.parametrize("description, query", INTERPRETATION_SCENARIOS)

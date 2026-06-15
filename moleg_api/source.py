@@ -17,6 +17,7 @@ from .errors import RateLimitError, RetryExhaustedError, SourceApiError, Unsuppo
 
 SEARCH_URL = "https://www.law.go.kr/DRF/lawSearch.do"
 SERVICE_URL = "https://www.law.go.kr/DRF/lawService.do"
+LSW_URL = "https://www.law.go.kr/LSW/"
 DEFAULT_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_DELAY_SECONDS = 0.5
@@ -45,6 +46,9 @@ class MolegSource(Protocol):
     def service(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call a law.go.kr service/detail target."""
 
+    def post_text(self, path: str, params: dict[str, Any]) -> str:
+        """POST to a law.go.kr text export endpoint."""
+
 
 class LawGoKrClient:
     """JSON client for law.go.kr using `MOLEG_OC` by default."""
@@ -55,6 +59,7 @@ class LawGoKrClient:
         oc: str | None = None,
         search_url: str = SEARCH_URL,
         service_url: str = SERVICE_URL,
+        lsw_url: str = LSW_URL,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS,
@@ -66,6 +71,7 @@ class LawGoKrClient:
             raise SourceApiError("MOLEG_OC is required for live law.go.kr calls")
         self.search_url = search_url
         self.service_url = service_url
+        self.lsw_url = lsw_url
         self.timeout_seconds = timeout_seconds
         self.max_retries = max(0, max_retries)
         self.retry_delay_seconds = max(0.0, retry_delay_seconds)
@@ -79,6 +85,23 @@ class LawGoKrClient:
 
     def service(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         return self._call(self.service_url, target, params)
+
+    def post_text(self, path: str, params: dict[str, Any]) -> str:
+        url = urllib.parse.urljoin(self.lsw_url, path)
+        content_type, body = self._request(
+            url,
+            path,
+            params,
+            response_type="",
+            include_drf_params=False,
+            method="POST",
+        )
+        if "text" not in content_type and "txt/plain" not in content_type:
+            snippet = mask_secret(body[:200].replace("\n", " "), self.oc)
+            raise UnsupportedFormatError(
+                f"law.go.kr returned non-text content ({content_type or 'unknown'}): {snippet}"
+            )
+        return body
 
     def _call(self, url: str, target: str, params: dict[str, Any]) -> dict[str, Any]:
         content_type, body = self._request(url, target, params, response_type="JSON")
@@ -110,11 +133,24 @@ class LawGoKrClient:
         params: dict[str, Any],
         *,
         response_type: str,
+        include_drf_params: bool = True,
+        method: str = "GET",
     ) -> tuple[str, str]:
-        query = {"OC": self.oc, "target": target, "type": response_type, **params}
-        request_url = url + "?" + urllib.parse.urlencode(query, doseq=True)
+        query = (
+            {"OC": self.oc, "target": target, "type": response_type, **params}
+            if include_drf_params
+            else dict(params)
+        )
+        headers = {"User-Agent": USER_AGENT}
+        data = None
+        request_url = url
+        if method == "POST":
+            data = urllib.parse.urlencode(query, doseq=True).encode("utf-8")
+            headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
+        else:
+            request_url = url + "?" + urllib.parse.urlencode(query, doseq=True)
         for attempt in range(self.max_retries + 1):
-            request = urllib.request.Request(request_url, headers={"User-Agent": USER_AGENT})
+            request = urllib.request.Request(request_url, data=data, headers=headers)
             try:
                 with urllib.request.urlopen(
                     request,

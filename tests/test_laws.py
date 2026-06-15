@@ -2,15 +2,16 @@ import pytest
 
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
 from moleg_api.errors import ParseFailureError, UnsupportedFormatError
-from moleg_api.models import JudicialDecisionIdentity, LawIdentity
+from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity
 from moleg_api.normalization import format_article_jo
 
 
 class FakeSource:
-    def __init__(self, *, search_payloads=None, service_payloads=None, search_html_payloads=None):
+    def __init__(self, *, search_payloads=None, service_payloads=None, search_html_payloads=None, text_payloads=None):
         self.search_payloads = list(search_payloads or [])
         self.service_payloads = list(service_payloads or [])
         self.search_html_payloads = list(search_html_payloads or [])
+        self.text_payloads = list(text_payloads or [])
         self.calls = []
 
     def search(self, target, params):
@@ -24,6 +25,10 @@ class FakeSource:
     def search_html(self, target, params):
         self.calls.append(("search_html", target, params))
         return self.search_html_payloads.pop(0)
+
+    def post_text(self, path, params):
+        self.calls.append(("post_text", path, params))
+        return self.text_payloads.pop(0)
 
 
 def test_search_laws_defaults_to_effective_basis_and_normalizes_hits():
@@ -676,6 +681,73 @@ def test_search_annex_forms_rejects_unsupported_source():
 
     with pytest.raises(UnsupportedFormatError):
         MolegApi(source).search_annex_forms("자동차", source="ordinance")
+
+
+def test_get_annex_form_body_loads_law_text_export_from_candidate():
+    source = FakeSource(text_payloads=["■ 식품위생법 시행령 [별표 2]\n과태료의 부과기준"])
+    identity = AnnexFormIdentity(
+        annex_id="17677511",
+        title="과태료의 부과기준(제67조 관련)",
+        source_type="law",
+        source_target="licbyl",
+        related_name="식품위생법 시행령",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity)
+
+    assert body.identity == identity
+    assert "과태료의 부과기준" in body.text
+    assert body.file_type == "text/plain"
+    assert body.extraction_method == "lsBylTextDownLoad.do"
+    assert body.extraction_confidence == "high"
+    assert body.raw["source_target"] == "licbyl"
+    assert source.calls[0] == (
+        "post_text",
+        "lsBylTextDownLoad.do",
+        {
+            "bylSeq": "17677511",
+            "title": "과태료의 부과기준(제67조 관련)",
+            "mode": "0",
+        },
+    )
+
+
+def test_get_annex_form_body_loads_administrative_rule_text_export():
+    source = FakeSource(text_payloads=["[별지 제10호서식]\nApproval for Distribution"])
+    identity = AnnexFormIdentity(
+        annex_id="2584743",
+        title="Approval for Distribution of Genetic Resources",
+        source_type="administrative_rule",
+        source_target="admbyl",
+        related_name="가축전염병 병원체 등 수의생명자원 관리규정",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity)
+
+    assert "Approval for Distribution" in body.text
+    assert body.extraction_method == "admRulBylTextDownLoad.do"
+    assert source.calls[0] == (
+        "post_text",
+        "admRulBylTextDownLoad.do",
+        {
+            "bylSeq": "2584743",
+            "title": "Approval for Distribution of Genetic Resources",
+            "mode": "0",
+        },
+    )
+
+
+def test_get_annex_form_body_raises_when_text_export_is_empty():
+    source = FakeSource(text_payloads=["   \n"])
+    identity = AnnexFormIdentity(
+        annex_id="17677511",
+        title="과태료의 부과기준",
+        source_type="law",
+        source_target="licbyl",
+    )
+
+    with pytest.raises(NoResultError):
+        MolegApi(source).get_annex_form_body(identity)
 
 
 def test_get_administrative_rule_loads_structured_articles_and_filters():

@@ -209,6 +209,18 @@ class AnnexFormHit:
 
 
 @dataclass(frozen=True)
+class AnnexFormText:
+    """Extracted annex/form body text."""
+
+    identity: AnnexFormIdentity
+    text: str
+    file_type: str
+    extraction_method: str
+    extraction_confidence: str
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class InterpretationIdentity:
     """Normalized legal-interpretation identity."""
 

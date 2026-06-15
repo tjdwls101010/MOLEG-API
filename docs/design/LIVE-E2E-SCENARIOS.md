@@ -12,7 +12,7 @@ The gate exercises:
 - Full law-level history loading through the HTML-only `lsHistory` list table.
 - Delegated-rule loading for statute-to-lower-rule context.
 - Administrative-rule search and detail loading.
-- Law annex/form candidate discovery.
+- Law annex/form candidate discovery and selected body loading.
 - MOLEG official interpretation search and detail loading.
 - Ministry first-instance interpretation search, detail loading, and source-label separation.
 - Court case search and detail loading.
@@ -32,6 +32,7 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Delegation | 3 | `find_delegated_rules()` |
 | Administrative rules | 3 | `search_administrative_rules()` -> `get_administrative_rule()` |
 | Annex/forms | 2 | `search_annex_forms()` |
+| Annex/form body | 1 | `search_annex_forms()` -> `get_annex_form_body()` |
 | Official interpretations | 2 | `search_interpretations()` -> `get_interpretation()` |
 | Ministry interpretations | 1 | `search_interpretations(source="ministry")`, `get_interpretation()`, `search_interpretations(source="all")` |
 | Cases | 3 | `search_cases()` -> `get_case()` |
@@ -52,12 +53,13 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-42 passed in 108.45s (0:01:48)
+43 passed in 195.25s (0:03:15)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
 The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from ministry `dapaCgmExpc` results when `source="all"`.
 The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
+The annex/form body scenario searches 식품위생법 law annexes, selects the 과태료 별표 candidate, and verifies non-empty text from `lsBylTextDownLoad.do`.
 
 ## Operating Notes
 
