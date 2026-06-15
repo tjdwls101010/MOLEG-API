@@ -57,6 +57,8 @@ from .normalization import (
     normalize_related_article_candidate,
     normalize_related_law_candidate,
     normalize_term_candidate,
+    parse_law_history_html,
+    parse_law_history_total_count,
     unwrap_search_administrative_rules,
     unwrap_search_interpretations,
     unwrap_search_judicial_decisions,
@@ -71,6 +73,9 @@ TARGETS: dict[Basis, dict[str, str]] = {
     "effective": {"list": "eflaw", "detail": "eflaw", "article": "eflawjosub"},
     "promulgated": {"list": "law", "detail": "law", "article": "lawjosub"},
 }
+
+LAW_HISTORY_HTML_DISPLAY = 100
+LAW_HISTORY_HTML_MAX_PAGES = 20
 
 BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
     "minimal": {
@@ -317,14 +322,49 @@ class MolegApi:
                 params["ID"] = identity.law_id
             payload = self.source.search("lsJoHstInf", params)
         else:
-            raise UnsupportedFormatError(
-                "Full law history uses the HTML-only lsHistory source; pass article or date_range for JSON change history"
-            )
+            payload = self._search_full_law_history(identity)
 
         events = normalize_history_events(payload, identity)
         if not events:
             raise NoResultError("No law history events found")
         return LawHistory(identity=identity, events=events, raw=payload)
+
+    def _search_full_law_history(self, identity: LawIdentity) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        page = 1
+        pages_seen = 0
+        total_count: int | None = None
+        while page <= LAW_HISTORY_HTML_MAX_PAGES:
+            params = {
+                "query": identity.name,
+                "display": LAW_HISTORY_HTML_DISPLAY,
+                "page": page,
+            }
+            html = self.source.search_html("lsHistory", params)
+            pages_seen += 1
+            page_rows = parse_law_history_html(html)
+            if total_count is None:
+                total_count = parse_law_history_total_count(html)
+            rows.extend(page_rows)
+            if not page_rows:
+                break
+            if total_count is not None and len(rows) >= total_count:
+                break
+            page += 1
+
+        matched_rows = [row for row in rows if history_row_matches_identity(row, identity)]
+        if not matched_rows and rows:
+            raise NoResultError(
+                "No full law history rows matched the requested law identity; "
+                "try an article/date_range history query or inspect lsHistory candidates manually"
+            )
+        return {
+            "lsHistory": matched_rows,
+            "source_target": "lsHistory",
+            "source_total_count": total_count,
+            "source_rows_seen": len(rows),
+            "source_pages_seen": pages_seen,
+        }
 
     def compare_law_versions(
         self,
@@ -1154,6 +1194,21 @@ def matches_bridge(
     if promulgation_dt and compact_date(identity.promulgation_date) != compact_date(promulgation_dt):
         return False
     return True
+
+
+def history_row_matches_identity(row: dict[str, Any], identity: LawIdentity) -> bool:
+    row_name = str(row.get("법령명한글") or row.get("법령명") or "")
+    if row_name == identity.name:
+        return True
+
+    row_ministry = str(row.get("소관부처명") or row.get("소관부처") or "")
+    row_law_type = str(row.get("법령구분명") or row.get("법령종류") or "")
+    return bool(
+        identity.ministry
+        and identity.law_type
+        and row_ministry == identity.ministry
+        and row_law_type == identity.law_type
+    )
 
 
 def dedupe_identities(identities: list[LawIdentity]) -> list[LawIdentity]:

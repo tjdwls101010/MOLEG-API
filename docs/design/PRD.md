@@ -97,7 +97,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.resolve_promulgated_law()` accepts `congress-db` bridge fields (`prom_law_nm`, `prom_no`, `promulgation_dt`) and returns one normalized `LawIdentity` or raises no-result/ambiguity errors.
 - `MolegApi.get_law()` retrieves effective/promulgation-basis law text and normalizes articles.
 - `MolegApi.get_article()` accepts human article notation such as `제10조의2` and formats the source `JO` value internally.
-- `MolegApi.trace_law_history()` currently supports JSON-reachable article/date-range change history and explicitly refuses full `lsHistory` usage until an HTML parser/fallback is designed.
+- `MolegApi.trace_law_history()` supports JSON-reachable article/date-range change history and full law-level history through the HTML-only `lsHistory` list table. If the live HTML shape changes, parsing fails explicitly instead of returning partial or misleading history.
 - `MolegApi.compare_law_versions()` normalizes `oldAndNew` before/after article text behind a public comparison interface.
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.

@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Full law history uses the lsHistory list table
+
+`lsHistory` is HTML-only, and its detail endpoint returns a large UI iframe rather than a stable machine-readable history body. MOLEG-API parses the law-history list table into normalized `LawHistory` events and raises parse failure on unexpected table shape, preserving a deep `trace_law_history()` interface without making Claude handle raw HTML.
+
 ## 2026-06-15 — Endpoint availability is not feature justification
 
 The MOLEG catalog is an input to design, not a backlog that must be exhausted. A source becomes part of MOLEG-API only when a recurring legislative-expert workflow, authority distinction, or demonstrated reasoning failure justifies it; unused optional/rejected endpoints are acceptable.

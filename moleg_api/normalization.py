@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from .errors import NoResultError, ParseFailureError
 from .models import (
@@ -48,6 +50,10 @@ def compact_date(value: str | date | None) -> str | None:
     text = str(value).strip()
     if not text:
         return None
+    dotted = re.fullmatch(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", text)
+    if dotted:
+        year, month, day = dotted.groups()
+        return f"{year}{int(month):02d}{int(day):02d}"
     digits = re.sub(r"\D", "", text)
     if len(digits) == 8:
         return digits
@@ -646,6 +652,7 @@ def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> 
         "조문변경이력목록",
         "lsJoHstInf",
         "lsHstInf",
+        "lsHistory",
     )
     events: list[HistoryEvent] = []
     for row in rows:
@@ -657,7 +664,7 @@ def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> 
             row_identity = identity
         event = HistoryEvent(
             identity=row_identity,
-            changed_date=string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt"))),
+            changed_date=string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자"))),
             effective_date=string_or_none(compact_date(first_value(row, "조문시행일", "시행일자"))),
             promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
             promulgation_number=string_or_none(first_value(row, "공포번호")),
@@ -668,6 +675,96 @@ def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> 
         )
         events.append(event)
     return events
+
+
+def parse_law_history_html(html: str) -> list[dict[str, Any]]:
+    parser = LawHistoryTableParser()
+    parser.feed(html)
+    data_rows = [row for row in parser.rows if row]
+    malformed = [row for row in data_rows if len(row) != 9]
+    if malformed:
+        raise ParseFailureError("Could not parse lsHistory HTML table: unexpected column count")
+    rows: list[dict[str, Any]] = []
+    for row in data_rows:
+        href = row[1]["href"]
+        link_params = parse_link_params(href)
+        mst = first_query_value(link_params, "MST")
+        rows.append(
+            {
+                "순번": row[0]["text"],
+                "법령명한글": row[1]["text"],
+                "소관부처명": row[2]["text"],
+                "제개정구분명": row[3]["text"],
+                "법령구분명": row[4]["text"],
+                "공포번호": row[5]["text"],
+                "공포일자": row[6]["text"],
+                "시행일자": row[7]["text"],
+                "현행연혁구분": row[8]["text"],
+                "MST": mst,
+                "법령일련번호": mst,
+                "법령상세링크": href,
+            }
+        )
+    if not rows and "법령 연혁정보 목록" in html:
+        raise ParseFailureError("Could not parse lsHistory HTML table rows")
+    return rows
+
+
+def parse_law_history_total_count(html: str) -> int | None:
+    match = re.search(r"총\s*<strong>\s*([0-9,]+)\s*</strong>\s*건", html)
+    if not match:
+        return None
+    return int(match.group(1).replace(",", ""))
+
+
+def parse_link_params(href: str | None) -> dict[str, list[str]]:
+    if not href:
+        return {}
+    return parse_qs(urlparse(href).query)
+
+
+def first_query_value(params: dict[str, list[str]], key: str) -> str | None:
+    values = params.get(key)
+    if not values:
+        return None
+    return values[0]
+
+
+class LawHistoryTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[dict[str, str | None]]] = []
+        self._current_row: list[dict[str, str | None]] | None = None
+        self._current_cell_text: list[str] | None = None
+        self._current_cell_href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._current_row = []
+            return
+        if tag == "td" and self._current_row is not None:
+            self._current_cell_text = []
+            self._current_cell_href = None
+            return
+        if tag == "a" and self._current_cell_text is not None:
+            attr_map = dict(attrs)
+            self._current_cell_href = attr_map.get("href")
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell_text is not None:
+            self._current_cell_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "td" and self._current_row is not None and self._current_cell_text is not None:
+            text = re.sub(r"\s+", " ", "".join(self._current_cell_text)).strip()
+            self._current_row.append({"text": text, "href": self._current_cell_href})
+            self._current_cell_text = None
+            self._current_cell_href = None
+            return
+        if tag == "tr" and self._current_row is not None:
+            if self._current_row:
+                self.rows.append(self._current_row)
+            self._current_row = None
 
 
 def normalize_diff_changes(payload: dict[str, Any], *, article: str | int | None = None) -> list[LawDiffChange]:
