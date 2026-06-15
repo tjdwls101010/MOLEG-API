@@ -111,7 +111,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded administrative-rule, annex/form, interpretation, and judicial candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - `LawGoKrClient` performs bounded retries for transient law.go.kr failures and raises `RateLimitError` or `RetryExhaustedError` instead of collapsing temporary source-access failures into legal no-result states.
-- Normal tests use fake adapters; `tests/test_live_smoke.py` is marked `live` and skips unless `MOLEG_OC` exists.
+- Normal tests use fake adapters; `tests/test_live_smoke.py` and `tests/test_live_e2e_scenarios.py` are marked `live` and skip unless `MOLEG_OC` exists. Smoke tests prove representative source families are callable; e2e scenarios prove legislative-expert workflows through public `MolegApi` methods.
 
 ## Out of Scope
 

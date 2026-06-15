@@ -6,4 +6,4 @@ The intended caller is not an end-user application. It is Claude, with the legis
 
 Start with `AGENTS.md` for project rules and `docs/SKILL-INTEGRATION.md` for the skill-facing interface plan.
 
-Current readiness evidence and the remaining live-verification blocker are tracked in `docs/design/GOAL-COMPLETION-AUDIT.md`.
+Current readiness evidence is tracked in `docs/design/GOAL-COMPLETION-AUDIT.md`; the live legislative scenario gate is documented in `docs/design/LIVE-E2E-SCENARIOS.md`.
