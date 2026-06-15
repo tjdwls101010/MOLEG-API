@@ -71,6 +71,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 
 - If MOLEG-API cannot answer because the needed source is outside law.go.kr, use WebSearch.
 - If MOLEG-API finds no law for a bill that has no promulgation bridge, return to `congress-db` and treat the bill as not proven enacted/current.
+- If a `congress-db` promulgation bridge does not exactly resolve but the bundle returns law-name candidates with `source_lag_or_manual_review_required`, explain the source-lag/manual-review state instead of saying the bill was not enacted.
 - If MOLEG-API raises `RateLimitError` or `RetryExhaustedError`, treat it as a temporary source-access problem, not proof that the legal source does not exist.
 - If a source endpoint is HTML-only, use the documented parser/fallback for that interface; do not assume JSON exists.
 - If a law delegates details to lower rules, do not stop at statute text unless the user explicitly asks for statute-only review.

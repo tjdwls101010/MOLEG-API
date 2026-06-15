@@ -51,7 +51,7 @@ LegalContextBundle(
 ## Implemented Behavior
 
 - `mode="question"` calls `expand_legal_query()`, loads the first law candidate when available, finds delegated rules, searches administrative rules, law/admin-rule annex forms, interpretations, Supreme Court cases, and Constitutional Court decisions, and leaves detail loading for interpretation/case candidates in `deferred`.
-- `mode="promulgated_bill"` starts from `congress-db` bridge fields and calls `resolve_promulgated_law()`. Ambiguity or no-result becomes structured `Ambiguity` plus `manual_review_required` gap instead of a silent best guess.
+- `mode="promulgated_bill"` starts from `congress-db` bridge fields and calls `resolve_promulgated_law()`. Ambiguity or no-result becomes structured `Ambiguity` plus a gap instead of a silent best guess. If exact `prom_no` / `promulgation_dt` matching fails but law-name candidates exist, the bundle preserves those candidates and emits `source_lag_or_manual_review_required` so Claude does not confuse MOLEG source lag with "not enacted."
 - `mode="statute_review"` starts from a supplied law identity and loads the current law text or requested articles.
 - Every bundle with a search query includes a `websearch_required` gap because latest social facts, statistics, policy announcements, and news are outside law.go.kr.
 - `budget="standard"` is the default. `minimal` and `broad` adjust candidate counts but still keep interpretation and judicial full text deferred by default.

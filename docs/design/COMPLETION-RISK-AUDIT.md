@@ -13,8 +13,9 @@ The current implementation has strong evidence for the core progressive-loading 
 - Public `MolegApi` methods hide raw law.go.kr `target` values.
 - Live law.go.kr smoke passed across representative source families.
 - The legislative live e2e gate passed 39 scenario tests and recorded one sample-dependent skip.
-- Full pytest with local credentials passed: `92 passed, 2 skipped`.
+- Full pytest with local credentials passed: `93 passed, 2 skipped`.
 - congress-db was introspected with `congress_ro`, with `transaction_read_only: on`.
+- Promulgated-bill bundles preserve law-name candidates and a `source_lag_or_manual_review_required` gap when exact congress-db bridge matching fails.
 - Credentials remain in ignored local env files, not committed.
 
 ## Residual Risks
@@ -24,7 +25,6 @@ The current implementation has strong evidence for the core progressive-loading 
 | Annex/form bodies are not loaded or parsed. | Attached tables, amounts, standards, and required forms can carry the operative rule. Candidate metadata is not enough to answer all questions. | [#38](https://github.com/tjdwls101010/MOLEG-API/issues/38) |
 | Full law history remains unsupported beyond JSON-reachable article/date changes. | Some amendment-history questions need law-level history, not only article/date-range JSON surfaces. | [#39](https://github.com/tjdwls101010/MOLEG-API/issues/39) |
 | Constitutional Court live e2e currently sample-skips. | Constitutional-risk analysis is central to legislative review, so deterministic label tests are not enough for a perfect claim. | [#40](https://github.com/tjdwls101010/MOLEG-API/issues/40) |
-| Recent congress-db promulgation rows may not resolve exactly in MOLEG yet. | Recent bills are often the user's focus; source lag must not be confused with "not enacted" or a wrong law. | [#41](https://github.com/tjdwls101010/MOLEG-API/issues/41) |
 | Ministry first-instance interpretation live coverage is not yet stable. | The registry design exists, but live proof should cover at least one ministry source path. | [#42](https://github.com/tjdwls101010/MOLEG-API/issues/42) |
 
 ## Not A Completion Blocker For The Initial Core
@@ -38,6 +38,12 @@ The following remain demand-gated by design:
 
 They are not required for the current initial core because `docs/design/MOLEG-API-AUDIT.md` classifies them as optional or rejected for the first legislative-expert path. They should be revisited only when repeated skill scenarios prove the need.
 
+## Mitigated Risks
+
+| Risk | Mitigation |
+|---|---|
+| Recent congress-db promulgation rows may not resolve exactly in MOLEG yet. | `load_legal_context_bundle(mode="promulgated_bill")` now preserves law-name candidates and emits `source_lag_or_manual_review_required` when exact bridge matching fails, so Claude can explain source lag/manual review instead of overclaiming. |
+
 ## How To Read The Current Status
 
 "No known blocker" means no blocker for the current initial MOLEG-API core and its documented progressive-loading contract. It does not mean every possible legislative-expert source path is implemented or live-proven.
@@ -45,4 +51,3 @@ They are not required for the current initial core because `docs/design/MOLEG-AP
 The stronger claim that can be defended today is:
 
 > MOLEG-API is implemented and live-tested enough to support the first legislative-expert skill prototype, with known residual risks tracked as follow-up slices.
-
