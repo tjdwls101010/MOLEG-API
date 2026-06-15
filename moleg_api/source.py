@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -19,6 +20,11 @@ DEFAULT_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_DELAY_SECONDS = 0.5
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+DEFAULT_CA_FILE_CANDIDATES = (
+    "/etc/ssl/cert.pem",
+    "/opt/homebrew/etc/openssl@3/cert.pem",
+    "/usr/local/etc/openssl@3/cert.pem",
+)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -47,6 +53,8 @@ class LawGoKrClient:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS,
+        ssl_context: ssl.SSLContext | None = None,
+        ca_file: str | None = None,
     ) -> None:
         self.oc = oc or os.environ.get("MOLEG_OC")
         if not self.oc:
@@ -56,6 +64,7 @@ class LawGoKrClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max(0, max_retries)
         self.retry_delay_seconds = max(0.0, retry_delay_seconds)
+        self.ssl_context = ssl_context or build_ssl_context(ca_file)
 
     def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
         return self._call(self.search_url, target, params)
@@ -69,7 +78,11 @@ class LawGoKrClient:
         for attempt in range(self.max_retries + 1):
             request = urllib.request.Request(request_url, headers={"User-Agent": USER_AGENT})
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                with urllib.request.urlopen(
+                    request,
+                    timeout=self.timeout_seconds,
+                    context=self.ssl_context,
+                ) as response:
                     content_type = response.headers.get("Content-Type", "").lower()
                     body = response.read().decode("utf-8", errors="replace")
                     break
@@ -109,6 +122,21 @@ class LawGoKrClient:
     def _sleep_before_retry(self) -> None:
         if self.retry_delay_seconds:
             time.sleep(self.retry_delay_seconds)
+
+
+def build_ssl_context(ca_file: str | None = None) -> ssl.SSLContext:
+    if ca_file:
+        return ssl.create_default_context(cafile=ca_file)
+
+    verify_paths = ssl.get_default_verify_paths()
+    if verify_paths.cafile or verify_paths.capath:
+        return ssl.create_default_context()
+
+    for candidate in DEFAULT_CA_FILE_CANDIDATES:
+        if os.path.exists(candidate):
+            return ssl.create_default_context(cafile=candidate)
+
+    return ssl.create_default_context()
 
 
 def mask_secret(text: str, secret: str | None) -> str:

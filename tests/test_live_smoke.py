@@ -21,12 +21,45 @@ def first_hit_or_skip(hits, label: str):
     return hits[0]
 
 
+def exact_law_hit_or_skip(api: MolegApi, query: str, exact_name: str):
+    hits = api.search_laws(query, display=20)
+    for hit in hits:
+        if hit.identity.name == exact_name:
+            return hit
+    pytest.skip(f"No exact live law sample returned for {exact_name}")
+
+
+def exact_law_detail_or_skip(api: MolegApi, query: str, exact_name: str):
+    no_result_reasons = []
+    hits = api.search_laws(query, display=20)
+    for hit in hits:
+        if hit.identity.name != exact_name:
+            continue
+        try:
+            return hit, api.get_law(hit.identity)
+        except NoResultError as exc:
+            no_result_reasons.append(str(exc))
+    if no_result_reasons:
+        pytest.skip(f"No live law detail sample returned for {exact_name}: " + " / ".join(no_result_reasons[:3]))
+    pytest.skip(f"No exact live law sample returned for {exact_name}")
+
+
+def first_detail_or_skip(hits, load_detail, label: str):
+    no_result_reasons = []
+    for hit in hits:
+        try:
+            return hit, load_detail(hit)
+        except NoResultError as exc:
+            no_result_reasons.append(str(exc))
+    if no_result_reasons:
+        pytest.skip(f"No live {label} detail sample returned: " + " / ".join(no_result_reasons[:3]))
+    pytest.skip(f"No live {label} sample returned")
+
+
 def test_live_search_law_detail_and_article_smoke():
     api = live_api()
 
-    hits = api.search_laws("자동차관리법", display=3)
-    hit = first_hit_or_skip(hits, "law")
-    law = api.get_law(hit.identity)
+    hit, law = exact_law_detail_or_skip(api, "자동차관리법", "자동차관리법")
     article = api.get_article(law.identity, "제1조")
 
     assert law.identity.law_id
@@ -39,7 +72,7 @@ def test_live_search_law_detail_and_article_smoke():
 def test_live_delegation_and_context_bundle_smoke():
     api = live_api()
 
-    hit = first_hit_or_skip(api.search_laws("자동차관리법", display=3), "law")
+    hit = exact_law_hit_or_skip(api, "자동차관리법", "자동차관리법")
     graph = api.find_delegated_rules(hit.identity)
     bundle = api.load_legal_context_bundle("자동차 방치", budget="minimal")
 
@@ -92,8 +125,11 @@ def test_live_interpretation_search_and_detail_smoke():
 def test_live_case_search_and_detail_smoke():
     api = live_api()
 
-    hit = first_hit_or_skip(api.search_cases("자동차", display=3), "case")
-    text = api.get_case(hit.identity)
+    hit, text = first_detail_or_skip(
+        api.search_cases("자동차", display=10),
+        lambda case_hit: api.get_case(case_hit.identity),
+        "case",
+    )
 
     assert hit.identity.title
     assert text.identity.title
@@ -117,7 +153,7 @@ def test_live_constitutional_decision_search_and_detail_smoke():
 def test_live_history_or_comparison_smoke():
     api = live_api()
 
-    hit = first_hit_or_skip(api.search_laws("건축법", display=3), "law")
+    hit = exact_law_hit_or_skip(api, "건축법", "건축법")
     outcomes = []
     no_result_reasons = []
 

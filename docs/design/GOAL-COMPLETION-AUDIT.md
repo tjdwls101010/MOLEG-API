@@ -4,15 +4,16 @@ Audited on 2026-06-15 against `.Seongjin/goal.md`.
 
 ## Verdict
 
-The MOLEG-API layer is substantially implemented for deterministic use, but the overall goal is **not complete** because live source verification is still unproven in the current environment.
+The MOLEG-API layer is substantially implemented and has passed representative live law.go.kr smoke verification. The overall goal is **not complete** only because fresh read-only `congress-db` verification still needs a local `CONGRESS_DB_READONLY_URL`.
 
 Remaining blocker: [#15 — Provide live credentials for final smoke verification](https://github.com/tjdwls101010/MOLEG-API/issues/15).
 
 Current environment evidence:
 
-- `MOLEG_OC` is missing, so law.go.kr live smoke tests skip.
+- law.go.kr live smoke passed with a local `MOLEG_OC`: `MOLEG_OC=... .venv/bin/python -m pytest tests/test_live_smoke.py -q` -> `8 passed, 1 skipped`.
 - `CONGRESS_DB_READONLY_URL` is missing, so a fresh read-only Neon re-introspection cannot be rerun from this shell.
-- Last deterministic command: `.venv/bin/python -m pytest -q` -> `36 passed, 9 skipped`.
+- Last deterministic command without `MOLEG_OC`: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`.
+- Last full command with `MOLEG_OC`: `MOLEG_OC=... .venv/bin/python -m pytest -q` -> `50 passed, 1 skipped`.
 
 ## Requirement Audit
 
@@ -23,11 +24,11 @@ Current environment evidence:
 | Audit all 195 MOLEG OpenAPI catalog guides. | `docs/design/MOLEG-API-AUDIT.md` says "Audited guides: 195" and records the generated classification. | Proven by audit artifact. |
 | Classify core / optional / rejected APIs with reasons. | `docs/design/MOLEG-API-AUDIT.md` records counts: core 116, optional 53, rejected 26, with per-endpoint reasons. | Proven by audit artifact. |
 | Prefer deep task-level interfaces over 195 shallow endpoint wrappers. | Public surface in `moleg_api/laws.py` exposes task methods such as `search_laws()`, `get_article()`, `find_delegated_rules()`, `search_administrative_rules()`, `search_annex_forms()`, `search_interpretations()`, `search_cases()`, `expand_legal_query()`, and `load_legal_context_bundle()`; raw MOLEG targets stay inside implementation. | Proven by code and PRD. |
-| Implement first vertical slice: law search / congress bridge candidate -> normalized identity -> effective law text or article. | `MolegApi.search_laws()`, `resolve_promulgated_law()`, `get_law()`, and `get_article()` exist; `tests/test_laws.py` covers effective default, bridge resolution, ambiguity, no-result, law text, and article `JO` formatting. | Proven by deterministic tests. |
+| Implement first vertical slice: law search / congress bridge candidate -> normalized identity -> effective law text or article. | `MolegApi.search_laws()`, `resolve_promulgated_law()`, `get_law()`, and `get_article()` exist; tests cover effective default, bridge resolution, ambiguity, no-result, law text, live MST detail lookup, and article `JO` formatting. | Proven by deterministic and live smoke tests. |
 | Implement history/comparison next. | `trace_law_history()` and `compare_law_versions()` exist; tests cover JSON-reachable article history, unsupported full HTML history scope, and `oldAndNew` normalization. | Proven for JSON-reachable history/comparison; full `lsHistory` HTML parsing remains intentionally unsupported and documented. |
 | Implement delegation/hierarchy. | `find_delegated_rules()` normalizes `lsDelegated`; deterministic tests cover lower-rule relationships. | Proven by deterministic tests. |
-| Implement administrative-rule context. | `search_administrative_rules()` and `get_administrative_rule()` exist; tests cover hit normalization, structured article loading/filtering, exact-name identity, and flat text preservation. | Proven by deterministic tests. |
-| Implement annex/form candidate context. | `search_annex_forms()` exists for law and administrative-rule annex/form candidates through `licbyl` and `admbyl`; tests cover normalized metadata, hidden numeric search/type codes, unsupported local ordinance refusal, bundle inclusion, and live-smoke gating. HWP/PDF body parsing remains intentionally out of scope. | Proven by deterministic tests; live sample still gated by `MOLEG_OC`. |
+| Implement administrative-rule context. | `search_administrative_rules()` and `get_administrative_rule()` exist; tests cover hit normalization, structured article loading/filtering, exact-name identity, flat text preservation, and live `AdmRulService` wrapper shape. | Proven by deterministic and live smoke tests. |
+| Implement annex/form candidate context. | `search_annex_forms()` exists for law and administrative-rule annex/form candidates through `licbyl` and `admbyl`; tests cover normalized metadata, hidden numeric search/type codes, unsupported local ordinance refusal, bundle inclusion, and live smoke. HWP/PDF body parsing remains intentionally out of scope. | Proven by deterministic and live smoke tests. |
 | Implement official and ministry interpretations with registry, not one public function per ministry. | `search_interpretations()` and `get_interpretation()` use an internal ministry registry; tests cover official MOLEG source, ministry source, detail loading, and unsupported ministry detail refusal. | Proven by deterministic tests. |
 | Implement judicial and constitutional authorities with distinct labels. | `search_cases()`, `get_case()`, `search_constitutional_decisions()`, and `get_constitutional_decision()` exist; tests cover `prec` vs `detc` normalization and refusal to load a constitutional identity through `get_case()`. | Proven by deterministic tests. |
 | Implement legal terms and query expansion as planning context, not final authority. | `expand_legal_query()` exists; tests cover legal/everyday terms, related terms/articles/laws, AI surfaces, and WebSearch follow-ups. Decision log says query expansion is planning context. | Proven by deterministic tests and `docs/design/DECISIONS.md`. |
@@ -41,8 +42,8 @@ Current environment evidence:
 | Write skill integration docs explaining MOLEG-API, congress-db, and WebSearch responsibilities. | `docs/SKILL-INTEGRATION.md` documents source responsibilities, promulgated-bill workflow, query planning, fallback rules, public interfaces, and answering discipline. | Proven by document. |
 | Record decisions and API traps in decision log. | `docs/design/DECISIONS.md` contains decisions for deep interface, effective-date default, congress-db read-only use, admin `issued_on`, interpretation registry, judicial/constitutional separation, query expansion, context bundles, and retry semantics. | Proven by document. |
 | Use GitHub issues/branches/PRs to maintain progress visibility. | Merged PRs include #2, #7, #8, #9, #11, #12, #14, #17, and #19; open blocker is #15. | Proven by GitHub state at audit time. |
-| Run full tests and necessary live smoke tests. | Deterministic tests pass: `.venv/bin/python -m pytest -q` -> `36 passed, 9 skipped`. Live smoke gate exists in `tests/test_live_smoke.py` and now covers nine representative live checks. | Incomplete: live checks skip until `MOLEG_OC` is present. |
-| Verify live law.go.kr source behavior through sample calls when credentials are available. | `tests/test_live_smoke.py` is the live verification gate and covers statute detail/article, delegation, context bundle, administrative rules, annex/forms, interpretations, cases, Constitutional Court decisions, history/comparison, and query expansion. | Missing evidence: `MOLEG_OC` is absent, so the live gate has not passed in this environment. |
+| Run full tests and necessary live smoke tests. | Deterministic tests pass without credentials: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`. Full suite with local `MOLEG_OC` passes: `50 passed, 1 skipped`. | Proven for law.go.kr; congress-db remains gated by `CONGRESS_DB_READONLY_URL`. |
+| Verify live law.go.kr source behavior through sample calls when credentials are available. | `tests/test_live_smoke.py` covers statute detail/article, delegation, context bundle, administrative rules, annex/forms, interpretations, cases, Constitutional Court decisions, history/comparison, and query expansion. Latest run: `8 passed, 1 skipped`. | Proven for representative samples; one history/comparison sample-level skip remains acceptable when the chosen live sample has no data. |
 | Verify read-only congress-db access when needed. | Stored introspection evidence exists under `docs/design/congress-db-introspection/`; script can rerun with `CONGRESS_DB_READONLY_URL`. | Missing fresh evidence: `CONGRESS_DB_READONLY_URL` is absent in this environment. |
 
 ## Commands For Final Verification
@@ -64,8 +65,7 @@ Expected behavior:
 
 ## Remaining Work
 
-1. Provide local `MOLEG_OC` and run `tests/test_live_smoke.py`.
-2. Provide local `CONGRESS_DB_READONLY_URL` for the `congress_ro` role and rerun read-only introspection if fresh congress-db evidence is required.
-3. Update this audit and close #15 only after the live evidence exists.
+1. Provide local `CONGRESS_DB_READONLY_URL` for the `congress_ro` role and rerun read-only introspection if fresh congress-db evidence is required.
+2. Update this audit and close #15 only after the fresh congress-db evidence exists or the PM explicitly decides stored introspection evidence is sufficient.
 
 Until those are done, the active goal must remain incomplete.
