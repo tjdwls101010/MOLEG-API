@@ -14,7 +14,7 @@ The gate exercises:
 - Law annex/form candidate discovery.
 - MOLEG official interpretation search and detail loading.
 - Court case search and detail loading.
-- Constitutional Court label preservation when the live source returns a sample.
+- Constitutional Court detail loading through a stable live decision ID.
 - Legal query expansion as planning context, including WebSearch handoff gaps.
 - Legal context bundles for broad questions and specific statute review.
 - Real `congress-db` promulgation bridge rows resolved through MOLEG identity lookup.
@@ -31,7 +31,7 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Annex/forms | 2 | `search_annex_forms()` |
 | Official interpretations | 2 | `search_interpretations()` -> `get_interpretation()` |
 | Cases | 3 | `search_cases()` -> `get_case()` |
-| Constitutional decisions | 1 sample-dependent | `search_constitutional_decisions()` -> `get_constitutional_decision()` |
+| Constitutional decisions | 1 | `get_constitutional_decision()` |
 | Query planning | 5 | `expand_legal_query()` |
 | Question bundles | 4 | `load_legal_context_bundle(mode="question")` |
 | Statute-review bundles | 2 | `load_legal_context_bundle(mode="statute_review")` |
@@ -48,10 +48,10 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-39 passed, 1 skipped in 112.71s
+40 passed in 154.87s (0:02:34)
 ```
 
-The skipped scenario was the sample-dependent Constitutional Court branch. The current live `detc` searches tried by the gate returned no sample, so the test records that condition explicitly instead of treating it as a source load success.
+The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
 
 ## Operating Notes
 
