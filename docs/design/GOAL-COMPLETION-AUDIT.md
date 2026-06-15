@@ -4,9 +4,9 @@ Audited on 2026-06-15 against `.Seongjin/goal.md`.
 
 ## Verdict
 
-The MOLEG-API layer is implemented for the goal in `.Seongjin/goal.md` and has passed representative live law.go.kr smoke verification, a 40-scenario legislative live e2e gate, and fresh read-only `congress-db` introspection.
+The MOLEG-API layer is implemented for the initial core goal in `.Seongjin/goal.md` and has passed representative live law.go.kr smoke verification, a 40-scenario legislative live e2e gate, and fresh read-only `congress-db` introspection.
 
-No known blocker remains.
+No known blocker remains for the initial core progressive-loading contract. This is not a claim that every possible legislative-expert use case is perfect; residual risks are tracked in `docs/design/COMPLETION-RISK-AUDIT.md`.
 
 Current environment evidence:
 
@@ -43,6 +43,7 @@ Current environment evidence:
 | Avoid large mirror DB/cache at the start. | No committed mirror/cache implementation exists; `.gitignore` excludes local DB files. `docs/design/PRD.md` records "Caching starts small." | Proven by repository state. |
 | Write skill integration docs explaining MOLEG-API, congress-db, and WebSearch responsibilities. | `docs/SKILL-INTEGRATION.md` documents source responsibilities, promulgated-bill workflow, query planning, fallback rules, public interfaces, and answering discipline. | Proven by document. |
 | Run dozens of realistic e2e scenarios from a legislative-expert Claude perspective. | `tests/test_live_e2e_scenarios.py` covers 40 statute/article, delegation, administrative-rule, annex/form, interpretation, case, constitutional, query-planning, bundle, and congress bridge scenarios through public `MolegApi` methods. Latest run: `39 passed, 1 skipped`. | Proven by live e2e gate. |
+| Avoid overclaiming perfection. | `docs/design/COMPLETION-RISK-AUDIT.md` records residual risks and follow-up issues for annex bodies, full history, Constitutional Court live coverage, recent bridge lag, and ministry live coverage. | Proven by risk audit and GitHub issues. |
 | Record decisions and API traps in decision log. | `docs/design/DECISIONS.md` contains decisions for deep interface, effective-date default, congress-db read-only use, admin `issued_on`, interpretation registry, judicial/constitutional separation, query expansion, context bundles, and retry semantics. | Proven by document. |
 | Use GitHub issues/branches/PRs to maintain progress visibility. | Merged PRs include #2, #7, #8, #9, #11, #12, #14, #17, #19, #23, #25, #27, #29, #31, and #33; this final verification branch closes #15. | Proven by GitHub state at audit time. |
 | Run full tests and necessary live smoke tests. | Deterministic tests pass without credentials: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`. Full suite with local `.env` `MOLEG_OC` and local `.env.local` `CONGRESS_DB_READONLY_URL` passes: `92 passed, 2 skipped`. Fresh congress-db introspection also passes with local `.env.local`. | Proven. |
@@ -69,4 +70,10 @@ Expected behavior:
 
 ## Remaining Work
 
-None for the current `.Seongjin/goal.md` completion criteria.
+None for the initial core completion criteria. Residual perfection gaps are tracked separately:
+
+- [#38 — Add annex and form body loading for operative attachments](https://github.com/tjdwls101010/MOLEG-API/issues/38)
+- [#39 — Support full law history beyond JSON-reachable article/date changes](https://github.com/tjdwls101010/MOLEG-API/issues/39)
+- [#40 — Strengthen Constitutional Court live e2e coverage](https://github.com/tjdwls101010/MOLEG-API/issues/40)
+- [#41 — Handle recent congress-db promulgation bridge lag explicitly](https://github.com/tjdwls101010/MOLEG-API/issues/41)
+- [#42 — Add stable live coverage for ministry first-instance interpretations](https://github.com/tjdwls101010/MOLEG-API/issues/42)
