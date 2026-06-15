@@ -1,28 +1,26 @@
 # Completion Risk Audit
 
-Audited on 2026-06-15 after the legislative live e2e gate was added.
+Audited on 2026-06-15 after the legislative live e2e gate and annex/form body loading were added.
 
 ## Verdict
 
 MOLEG-API is ready for the initial legislative-expert skill prototype, but it is not reasonable to call it "perfect" for every legislative-expert use case.
 
-The current implementation has strong evidence for the core progressive-loading path: statute/article lookup, law history, delegation, administrative rules, annex/form candidates, official and ministry interpretations, cases, query expansion, context bundles, and read-only congress-db bridge integration. The remaining risk is not a hidden defect in that core. It is a known limit where the current interface intentionally stops at candidate metadata before Claude can safely treat the context as complete.
+The current implementation has strong evidence for the core progressive-loading path: statute/article lookup, law history, delegation, administrative rules, annex/form candidates and selected text bodies, official and ministry interpretations, cases, query expansion, context bundles, and read-only congress-db bridge integration.
 
 ## Proven Core
 
 - Public `MolegApi` methods hide raw law.go.kr `target` values.
 - Live law.go.kr smoke passed across representative source families.
-- The legislative live e2e gate passed 42 scenario tests.
-- Full pytest with local credentials passed: `101 passed, 1 skipped`.
+- The legislative live e2e gate passed 43 scenario tests, including selected annex/form body loading.
+- Full pytest with local credentials passed: `107 passed, 1 skipped`.
 - congress-db was introspected with `congress_ro`, with `transaction_read_only: on`.
 - Promulgated-bill bundles preserve law-name candidates and a `source_lag_or_manual_review_required` gap when exact congress-db bridge matching fails.
 - Credentials remain in ignored local env files, not committed.
 
 ## Residual Risks
 
-| Risk | Why it matters for a legislative-expert Claude | Tracking |
-|---|---|---|
-| Annex/form bodies are not loaded or parsed. | Attached tables, amounts, standards, and required forms can carry the operative rule. Candidate metadata is not enough to answer all questions. | [#38](https://github.com/tjdwls101010/MOLEG-API/issues/38) |
+No known blocker remains for the initial core progressive-loading contract. Direct HWP/PDF attachment parsing is still intentionally out of scope; selected law/admin-rule annex/form bodies load through text-export endpoints instead.
 
 ## Not A Completion Blocker For The Initial Core
 
@@ -30,6 +28,7 @@ The following remain demand-gated by design:
 
 - One wrapper per all 195 MOLEG catalog guides.
 - Local ordinance, treaty, administrative appeal, special administrative appeal, and committee-decision modules.
+- Direct HWP/PDF parsing for every annex/form attachment.
 - Bulk mirror/cache of law.go.kr.
 - WebSearch/news/statistics retrieval inside MOLEG-API.
 
@@ -43,6 +42,7 @@ They are not required for the current initial core because `docs/design/MOLEG-AP
 | Constitutional Court live e2e previously sample-skipped. | `tests/test_live_e2e_scenarios.py` now loads a stable live `detc` detail ID and verifies constitutional source labels plus non-empty text. Search remains query-sensitive, but detail loading is live-proven. |
 | Ministry first-instance interpretation live coverage was not yet stable. | `tests/test_live_e2e_scenarios.py` now live-proves 방위사업청 ministry search, a stable ministry detail ID, and `source="all"` label separation. The parser normalizes live `Expc.expc` and `CgmExpc.cgmExpc` wrappers without exposing ministry-specific public functions. |
 | Full law history was unsupported beyond JSON-reachable article/date changes. | `trace_law_history()` now parses the HTML-only `lsHistory` list table into normalized law-level events, preserves source MST/effective-date row metadata, keeps article/date-range JSON behavior intact, and raises `ParseFailureError` if the live table shape changes. |
+| Annex/form bodies previously stopped at candidate metadata. | `get_annex_form_body()` now loads selected law/admin-rule bodies through law.go.kr text-export endpoints, with deterministic tests for law/admin-rule endpoint selection and a live e2e 식품위생법 시행령 과태료 별표 body scenario. |
 
 ## How To Read The Current Status
 
@@ -50,4 +50,4 @@ They are not required for the current initial core because `docs/design/MOLEG-AP
 
 The stronger claim that can be defended today is:
 
-> MOLEG-API is implemented and live-tested enough to support the first legislative-expert skill prototype, with known residual risks tracked as follow-up slices.
+> MOLEG-API is implemented and live-tested enough to support the first legislative-expert skill prototype, with demand-gated extensions documented instead of hidden.

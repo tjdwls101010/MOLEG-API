@@ -135,6 +135,34 @@ def test_law_client_rejects_non_html_for_html_only_search(monkeypatch):
         client.search_html("lsHistory", {"query": "건축법"})
 
 
+def test_law_client_posts_text_export(monkeypatch):
+    requests = []
+
+    def fake_urlopen(request, timeout, context=None):
+        requests.append(request)
+        return FakeResponse("annex text", content_type="txt/plain;;charset=UTF-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    assert client.post_text("lsBylTextDownLoad.do", {"bylSeq": "17677511"}) == "annex text"
+    assert requests[0].full_url == "https://www.law.go.kr/LSW/lsBylTextDownLoad.do"
+    assert requests[0].data == b"bylSeq=17677511"
+
+
+def test_law_client_rejects_non_text_export(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout, context=None: FakeResponse("%PDF", content_type="application/pdf"),
+    )
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    with pytest.raises(UnsupportedFormatError):
+        client.post_text("lsBylTextDownLoad.do", {"bylSeq": "17677511"})
+
+
 def test_law_client_passes_ssl_context_to_urlopen(monkeypatch):
     contexts = []
     ssl_context = object()

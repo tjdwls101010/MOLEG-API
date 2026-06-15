@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-15 — Annex/form bodies use text export before file parsers
+
+law.go.kr exposes selected law and administrative-rule annex/form bodies through text-export endpoints, while the visible detail pages often route through iframe/PDF-viewer surfaces. MOLEG-API therefore adds explicit `get_annex_form_body()` loading through `lsBylTextDownLoad.do` / `admRulBylTextDownLoad.do` and keeps direct HWP/PDF parsing out of the first body-loading interface.
+
 ## 2026-06-15 — Full law history uses the lsHistory list table
 
 `lsHistory` is HTML-only, and its detail endpoint returns a large UI iframe rather than a stable machine-readable history body. MOLEG-API parses the law-history list table into normalized `LawHistory` events and raises parse failure on unexpected table shape, preserving a deep `trace_law_history()` interface without making Claude handle raw HTML.
@@ -14,9 +18,9 @@ The MOLEG catalog is an input to design, not a backlog that must be exhausted. A
 
 Claude needs broad legal-source reach, but not every source detail in the first response. MOLEG-API therefore favors cheap candidate/search interfaces, explicit detail loaders, deferred follow-ups, and budgeted context bundles, balancing a small public surface against context waste from oversized all-in-one calls.
 
-## 2026-06-15 — Annex/forms are candidate context, not loaded text
+## 2026-06-15 — Annex/form search starts as candidate context
 
-Annexes and forms often contain operative tables, thresholds, amounts, and required formats that statute text alone can hide. MOLEG-API exposes law and administrative-rule annex/form search as bounded candidates with file/detail links, but does not download or parse HWP/PDF bodies until a separate parser interface is designed and live-verified.
+Annexes and forms often contain operative tables, thresholds, amounts, and required formats that statute text alone can hide. MOLEG-API exposes law and administrative-rule annex/form search as bounded candidates with file/detail links, then loads selected bodies through an explicit text-body interface instead of automatically spending context on every attachment.
 
 ## 2026-06-15 — Source adapter owns transient retry semantics
 

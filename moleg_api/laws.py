@@ -12,6 +12,8 @@ from .models import (
     AdministrativeRuleText,
     Ambiguity,
     AnnexFormHit,
+    AnnexFormIdentity,
+    AnnexFormText,
     ArticleText,
     Basis,
     BundleRequest,
@@ -113,6 +115,11 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
 ANNEX_FORM_TARGETS = {
     "law": "licbyl",
     "administrative_rule": "admbyl",
+}
+
+ANNEX_FORM_TEXT_ENDPOINTS = {
+    "licbyl": "lsBylTextDownLoad.do",
+    "admbyl": "admRulBylTextDownLoad.do",
 }
 
 ANNEX_SEARCH_SCOPES = {
@@ -475,6 +482,49 @@ class MolegApi:
             )
             for row in unwrap_target_rows(payload, target)
         ]
+
+    def get_annex_form_body(
+        self,
+        identifier: AnnexFormIdentity | AnnexFormHit | str,
+        *,
+        source: str = "law",
+        title: str | None = None,
+        include_metadata: bool = True,
+    ) -> AnnexFormText:
+        identity = annex_form_identity_from_identifier(identifier, source=source, title=title)
+        if not identity.annex_id:
+            raise NoResultError("Annex/form identity has no source ID")
+        try:
+            endpoint = ANNEX_FORM_TEXT_ENDPOINTS[identity.source_target]
+        except KeyError as exc:
+            raise UnsupportedFormatError(
+                f"{identity.source_target} annex/form body loading is not supported"
+            ) from exc
+
+        text = self.source.post_text(
+            endpoint,
+            {
+                "bylSeq": identity.annex_id,
+                "title": identity.title,
+                "mode": "0",
+            },
+        )
+        if not text.strip():
+            raise NoResultError("No annex/form body text returned")
+        return AnnexFormText(
+            identity=identity,
+            text=text,
+            file_type="text/plain",
+            extraction_method=endpoint,
+            extraction_confidence="high",
+            raw={
+                "endpoint": endpoint,
+                "source_target": identity.source_target,
+                "annex_id": identity.annex_id,
+            }
+            if include_metadata
+            else {},
+        )
 
     def get_administrative_rule(
         self,
@@ -1143,6 +1193,25 @@ def annex_type_code(source_type: str, annex_type: str) -> str:
         raise UnsupportedFormatError(
             f"Unsupported annex/form type for {source_type}: {annex_type}"
         ) from exc
+
+
+def annex_form_identity_from_identifier(
+    identifier: AnnexFormIdentity | AnnexFormHit | str,
+    *,
+    source: str,
+    title: str | None,
+) -> AnnexFormIdentity:
+    if isinstance(identifier, AnnexFormHit):
+        return identifier.identity
+    if isinstance(identifier, AnnexFormIdentity):
+        return identifier
+    source_type = annex_source_type(source)
+    return AnnexFormIdentity(
+        annex_id=str(identifier),
+        title=title or str(identifier),
+        source_type=source_type,
+        source_target=annex_target_for(source_type),
+    )
 
 
 def identity_from_identifier(identifier: LawIdentity | LawHit | str, *, basis: Basis) -> LawIdentity:
