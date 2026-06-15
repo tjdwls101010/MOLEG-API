@@ -1,13 +1,12 @@
-import os
-
 import pytest
 
 from moleg_api import LawGoKrClient, MolegApi, NoResultError
+from moleg_api.source import local_env_value
 
 
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(not os.environ.get("MOLEG_OC"), reason="MOLEG_OC is required"),
+    pytest.mark.skipif(not local_env_value("MOLEG_OC"), reason="MOLEG_OC is required"),
 ]
 
 

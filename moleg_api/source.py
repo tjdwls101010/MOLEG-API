@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any, Protocol
 
 from .errors import RateLimitError, RetryExhaustedError, SourceApiError, UnsupportedFormatError
@@ -25,6 +26,7 @@ DEFAULT_CA_FILE_CANDIDATES = (
     "/opt/homebrew/etc/openssl@3/cert.pem",
     "/usr/local/etc/openssl@3/cert.pem",
 )
+LOCAL_ENV_FILES = (".env.local", ".env")
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -56,7 +58,7 @@ class LawGoKrClient:
         ssl_context: ssl.SSLContext | None = None,
         ca_file: str | None = None,
     ) -> None:
-        self.oc = oc or os.environ.get("MOLEG_OC")
+        self.oc = oc or local_env_value("MOLEG_OC")
         if not self.oc:
             raise SourceApiError("MOLEG_OC is required for live law.go.kr calls")
         self.search_url = search_url
@@ -137,6 +139,37 @@ def build_ssl_context(ca_file: str | None = None) -> ssl.SSLContext:
             return ssl.create_default_context(cafile=candidate)
 
     return ssl.create_default_context()
+
+
+def local_env_value(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value:
+        return value
+    for file_name in LOCAL_ENV_FILES:
+        value = read_env_file_value(Path.cwd() / file_name, name)
+        if value:
+            return value
+    return None
+
+
+def read_env_file_value(path: Path, name: str) -> str | None:
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        if key.strip() != name:
+            continue
+        return strip_env_quotes(value.strip())
+    return None
+
+
+def strip_env_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
 
 
 def mask_secret(text: str, secret: str | None) -> str:

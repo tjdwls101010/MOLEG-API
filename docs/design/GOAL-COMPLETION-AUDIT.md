@@ -13,7 +13,7 @@ Current environment evidence:
 - law.go.kr live smoke passed with a local `MOLEG_OC`: `MOLEG_OC=... .venv/bin/python -m pytest tests/test_live_smoke.py -q` -> `8 passed, 1 skipped`.
 - `CONGRESS_DB_READONLY_URL` is missing, so a fresh read-only Neon re-introspection cannot be rerun from this shell.
 - Last deterministic command without `MOLEG_OC`: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`.
-- Last full command with `MOLEG_OC`: `MOLEG_OC=... .venv/bin/python -m pytest -q` -> `50 passed, 1 skipped`.
+- Last full command with local `.env` `MOLEG_OC`: `.venv/bin/python -m pytest -q` -> `53 passed, 1 skipped`.
 
 ## Requirement Audit
 
@@ -42,7 +42,7 @@ Current environment evidence:
 | Write skill integration docs explaining MOLEG-API, congress-db, and WebSearch responsibilities. | `docs/SKILL-INTEGRATION.md` documents source responsibilities, promulgated-bill workflow, query planning, fallback rules, public interfaces, and answering discipline. | Proven by document. |
 | Record decisions and API traps in decision log. | `docs/design/DECISIONS.md` contains decisions for deep interface, effective-date default, congress-db read-only use, admin `issued_on`, interpretation registry, judicial/constitutional separation, query expansion, context bundles, and retry semantics. | Proven by document. |
 | Use GitHub issues/branches/PRs to maintain progress visibility. | Merged PRs include #2, #7, #8, #9, #11, #12, #14, #17, and #19; open blocker is #15. | Proven by GitHub state at audit time. |
-| Run full tests and necessary live smoke tests. | Deterministic tests pass without credentials: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`. Full suite with local `MOLEG_OC` passes: `50 passed, 1 skipped`. | Proven for law.go.kr; congress-db remains gated by `CONGRESS_DB_READONLY_URL`. |
+| Run full tests and necessary live smoke tests. | Deterministic tests pass without credentials: `.venv/bin/python -m pytest -q` -> `42 passed, 9 skipped`. Full suite with local `.env` `MOLEG_OC` passes: `53 passed, 1 skipped`. | Proven for law.go.kr; congress-db remains gated by `CONGRESS_DB_READONLY_URL`. |
 | Verify live law.go.kr source behavior through sample calls when credentials are available. | `tests/test_live_smoke.py` covers statute detail/article, delegation, context bundle, administrative rules, annex/forms, interpretations, cases, Constitutional Court decisions, history/comparison, and query expansion. Latest run: `8 passed, 1 skipped`. | Proven for representative samples; one history/comparison sample-level skip remains acceptable when the chosen live sample has no data. |
 | Verify read-only congress-db access when needed. | Stored introspection evidence exists under `docs/design/congress-db-introspection/`; script can rerun with `CONGRESS_DB_READONLY_URL`. | Missing fresh evidence: `CONGRESS_DB_READONLY_URL` is absent in this environment. |
 
