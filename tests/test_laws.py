@@ -776,6 +776,93 @@ def test_search_interpretations_uses_ministry_registry():
     )
 
 
+def test_search_interpretations_unwraps_live_ministry_payload_shape():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "CgmExpc": {
+                    "cgmExpc": [
+                        {
+                            "법령해석일련번호": "2292577",
+                            "안건명": "국방과학기술대제전 및 국방기술 창업경진대회 행사 문의합니다",
+                            "해석기관명": "방위사업청",
+                            "해석기관코드": "1690000",
+                            "해석일자": "2025.12.23",
+                            "법령해석상세링크": (
+                                "/DRF/lawService.do?target=dapaCgmExpc&ID=2292577"
+                            ),
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations(
+        "기술",
+        source="ministry",
+        ministry="방위사업청",
+        display=3,
+    )
+
+    assert len(hits) == 1
+    identity = hits[0].identity
+    assert identity.interpretation_id == "2292577"
+    assert identity.source_type == "ministry"
+    assert identity.source_target == "dapaCgmExpc"
+    assert identity.ministry == "방위사업청"
+    assert identity.reply_agency == "방위사업청"
+    assert identity.reply_agency_code == "1690000"
+    assert identity.interpretation_date == "20251223"
+    assert source.calls[0] == (
+        "search",
+        "dapaCgmExpc",
+        {"query": "기술", "display": 3, "search": 1},
+    )
+
+
+def test_search_interpretations_all_keeps_official_and_ministry_labels_distinct():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "Expc": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "330471",
+                            "안건명": "자동차관리법 관련 법령해석례",
+                            "회신기관명": "법제처",
+                        }
+                    ]
+                }
+            },
+            {
+                "CgmExpc": {
+                    "cgmExpc": [
+                        {
+                            "법령해석일련번호": "2292577",
+                            "안건명": "국방과학기술대제전 및 국방기술 창업경진대회 행사 문의합니다",
+                            "해석기관명": "방위사업청",
+                        }
+                    ]
+                }
+            },
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations(
+        "기술",
+        source="all",
+        ministry="방위사업청",
+        display=2,
+    )
+
+    assert [(hit.identity.source_type, hit.identity.source_target) for hit in hits] == [
+        ("moleg", "expc"),
+        ("ministry", "dapaCgmExpc"),
+    ]
+    assert [hit.identity.ministry for hit in hits] == [None, "방위사업청"]
+
+
 def test_get_interpretation_loads_full_text_by_identity():
     source = FakeSource(
         service_payloads=[
