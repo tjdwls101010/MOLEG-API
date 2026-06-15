@@ -74,13 +74,10 @@ BUNDLE_STATUTE_SCENARIOS = [
     ("개인정보 보호법 제15조 검토", "개인정보 보호법", "제15조"),
 ]
 
-CONSTITUTIONAL_SAMPLE_QUERIES = [
-    "자동차",
-    "공직선거법",
-    "집회",
-    "개인정보",
-    "평등",
-]
+CONSTITUTIONAL_DETAIL_SCENARIO = (
+    "참전유공자예우에관한법률 제6조 제1항 위헌확인",
+    "58400",
+)
 
 
 @pytest.fixture(scope="module")
@@ -99,7 +96,7 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
         + len(QUERY_EXPANSION_SCENARIOS)
         + len(BUNDLE_QUESTION_SCENARIOS)
         + len(BUNDLE_STATUTE_SCENARIOS)
-        + 1  # Constitutional source label, sample-dependent.
+        + 1  # Constitutional detail source label.
         + 1  # congress-db bridge, credential-dependent.
     )
 
@@ -191,20 +188,14 @@ def test_live_e2e_loads_case_context(api: MolegApi, description: str, query: str
     assert text.text.strip()
 
 
-def test_live_e2e_preserves_constitutional_authority_label_when_sample_exists(api: MolegApi):
-    hits = []
-    for query in CONSTITUTIONAL_SAMPLE_QUERIES:
-        hits = api.search_constitutional_decisions(query, display=5)
-        if hits:
-            break
+def test_live_e2e_loads_constitutional_decision_detail(api: MolegApi):
+    title, decision_id = CONSTITUTIONAL_DETAIL_SCENARIO
+    text = api.get_constitutional_decision(decision_id)
 
-    hit = first_hit_or_skip(hits, "constitutional decision")
-    text = api.get_constitutional_decision(hit.identity)
-
-    assert hit.identity.source_type == "constitutional"
-    assert hit.identity.source_target == "detc"
     assert text.identity.source_type == "constitutional"
     assert text.identity.source_target == "detc"
+    assert text.identity.decision_id == decision_id
+    assert text.identity.title == title
     assert text.text.strip()
 
 
