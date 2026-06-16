@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qs, urlparse
 
 from .errors import NoResultError, ParseFailureError
@@ -29,6 +29,7 @@ from .models import (
     LawIdentity,
     LawStructure,
     LawStructureNode,
+    SupplementaryProvision,
 )
 
 
@@ -115,6 +116,33 @@ ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS = (
     "법적근거 조문",
 )
 
+ADMINISTRATIVE_RULE_SOURCE_ARTICLE_BRANCH_KEYS = (
+    "위임조문가지번호",
+    "위임 조문가지번호",
+    "위임 조문 가지번호",
+    "위임근거조문가지번호",
+    "위임근거 조문가지번호",
+    "위임근거 조문 가지번호",
+    "근거조문가지번호",
+    "근거 조문가지번호",
+    "근거 조문 가지번호",
+    "수권조문가지번호",
+    "수권 조문가지번호",
+    "수권 조문 가지번호",
+    "상위조문가지번호",
+    "상위 조문가지번호",
+    "상위 조문 가지번호",
+    "모법령조문가지번호",
+    "모법령 조문가지번호",
+    "모법령 조문 가지번호",
+    "모법조문가지번호",
+    "모법 조문가지번호",
+    "모법 조문 가지번호",
+    "법적근거조문가지번호",
+    "법적근거 조문가지번호",
+    "법적근거 조문 가지번호",
+)
+
 ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS = (
     "위임조문제목",
     "위임 조문제목",
@@ -145,6 +173,7 @@ ADMINISTRATIVE_RULE_SOURCE_KEYS = (
     *ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS,
     *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS,
     *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_BRANCH_KEYS,
     *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS,
     *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS,
 )
@@ -317,7 +346,10 @@ def administrative_rule_source_reference(row: dict[str, Any]) -> dict[str, str |
             first_value(row, *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS)
         )
         or quoted_law_name(basis_text),
-        "source_article": article_label(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS))
+        "source_article": article_label_from_parts(
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS),
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_BRANCH_KEYS),
+        )
         or article_from_source_basis(basis_text),
         "source_article_title": string_or_none(
             first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS)
@@ -373,7 +405,7 @@ def normalize_law_identity(row: dict[str, Any], *, basis: Basis) -> LawIdentity:
         basis=basis,
         promulgation_date=string_or_none(compact_date(first_value(info, "공포일자"))),
         effective_date=string_or_none(compact_date(first_value(info, "시행일자"))),
-        promulgation_number=string_or_none(first_value(info, "공포번호", "prom_no")),
+        promulgation_number=compact_promulgation_number(first_value(info, "공포번호", "prom_no")),
         law_type=string_or_none(first_value(info, "법종구분", "법령구분명")),
         ministry=string_or_none(first_value(info, "소관부처", "소관부처명")),
         raw_keys=raw_keys,
@@ -588,6 +620,8 @@ def normalize_annex_form_identity(
             "licbyl id",
             "admrulbyl id",
             "별표일련번호",
+            "별표가지번호",
+            "별표서식 가지번호",
             "관련법령일련번호",
             "관련행정규칙 일련번호",
             "관련행정규칙일련번호",
@@ -614,7 +648,10 @@ def normalize_annex_form_identity(
                 "관련자치법규일련번호",
             )
         ),
-        annex_number=string_or_none(first_value(info, "별표번호")),
+        annex_number=annex_number_from_parts(
+            first_value(info, "별표번호"),
+            first_value(info, "별표가지번호", "별표서식 가지번호"),
+        ),
         annex_type=string_or_none(first_value(info, "별표종류")),
         ministry=string_or_none(first_value(info, "소관부처명", "소관부처")),
         promulgation_date=string_or_none(compact_date(first_value(info, "공포일자"))),
@@ -1004,6 +1041,65 @@ def extract_articles(raw_law: dict[str, Any], identity: LawIdentity) -> list[Art
     return articles
 
 
+def extract_supplementary_provisions(
+    raw_source: dict[str, Any],
+    source_type: Literal["law", "administrative_rule"],
+) -> list[SupplementaryProvision]:
+    """Extract 부칙 rows from law or administrative-rule detail payloads."""
+
+    rows: list[Any] = []
+    top_level_text = first_value(raw_source, "부칙내용", "부칙")
+    top_level_has_supplement = (
+        top_level_text is not None
+        and not isinstance(top_level_text, (dict, list))
+    ) or any(first_value(raw_source, key) is not None for key in ("부칙공포일자", "부칙공포번호"))
+    if top_level_has_supplement:
+        rows.append(raw_source)
+    else:
+        rows.extend(supplementary_rows(raw_source.get("부칙")))
+        rows.extend(supplementary_rows(raw_source.get("부칙단위")))
+
+    provisions: list[SupplementaryProvision] = []
+    for row in rows:
+        if isinstance(row, dict):
+            text = first_value(row, "부칙내용", "부칙", "내용", "text")
+            if text is None or isinstance(text, (dict, list)):
+                continue
+            provisions.append(
+                SupplementaryProvision(
+                    source_type=source_type,
+                    title=string_or_none(first_value(row, "부칙제목", "제목")),
+                    text=str(text),
+                    promulgation_date=string_or_none(compact_date(first_value(row, "부칙공포일자"))),
+                    promulgation_number=compact_promulgation_number(first_value(row, "부칙공포번호")),
+                    raw=row,
+                )
+            )
+        elif row not in (None, ""):
+            provisions.append(
+                SupplementaryProvision(
+                    source_type=source_type,
+                    text=str(row),
+                )
+            )
+    return provisions
+
+
+def supplementary_rows(value: Any) -> list[Any]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        if any(key in value for key in ("부칙내용", "부칙공포일자", "부칙공포번호")):
+            return [value]
+        for key in ("부칙단위", "부칙"):
+            if key in value:
+                return supplementary_rows(value[key])
+        return [value]
+    return [value]
+
+
 def extract_administrative_rule_articles(
     raw_rule: dict[str, Any],
     identity: AdministrativeRuleIdentity,
@@ -1033,7 +1129,10 @@ def extract_administrative_rule_articles(
         articles.append(
             AdministrativeRuleArticleText(
                 identity=identity,
-                article=article_label(first_value(raw_rule, "조문번호", "조번호")),
+                article=article_label_from_parts(
+                    first_value(raw_rule, "조문번호", "조번호"),
+                    first_value(raw_rule, "조문가지번호", "조가지번호"),
+                ),
                 title=string_or_none(first_value(raw_rule, "조문제목", "제목")),
                 text=str(flat_text),
                 effective_date=string_or_none(compact_date(first_value(raw_rule, "시행일자"))),
@@ -1058,8 +1157,18 @@ def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText
         identity=identity,
         article=article_label_from_parts(number, branch) or "",
         title=string_or_none(title),
-        text=str(text or ""),
+        text=join_article_text(row, str(text or "")),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
+        article_kind=string_or_none(first_value(row, "조문여부")),
+        revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
+        moved_from=article_label(first_value(row, "조문이동이전", "조문이동이전번호")),
+        moved_to=article_label(first_value(row, "조문이동이후", "조문이동이후번호")),
+        has_changes=yes_no_or_none(first_value(row, "조문변경여부")),
+        is_deleted=is_deleted_article(
+            str(text or ""),
+            title=string_or_none(title),
+            revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
+        ),
         raw=row,
     )
 
@@ -1069,6 +1178,7 @@ def normalize_administrative_rule_article(
     identity: AdministrativeRuleIdentity,
 ) -> AdministrativeRuleArticleText | None:
     number = first_value(row, "조문번호", "조번호", "JO")
+    branch = first_value(row, "조문가지번호", "조가지번호")
     text = first_value(row, "조문내용", "조문본문", "내용", "content")
     title = first_value(row, "조문제목", "제목", "title")
     if number is None and text is None and title is None:
@@ -1090,12 +1200,125 @@ def normalize_administrative_rule_article(
         }
     return AdministrativeRuleArticleText(
         identity=identity,
-        article=article_label(number),
+        article=article_label_from_parts(number, branch),
         title=string_or_none(title),
-        text=str(text or ""),
+        text=join_article_text(row, str(text or "")),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
+        article_kind=string_or_none(first_value(row, "조문여부")),
+        revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
+        moved_from=article_label(first_value(row, "조문이동이전", "조문이동이전번호")),
+        moved_to=article_label(first_value(row, "조문이동이후", "조문이동이후번호")),
+        has_changes=yes_no_or_none(first_value(row, "조문변경여부")),
+        is_deleted=is_deleted_article(
+            str(text or ""),
+            title=string_or_none(title),
+            revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
+        ),
         **source_reference,
         raw=row,
+    )
+
+
+def join_article_text(row: dict[str, Any], base_text: str) -> str:
+    lines: list[str] = []
+    if base_text:
+        lines.append(base_text)
+    for line in nested_article_lines(row):
+        if line and not article_line_already_present(line, lines):
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def article_line_already_present(line: str, lines: list[str]) -> bool:
+    compact_line = compact_whitespace(line)
+    return any(compact_line in compact_whitespace(existing) for existing in lines)
+
+
+def nested_article_lines(row: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    lines.extend(nested_unit_lines(row, *PARAGRAPH_SPEC))
+    lines.extend(nested_unit_lines(row, *SUBPARAGRAPH_SPEC))
+    lines.extend(nested_unit_lines(row, *ITEM_SPEC))
+    return lines
+
+
+NestedSpec = tuple[tuple[str, ...], tuple[str, ...], "NestedSpec | None"]
+ITEM_SPEC: NestedSpec = (("목", "목단위"), ("목내용",), None)
+SUBPARAGRAPH_SPEC: NestedSpec = (("호", "호단위"), ("호내용",), ITEM_SPEC)
+PARAGRAPH_SPEC: NestedSpec = (("항", "항단위"), ("항내용",), SUBPARAGRAPH_SPEC)
+
+
+def nested_unit_lines(
+    row: dict[str, Any],
+    container_keys: tuple[str, ...],
+    text_keys: tuple[str, ...],
+    child_spec: NestedSpec | None,
+) -> list[str]:
+    lines: list[str] = []
+    for unit in child_rows(row, container_keys):
+        line = string_or_none(first_value(unit, *text_keys, "내용", "content", "text"))
+        if line:
+            lines.append(line)
+        if child_spec:
+            lines.extend(nested_unit_lines(unit, *child_spec))
+    return lines
+
+
+def child_rows(row: dict[str, Any], keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key in keys:
+        rows.extend(child_rows_from_container(row.get(key), keys))
+    return rows
+
+
+def child_rows_from_container(value: Any, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if value in (None, ""):
+        return []
+    content = content_value(value)
+    if isinstance(content, dict) and any(key in content for key in keys):
+        return child_rows(content, keys)
+    rows: list[dict[str, Any]] = []
+    for item in ensure_list(content):
+        if isinstance(item, dict):
+            rows.append(item)
+    return rows
+
+
+def compact_whitespace(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def yes_no_or_none(value: Any) -> bool | None:
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().upper()
+    if normalized in {"Y", "YES", "TRUE", "1"}:
+        return True
+    if normalized in {"N", "NO", "FALSE", "0"}:
+        return False
+    return None
+
+
+def is_deleted_article(
+    text: str,
+    *,
+    title: str | None = None,
+    revision_type: str | None = None,
+) -> bool:
+    if revision_type and "삭제" in revision_type:
+        return True
+    if title and title.strip() == "삭제":
+        return True
+    return article_text_marks_deleted(text)
+
+
+def article_text_marks_deleted(text: str) -> bool:
+    compact = compact_whitespace(text)
+    return bool(
+        re.fullmatch(
+            r"제\d+조(?:의\d+)?(?:\([^)]*\))?삭제(?:[<［【(].*)?",
+            compact,
+        )
     )
 
 
@@ -1151,7 +1374,10 @@ def normalize_history_events(
                 promulgation_date=promulgation_date,
             ),
             revision_type=string_or_none(first_value(row, "제개정구분명", "제개정구분")),
-            article=article_label(first_value(row, "조문번호", "조문정보", "JO")),
+            article=article_label_from_parts(
+                first_value(row, "조문번호", "조문정보", "JO"),
+                first_value(row, "조문가지번호", "조가지번호"),
+            ),
             article_text=article_text,
             reason=string_or_none(first_value(row, "변경사유")),
             raw=row,
@@ -1320,7 +1546,10 @@ def normalize_delegated_rules(payload: dict[str, Any]) -> list[DelegatedRule]:
             source = row
             info = row
         rule = DelegatedRule(
-            source_article=article_label(first_value(source, "조문번호", "조번호", "조항호목")),
+            source_article=article_label_from_parts(
+                first_value(source, "조문번호", "조번호", "조항호목"),
+                first_value(source, "조문가지번호", "조가지번호"),
+            ),
             source_article_title=string_or_none(first_value(source, "조문제목", "조제목")),
             delegated_type=string_or_none(first_value(info, "위임구분", "법종구분")),
             delegated_name=string_or_none(
@@ -1328,7 +1557,15 @@ def normalize_delegated_rules(payload: dict[str, Any]) -> list[DelegatedRule]:
             ),
             delegated_law_id=string_or_none(first_value(info, "법령ID", "위임법령ID")),
             delegated_mst=string_or_none(first_value(info, "위임법령일련번호", "위임행정규칙일련번호", "위임자치법규일련번호", "법령일련번호")),
-            delegated_article=article_label(first_value(info, "위임법령조문번호", "위임행정규칙조번호")),
+            delegated_article=article_label_from_parts(
+                first_value(info, "위임법령조문번호", "위임행정규칙조번호"),
+                first_value(
+                    info,
+                    "위임법령조문가지번호",
+                    "위임행정규칙조가지번호",
+                    "위임행정규칙조문가지번호",
+                ),
+            ),
             text=string_or_none(first_value(info, "라인텍스트", "조내용", "링크텍스트")),
             raw=row,
         )
@@ -1367,33 +1604,65 @@ def article_rows_from_diff(payload: dict[str, Any], key: str) -> list[dict[str, 
 
 
 def article_key(row: dict[str, Any]) -> str:
-    value = first_value(row, "no", "조문번호", "JO")
-    return str(value or "")
+    return article_label_from_parts(
+        first_value(row, "no", "조문번호", "JO"),
+        first_value(row, "조문가지번호", "조가지번호"),
+    ) or ""
 
 
 def article_label(value: Any) -> str | None:
     if value in (None, ""):
         return None
-    text = str(value)
+    text = str(value).strip()
     if text.startswith("제"):
         return text
+    if re.fullmatch(r"\d{6}", text):
+        main = int(text[:4])
+        branch = int(text[4:])
+        return f"제{main}조의{branch}" if branch else f"제{main}조"
+    match = re.fullmatch(r"(\d+)\s*조(?:\s*의\s*(\d+))?", text)
+    if match:
+        main = int(match.group(1))
+        branch = int(match.group(2) or 0)
+        return f"제{main}조의{branch}" if branch else f"제{main}조"
     if text.isdigit():
         return f"제{int(text)}조"
     return text
 
 
+def annex_number_from_parts(number: Any, branch: Any = None) -> str | None:
+    if number in (None, ""):
+        return None
+    text = str(number).strip()
+    branch_text = str(branch or "").strip()
+    if not branch_text or not branch_text.isdigit() or int(branch_text) == 0:
+        return text
+    if re.search(r"의\s*\d+", text):
+        return text
+    return f"{text}의{int(branch_text)}"
+
+
 def article_label_from_parts(number: Any, branch: Any = None) -> str | None:
     if number in (None, ""):
         return None
-    text = str(number)
+    text = str(number).strip()
+    branch_text = str(branch or "").strip()
+    branch_number = int(branch_text) if branch_text.isdigit() and int(branch_text) != 0 else None
+    if branch_number is None and re.fullmatch(r"\d{6}", text):
+        main = int(text[:4])
+        source_branch = int(text[4:])
+        return f"제{main}조의{source_branch}" if source_branch else f"제{main}조"
     if text.startswith("제"):
+        if branch_number is not None:
+            match = re.fullmatch(r"제\s*(\d+)\s*조", text)
+            if match:
+                return f"제{int(match.group(1))}조의{branch_number}"
         return text
     if not text.isdigit():
         return text
     main = int(text)
-    branch_text = str(branch or "").strip()
-    if branch_text and branch_text.isdigit() and int(branch_text) != 0:
-        return f"제{main}조의{int(branch_text)}"
+    if branch_number is not None:
+        return f"제{main}조의{branch_number}"
     return f"제{main}조"
 
 

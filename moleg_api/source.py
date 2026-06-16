@@ -170,6 +170,17 @@ class LawGoKrClient:
                         raise RateLimitError(message) from exc
                     raise RetryExhaustedError(message) from exc
                 raise SourceApiError(http_error_message(exc, self.oc, target, attempt + 1)) from exc
+            except TimeoutError as exc:
+                if attempt < self.max_retries:
+                    self._sleep_before_retry()
+                    continue
+                message = (
+                    f"law.go.kr retry exhausted for target {target} after {attempt + 1} attempt(s): "
+                    f"{mask_secret(str(exc), self.oc)}"
+                )
+                if self.max_retries > 0:
+                    raise RetryExhaustedError(message) from exc
+                raise SourceApiError(mask_secret(str(exc), self.oc)) from exc
             except urllib.error.URLError as exc:
                 if attempt < self.max_retries:
                     self._sleep_before_retry()

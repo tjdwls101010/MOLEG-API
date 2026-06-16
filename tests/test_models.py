@@ -19,6 +19,7 @@ from moleg_api import (
     LawText,
     LegalContextBundle,
     LoadedContext,
+    SupplementaryProvision,
 )
 
 
@@ -151,8 +152,15 @@ def test_to_dict_serializes_nested_dataclasses_without_raw_by_default():
                 "text": "탄소중립 목적",
                 "title": "목적",
                 "effective_date": None,
+                "article_kind": None,
+                "revision_type": None,
+                "moved_from": None,
+                "moved_to": None,
+                "has_changes": None,
+                "is_deleted": False,
             }
         ],
+        "supplementary_provisions": [],
     }
 
 
@@ -178,6 +186,13 @@ def test_to_dict_serializes_full_context_bundle_graph():
     law = LawText(
         identity=identity,
         articles=[ArticleText(identity=identity, article="제1조", text="목적")],
+        supplementary_provisions=[
+            SupplementaryProvision(
+                source_type="law",
+                text="제1조(시행일) 이 법은 공포한 날부터 시행한다.",
+                promulgation_date="20250101",
+            )
+        ],
         raw={"source": "loaded"},
     )
     bundle = LegalContextBundle(
@@ -213,6 +228,7 @@ def test_to_dict_serializes_full_context_bundle_graph():
 
     assert data["request"]["promulgation_bridge"] == {"prom_no": "1"}
     assert data["loaded"]["laws"][0]["articles"][0]["article"] == "제1조"
+    assert data["loaded"]["laws"][0]["supplementary_provisions"][0]["promulgation_date"] == "20250101"
     assert data["candidates"]["laws"][0]["name"] == "탄소중립법"
     assert data["deferred"][0]["filters"] == {"basis": "effective"}
     assert data["ambiguities"][0]["candidates"][0]["identity"]["law_id"] == "014152"

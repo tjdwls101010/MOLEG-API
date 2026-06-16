@@ -4,6 +4,7 @@ This is the deterministic pre-skill consumer gate for MOLEG-API. It plays the fu
 
 The executable harness is `scripts/fake_skill_tracer_bullet.py`.
 The regression gate is `tests/test_fake_skill_tracer_bullet.py`.
+The next-layer answer-readiness audit is `scripts/legislative_expert_e2e_audit.py`, documented in `docs/design/LEGISLATIVE-EXPERT-E2E-AUDIT.md`.
 
 ## Purpose
 
@@ -15,7 +16,7 @@ The harness is not a legal reasoning engine. It does not decide which rule contr
 
 | Archetype | Public interfaces exercised | Gate evidence |
 |---|---|---|
-| Sanction design | `load_legal_context_bundle()`, `get_annex_form_body()` | statute/delegation loaded, interpretation/case/Constitutional Court detail eagerly loaded, annex table structured, WebSearch gap preserved |
+| Sanction design | `load_legal_context_bundle()`, `get_annex_form_body()` | statute/delegation loaded, interpretation/case/Constitutional Court detail eagerly loaded only as bounded first-pass context, annex table structured, WebSearch gap preserved |
 | Delegated-criteria tracing | `load_institutional_system()` | law text, `lsStmd` structure, delegation graph, administrative-rule and annex candidates |
 | Statute evolution | `trace_law_history()` | article-scoped history has post-change `article_text`, normalized promulgation number, and caller-supplied `bill_id` |
 | congress-bill to current law | `load_legal_context_bundle(mode="promulgated_bill")` | promulgation bridge resolves to effective current law, history/diff follow-ups remain deferred |
@@ -37,7 +38,15 @@ Last run on 2026-06-17:
 
 ```bash
 python3 scripts/fake_skill_tracer_bullet.py
+python3 scripts/legislative_expert_e2e_audit.py
+python3 scripts/legislative_expert_prompt_dry_run.py
+python3 scripts/legislative_expert_answer_discipline.py
 python3 -m pytest tests/test_fake_skill_tracer_bullet.py -q
+python3 -m pytest tests/test_legislative_expert_e2e_audit.py -q
+python3 -m pytest tests/test_legislative_expert_prompt_dry_run.py -q
+python3 -m pytest tests/test_legislative_expert_gate_crosswalk.py -q
+python3 -m pytest tests/test_legislative_expert_artifact_safety.py -q
+python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 python3 -m pytest -q -m 'not live'
 ```
 
@@ -45,8 +54,16 @@ Results:
 
 ```text
 scripts/fake_skill_tracer_bullet.py -> emitted JSON summaries for 7 archetypes
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 49 scenarios
+scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
+scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 45 answer-discipline reports
 tests/test_fake_skill_tracer_bullet.py -q -> 2 passed
-python3 -m pytest -q -m 'not live' -> 131 passed, 54 deselected
+tests/test_legislative_expert_e2e_audit.py -q -> 43 passed
+tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
+tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 46 passed
+tests/test_legislative_expert_answer_discipline.py -q -> 46 passed
+python3 -m pytest -q -m 'not live' -> 324 passed, 54 deselected
 ```
 
 ## Non-Goals

@@ -23,6 +23,7 @@ from .models import (
     AnnexFormText,
     AnnexSearchScope,
     AnnexType,
+    ArticleContext,
     ArticleReference,
     ArticleText,
     Basis,
@@ -59,6 +60,7 @@ from .models import (
     LawStructure,
     LawStructureNode,
     LawText,
+    SupplementaryProvision,
     StructuredTableData,
 )
 from .source import LawGoKrClient
@@ -76,6 +78,7 @@ __all__ = [
     "AnnexFormText",
     "AnnexSearchScope",
     "AnnexType",
+    "ArticleContext",
     "ArticleReference",
     "ArticleText",
     "Basis",
@@ -120,6 +123,7 @@ __all__ = [
     "RateLimitError",
     "RetryExhaustedError",
     "SourceApiError",
+    "SupplementaryProvision",
     "StructuredTableData",
     "UnsupportedFormatError",
 ]

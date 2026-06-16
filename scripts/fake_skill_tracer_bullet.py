@@ -460,6 +460,7 @@ def law_text_payload(
     *,
     article: str,
     title: str,
+    effective_date: str = "20260101",
 ) -> dict[str, Any]:
     article_no = article.removeprefix("제").removesuffix("조")
     return {
@@ -468,7 +469,7 @@ def law_text_payload(
                 "법령ID": law_id,
                 "법령명_한글": name,
                 "법령일련번호": mst,
-                "시행일자": "20260101",
+                "시행일자": effective_date,
             },
             "조문": {
                 "조문단위": [

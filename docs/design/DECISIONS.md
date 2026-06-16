@@ -2,6 +2,26 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — Article status is public source state
+
+MOLEG article payloads expose source-backed status fields such as `조문제개정유형`, `조문변경여부`, and movement metadata, and a deleted article can still be returned by a current article lookup. MOLEG-API therefore exposes article status on `ArticleText` / `AdministrativeRuleArticleText` so the skill can distinguish citable source state from current operative text without parsing `raw`.
+
+## 2026-06-17 — Article text preserves nested 항·호·목
+
+MOLEG detail payloads can expose article text as top-level `조문내용` plus separate nested `항`, `호`, and `목` fields, and legislative answers about definitions, exceptions, or requirements fail if the skill reads only the article heading or first sentence. MOLEG-API therefore flattens nested unit text into `ArticleText.text` and `AdministrativeRuleArticleText.text` for the first skill-facing interface, instead of exposing a separate tree model before a repeated caller need justifies that larger interface.
+
+## 2026-06-17 — 부칙 is part of loaded text, not raw metadata
+
+The catalog exposes `부칙공포일자`, `부칙공포번호`, and `부칙내용` on law and administrative-rule detail payloads, and legislative answers about 시행일, 적용례, or 경과조치 fail if those fields stay buried in `raw`. MOLEG-API therefore exposes `supplementary_provisions` on `LawText` and `AdministrativeRuleText` instead of adding a separate endpoint or asking the skill to parse raw law.go.kr payloads.
+
+## 2026-06-17 — Administrative-rule current-force checks happen after detail loading
+
+The `admrul` list filter is an issuing-date filter, while administrative-rule effective date is preserved on selected detail payloads. MOLEG-API therefore does not add a misleading `as_of` filter to `search_administrative_rules()` or `get_administrative_rule()`; the legislative-expert skill must compare the loaded administrative-rule `effective_date` to the reference date before calling it current operational criteria.
+
+## 2026-06-17 — Bundle current-force checks require explicit `as_of`
+
+Promulgation bridge resolution or explicit statute-set selection proves source identity, but it does not prove the text is in force on the user's reference date. `load_legal_context_bundle()` and `load_institutional_system()` therefore accept explicit `as_of`, pass it to effective-date law/article loaders, and emit `not_effective_as_of` when the loaded effective date is later, instead of silently using wall-clock "today" or treating promulgation/source selection as current force.
+
 ## 2026-06-17 — No synthetic constitutional doctrine filter
 
 The `detc` catalog and live detail response expose Constitutional Court doctrines only inside prose fields such as `판시사항`, `결정요지`, and `전문`, not as a structured source field. MOLEG-API will not add `search_constitutional_decisions(doctrine=...)` or infer doctrine labels from free text; the skill should use body keyword search plus detail loading until law.go.kr exposes a source-backed doctrine/category field.

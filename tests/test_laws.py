@@ -1,7 +1,7 @@
 import pytest
 
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
-from moleg_api.errors import ParseFailureError, UnsupportedFormatError
+from moleg_api.errors import ParseFailureError, RateLimitError, UnsupportedFormatError
 from moleg_api.laws import MINISTRY_INTERPRETATION_SOURCES
 from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity, StructuredTableData
 from moleg_api.normalization import format_article_jo
@@ -102,6 +102,46 @@ def test_resolve_promulgated_law_uses_congress_bridge_fields():
     assert source.calls[0][1] == "law"
 
 
+def test_resolve_promulgated_law_requires_law_name_anchor_before_source_call():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="prom_law_nm"):
+        MolegApi(source).resolve_promulgated_law(prom_no="20100")
+
+    with pytest.raises(NoResultError, match="prom_law_nm"):
+        MolegApi(source).resolve_promulgated_law(prom_law_nm="   ", prom_no="20100")
+
+    assert source.calls == []
+
+
+def test_resolve_promulgated_law_matches_formatted_promulgation_numbers():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "222222",
+                            "법령명한글": "데이터기본법",
+                            "공포번호": "제20100호",
+                            "공포일자": "20250315",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    identity = MolegApi(source).resolve_promulgated_law(
+        prom_law_nm="데이터기본법",
+        prom_no="제20100호",
+        promulgation_dt="20250315",
+    )
+
+    assert identity.law_id == "222222"
+    assert identity.promulgation_number == "20100"
+
+
 def test_resolve_promulgated_law_raises_on_ambiguous_bridge():
     source = FakeSource(
         search_payloads=[
@@ -174,6 +214,15 @@ def test_get_law_returns_identity_and_articles_from_effective_text():
                             }
                         ]
                     },
+                    "부칙": {
+                        "부칙단위": [
+                            {
+                                "부칙공포일자": "20260407",
+                                "부칙공포번호": "제21527호",
+                                "부칙내용": "제1조(시행일) 이 법은 2026년 4월 7일부터 시행한다.",
+                            }
+                        ]
+                    },
                 }
             }
         ]
@@ -186,6 +235,10 @@ def test_get_law_returns_identity_and_articles_from_effective_text():
     assert result.articles[0].article == "제1조"
     assert result.articles[0].title == "목적"
     assert "기후위기" in result.articles[0].text
+    assert result.supplementary_provisions[0].source_type == "law"
+    assert result.supplementary_provisions[0].promulgation_date == "20260407"
+    assert result.supplementary_provisions[0].promulgation_number == "21527"
+    assert "시행일" in result.supplementary_provisions[0].text
     assert source.calls[0] == ("service", "eflaw", {"ID": "014152"})
 
 
@@ -223,6 +276,301 @@ def test_get_law_prefers_mst_for_effective_detail_when_available():
 
     assert law.identity.name == "자동차관리법"
     assert source.calls[0] == ("service", "eflaw", {"MST": "283767"})
+
+
+def test_get_law_preserves_top_level_supplementary_metadata():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문내용": "제1조(목적) 이 법은 자동차를 효율적으로 관리한다.",
+                            }
+                        ]
+                    },
+                    "부칙공포일자": "20250101",
+                    "부칙공포번호": "제20000호",
+                    "부칙": "제1조(시행일) 이 법은 공포한 날부터 시행한다.",
+                }
+            }
+        ]
+    )
+
+    law = MolegApi(source).get_law(identity)
+
+    assert law.supplementary_provisions[0].text.startswith("제1조(시행일)")
+    assert law.supplementary_provisions[0].promulgation_date == "20250101"
+    assert law.supplementary_provisions[0].promulgation_number == "20000"
+
+
+def test_get_article_includes_nested_paragraph_subparagraph_and_item_text():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "2",
+                        "조문제목": "정의",
+                        "조문내용": "제2조(정의) 이 법에서 사용하는 용어의 뜻은 다음과 같다.",
+                        "항": [
+                            {
+                                "항번호": "1",
+                                "항내용": "① \"자동차\"란 원동기로 육상에서 이동할 목적으로 제작한 용구를 말한다.",
+                                "호": [
+                                    {
+                                        "호번호": "1",
+                                        "호내용": "1. 승용자동차",
+                                        "목": [
+                                            {
+                                                "목번호": "가",
+                                                "목내용": "가. 일반형 승용자동차",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                            {
+                                "항번호": "2",
+                                "항내용": "② \"자동차사용자\"란 자동차 소유자 또는 사용 권한이 있는 자를 말한다.",
+                            },
+                        ],
+                    },
+                }
+            }
+        ]
+    )
+
+    article = MolegApi(source).get_article(identity, "제2조")
+
+    assert "제2조(정의)" in article.text
+    assert "\"자동차\"란" in article.text
+    assert "1. 승용자동차" in article.text
+    assert "가. 일반형 승용자동차" in article.text
+    assert "\"자동차사용자\"란" in article.text
+
+
+def test_get_article_includes_nested_text_from_wrapped_source_containers():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "2",
+                        "조문제목": "정의",
+                        "조문내용": "제2조(정의) 용어의 뜻은 다음과 같다.",
+                        "항": {
+                            "항단위": [
+                                {
+                                    "항내용": "① 자동차의 종류는 다음 각 호와 같다.",
+                                    "호": {
+                                        "호단위": [
+                                            {
+                                                "호내용": "1. 승용자동차",
+                                                "목": {
+                                                    "목단위": [
+                                                        {
+                                                            "목내용": "가. 일반형 승용자동차",
+                                                        }
+                                                    ]
+                                                },
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        },
+                    },
+                }
+            }
+        ]
+    )
+
+    article = MolegApi(source).get_article(identity, "제2조")
+
+    assert "① 자동차의 종류" in article.text
+    assert "1. 승용자동차" in article.text
+    assert "가. 일반형 승용자동차" in article.text
+
+
+def test_get_article_preserves_article_status_and_move_metadata():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "8",
+                        "조문제목": "삭제",
+                        "조문내용": "제8조 삭제 <2025. 1. 1.>",
+                        "조문시행일자": "20250101",
+                        "조문여부": "조문",
+                        "조문제개정유형": "삭제",
+                        "조문이동이전": "7",
+                        "조문이동이후": "9",
+                        "조문변경여부": "Y",
+                    },
+                }
+            }
+        ]
+    )
+
+    article = MolegApi(source).get_article(identity, "제8조")
+
+    assert article.article == "제8조"
+    assert article.effective_date == "20250101"
+    assert article.article_kind == "조문"
+    assert article.revision_type == "삭제"
+    assert article.moved_from == "제7조"
+    assert article.moved_to == "제9조"
+    assert article.has_changes is True
+    assert article.is_deleted is True
+
+
+def test_get_article_marks_deleted_from_deleted_article_text():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "8",
+                        "조문내용": "제8조 삭제 <2025. 1. 1.>",
+                    }
+                }
+            }
+        ]
+    )
+
+    article = MolegApi(source).get_article(identity, "제8조")
+
+    assert article.is_deleted is True
+
+
+def test_load_article_context_follows_moved_article_to_current_destination():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "8",
+                        "조문제목": "이동",
+                        "조문내용": "제8조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문시행일자": "20250101",
+                        "조문제개정유형": "이동",
+                        "조문이동이전": "8",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차 소유자는 등록하여야 한다.",
+                        "조문시행일자": "20250101",
+                        "조문제개정유형": "전문개정",
+                    },
+                }
+            },
+        ]
+    )
+
+    context = MolegApi(source).load_article_context(identity, "제8조")
+
+    assert context.requested_article.article == "제8조"
+    assert context.requested_article.moved_to == "제12조"
+    assert context.current_article is not None
+    assert context.current_article.article == "제12조"
+    assert "등록하여야" in context.current_article.text
+    assert [article.article for article in context.loaded_articles] == ["제8조", "제12조"]
+    assert context.gaps == []
+    assert context.deferred == []
+    assert source.calls == [
+        ("service", "eflawjosub", {"ID": "001747", "JO": "000800"}),
+        ("service", "eflawjosub", {"ID": "001747", "JO": "001200"}),
+    ]
+
+
+def test_load_article_context_preserves_moved_destination_load_failure():
+    class DestinationRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            if params.get("JO") == "001200":
+                raise RateLimitError("law.go.kr rate limited target eflawjosub after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = DestinationRateLimitedSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "8",
+                        "조문제목": "이동",
+                        "조문내용": "제8조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            }
+        ]
+    )
+
+    context = MolegApi(source).load_article_context(identity, "제8조")
+
+    assert context.current_article is None
+    assert [article.article for article in context.loaded_articles] == ["제8조"]
+    assert [(gap.kind, gap.recommended_interface, gap.query) for gap in context.gaps] == [
+        ("source_access_failure", "get_article", "자동차관리법 제12조")
+    ]
+    assert "RateLimitError" in context.gaps[0].reason
+    assert [(item.interface, item.query, item.filters) for item in context.deferred] == [
+        (
+            "get_article",
+            "자동차관리법 제12조",
+            {
+                "article": "제12조",
+                "basis": "effective",
+                "law_id": "001747",
+            },
+        )
+    ]
 
 
 def test_get_law_filters_requested_articles_in_request_order():
@@ -317,6 +665,32 @@ def test_get_law_rejects_empty_articles_list():
     with pytest.raises(NoResultError):
         MolegApi(source).get_law("001747", articles=[])
 
+
+def test_context_bundle_rejects_empty_articles_list_before_source_call():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="articles must contain"):
+        MolegApi(source).load_legal_context_bundle(
+            law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+            mode="statute_review",
+            articles=[],
+        )
+
+    assert source.calls == []
+
+
+def test_institutional_system_rejects_empty_articles_list_before_source_call():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="articles must contain"):
+        MolegApi(source).load_institutional_system(
+            [LawIdentity(law_id="001747", name="자동차관리법", basis="effective")],
+            articles=[],
+        )
+
+    assert source.calls == []
+
+
 @pytest.mark.parametrize(
     "call",
     [
@@ -366,7 +740,7 @@ def test_get_article_formats_human_article_notation_and_returns_text():
 
     article = MolegApi(source).get_article(identity, "제10조의2")
 
-    assert article.article == "제10조"
+    assert article.article == "제10조의2"
     assert article.title == "국가 탄소중립 녹색성장 기본계획의 수립ㆍ시행"
     assert "정부는" in article.text
     assert source.calls[0] == (
@@ -419,6 +793,31 @@ def test_article_jo_format_hides_source_six_digit_rule():
     assert format_article_jo("제10조의2") == "001002"
     assert format_article_jo(7) == "000700"
     assert format_article_jo("000300") == "000300"
+
+
+def test_article_label_filters_accept_common_human_and_source_notation():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "10", "조문가지번호": "2"},
+                                "위임정보": {"위임법령제목": "자동차관리법 시행령"},
+                            }
+                        ],
+                    }
+                }
+            }
+        ]
+    )
+
+    graph = MolegApi(source).find_delegated_rules(identity, article="10조의2")
+
+    assert graph.rules[0].source_article == "제10조의2"
 
 
 def test_trace_law_history_uses_article_change_history_json_surface():
@@ -522,6 +921,43 @@ def test_trace_law_history_uses_source_article_text_without_secondary_lookup():
     ]
 
 
+def test_trace_law_history_normalizes_source_jo_branch_article_numbers():
+    identity = LawIdentity(
+        law_id="001971",
+        name="건축법",
+        basis="effective",
+    )
+    source = FakeSource(
+        service_payloads=[
+            {
+                "lsJoHstInf": {
+                    "law": [
+                        {
+                            "법령ID": "001971",
+                            "법령명한글": "건축법",
+                            "JO": "001002",
+                            "조문변경일": "20250101",
+                            "조문시행일": "20250401",
+                            "조문내용": "제10조의2(특례) source payload text",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    history = MolegApi(source).trace_law_history(identity, article="10조의2")
+
+    assert history.events[0].article == "제10조의2"
+    assert source.calls == [
+        (
+            "service",
+            "lsJoHstInf",
+            {"ID": "001971", "JO": "001002"},
+        )
+    ]
+
+
 def test_trace_law_history_keeps_article_text_none_when_snapshot_lookup_fails():
     identity = LawIdentity(
         law_id="001971",
@@ -550,6 +986,10 @@ def test_trace_law_history_keeps_article_text_none_when_snapshot_lookup_fails():
     history = MolegApi(source).trace_law_history(identity, article="제5조")
 
     assert history.events[0].article_text is None
+    assert [(gap.kind, gap.recommended_interface, gap.query) for gap in history.source_failures] == [
+        ("source_loading_failed", "get_article", "건축법 제5조 20250401")
+    ]
+    assert "NoResultError" in history.source_failures[0].reason
     assert history.events[0].promulgation_law_name == "건축법"
     assert history.events[0].promulgation_date is None
     assert history.events[0].promulgation_number is None
@@ -711,6 +1151,70 @@ def test_compare_law_versions_normalizes_old_and_new_articles():
     assert source.calls[0] == ("service", "oldAndNew", {"ID": "000182"})
 
 
+def test_compare_law_versions_accepts_human_branch_article_filter_for_source_jo():
+    identity = LawIdentity(law_id="000182", name="가정폭력방지법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "oldAndNew": {
+                    "구조문_기본정보": {"법령ID": "000182", "법령명": "가정폭력방지법"},
+                    "신조문_기본정보": {"법령ID": "000182", "법령명": "가정폭력방지법"},
+                    "구조문목록": {
+                        "조문": [{"no": "001002", "content": "종전 특례"}]
+                    },
+                    "신조문목록": {
+                        "조문": [{"no": "001002", "content": "개정 특례"}]
+                    },
+                }
+            }
+        ]
+    )
+
+    diff = MolegApi(source).compare_law_versions(identity, article="10조의2")
+
+    assert diff.changes[0].article == "제10조의2"
+    assert diff.changes[0].before_text == "종전 특례"
+    assert diff.changes[0].after_text == "개정 특례"
+
+
+def test_compare_law_versions_accepts_branch_article_filter_from_split_source_fields():
+    identity = LawIdentity(law_id="000182", name="가정폭력방지법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "oldAndNew": {
+                    "구조문_기본정보": {"법령ID": "000182", "법령명": "가정폭력방지법"},
+                    "신조문_기본정보": {"법령ID": "000182", "법령명": "가정폭력방지법"},
+                    "구조문목록": {
+                        "조문": [
+                            {
+                                "조문번호": "10",
+                                "조문가지번호": "2",
+                                "content": "종전 분리필드 특례",
+                            }
+                        ]
+                    },
+                    "신조문목록": {
+                        "조문": [
+                            {
+                                "조문번호": "10",
+                                "조문가지번호": "2",
+                                "content": "개정 분리필드 특례",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    diff = MolegApi(source).compare_law_versions(identity, article="10조의2")
+
+    assert diff.changes[0].article == "제10조의2"
+    assert diff.changes[0].before_text == "종전 분리필드 특례"
+    assert diff.changes[0].after_text == "개정 분리필드 특례"
+
+
 def test_compare_law_versions_rejects_arbitrary_date_window():
     identity = LawIdentity(law_id="000182", name="가정폭력방지법", basis="effective")
     source = FakeSource()
@@ -759,7 +1263,7 @@ def test_find_delegated_rules_normalizes_lower_rule_relationships():
         ]
     )
 
-    graph = MolegApi(source).find_delegated_rules(identity, article="제4조")
+    graph = MolegApi(source).find_delegated_rules(identity, article="4")
 
     assert graph.identity.name == "가정폭력방지법"
     assert graph.rules[0].source_article == "제4조"
@@ -770,6 +1274,37 @@ def test_find_delegated_rules_normalizes_lower_rule_relationships():
     assert graph.rules[0].delegated_article == "제2조"
     assert "대통령령" in graph.rules[0].text
     assert source.calls[0] == ("service", "lsDelegated", {"ID": "000182"})
+
+
+def test_find_delegated_rules_preserves_branch_delegated_article():
+    identity = LawIdentity(law_id="000182", name="가정폭력방지법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "000182", "법령명": "가정폭력방지법"},
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "4"},
+                                "위임정보": {
+                                    "위임구분": "시행령",
+                                    "위임법령제목": "가정폭력방지법 시행령",
+                                    "위임법령조문번호": "10",
+                                    "위임법령조문가지번호": "2",
+                                    "라인텍스트": "대통령령으로 정하는 특례",
+                                },
+                            }
+                        ],
+                    }
+                }
+            }
+        ]
+    )
+
+    graph = MolegApi(source).find_delegated_rules(identity, article="4")
+
+    assert graph.rules[0].delegated_article == "제10조의2"
 
 
 def law_structure_payload():
@@ -1003,6 +1538,75 @@ def test_search_administrative_rules_normalizes_current_rule_hits():
     )
 
 
+def test_search_administrative_rules_preserves_branch_source_article_reference():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000248758",
+                            "행정규칙명": "119항공대 운영 규정",
+                            "위임법령명": "항공안전법",
+                            "위임조문번호": "10",
+                            "위임조문가지번호": "2",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_administrative_rules("119항공대")
+
+    assert hits[0].identity.source_law_name == "항공안전법"
+    assert hits[0].identity.source_article == "제10조의2"
+
+
+def test_search_administrative_rules_keeps_issued_on_distinct_from_effective_date():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000300000",
+                            "행정규칙ID": "099999",
+                            "행정규칙명": "전기자동차 충전시설 운영 규정",
+                            "행정규칙종류": "고시",
+                            "발령일자": "20250101",
+                            "시행일자": "20250301",
+                            "소관부처명": "국토교통부",
+                            "현행연혁구분": "현행",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_administrative_rules(
+        "전기자동차 충전시설",
+        issued_on="2025-01-01",
+        display=5,
+    )
+
+    assert len(hits) == 1
+    identity = hits[0].identity
+    assert identity.issuing_date == "20250101"
+    assert identity.effective_date == "20250301"
+    assert source.calls[0] == (
+        "search",
+        "admrul",
+        {
+            "query": "전기자동차 충전시설",
+            "display": 5,
+            "nw": 1,
+            "date": "20250101",
+        },
+    )
+
+
 def test_search_annex_forms_normalizes_law_candidates_without_exposing_targets():
     source = FakeSource(
         search_payloads=[
@@ -1060,6 +1664,30 @@ def test_search_annex_forms_normalizes_law_candidates_without_exposing_targets()
         "licbyl",
         {"query": "자동차", "display": 3, "search": 2, "knd": "1"},
     )
+
+
+def test_search_annex_forms_preserves_branch_annex_numbers():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "220000002",
+                        "별표명": "자동차등록번호판 특례 기준",
+                        "관련법령명": "자동차관리법",
+                        "별표번호": "별표 1",
+                        "별표가지번호": "2",
+                        "별표종류": "별표",
+                    }
+                ]
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_annex_forms("자동차", source="law")
+
+    assert hits[0].identity.annex_number == "별표 1의2"
+    assert hits[0].identity.raw_keys["별표가지번호"] == "2"
 
 
 def test_search_annex_forms_normalizes_administrative_rule_candidates():
@@ -1182,6 +1810,31 @@ def test_fixed_vocabulary_params_raise_actionable_validation_errors(call, expect
     message = str(exc_info.value)
     assert expected in message
     assert "Valid values:" in message
+    assert source.calls == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda api: api.search_laws("   "),
+        lambda api: api.search_administrative_rules("   "),
+        lambda api: api.search_annex_forms("   "),
+        lambda api: api.search_interpretations("   "),
+        lambda api: api.search_cases("   "),
+        lambda api: api.search_constitutional_decisions("   "),
+        lambda api: api.load_legal_context_bundle("   ", mode="question"),
+        lambda api: api.load_delegated_criteria(
+            LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+            query="   ",
+        ),
+    ],
+)
+def test_search_interfaces_reject_blank_queries_before_source_call(call):
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="query is required"):
+        call(MolegApi(source))
+
     assert source.calls == []
 
 
@@ -1419,8 +2072,134 @@ def test_get_administrative_rule_loads_structured_articles_and_filters():
     assert text.articles[0].source_law_name == "119구조ㆍ구급에 관한 법률"
     assert text.articles[0].source_article == "제3조"
     assert text.articles[0].source_article_title == "국가 등의 책무"
+    assert text.supplementary_provisions[0].source_type == "administrative_rule"
+    assert text.supplementary_provisions[0].text == "이 훈령은 발령한 날부터 시행한다."
     assert "정의" in text.text
     assert source.calls[0] == ("service", "admrul", {"ID": "2100000248758"})
+
+
+def test_get_administrative_rule_filters_requested_articles_in_request_order():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙명": "119항공대 운영 규정",
+                    "조문": {
+                        "조문단위": [
+                            {"조문번호": "1", "조문내용": "제1조 목적"},
+                            {"조문번호": "2", "조문내용": "제2조 정의"},
+                            {"조문번호": "3", "조문내용": "제3조 기준"},
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule(
+        "2100000248758",
+        articles=["제3조", "제1조"],
+    )
+
+    assert [article.article for article in text.articles] == ["제3조", "제1조"]
+    assert text.text.startswith("제3조")
+
+
+def test_get_administrative_rule_raises_when_requested_article_is_absent():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙명": "119항공대 운영 규정",
+                    "조문": {
+                        "조문단위": [
+                            {"조문번호": "1", "조문내용": "제1조 목적"},
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    with pytest.raises(NoResultError, match="제2조"):
+        MolegApi(source).get_administrative_rule("2100000248758", articles=["제2조"])
+
+
+def test_get_administrative_rule_rejects_empty_articles_list():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="articles must contain"):
+        MolegApi(source).get_administrative_rule("2100000248758", articles=[])
+
+    assert source.calls == []
+
+
+def test_get_administrative_rule_preserves_branch_article_labels_and_filters():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙명": "119항공대 운영 규정",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "10",
+                                "조문가지번호": "2",
+                                "조문제목": "특례",
+                                "조문내용": "제10조의2(특례) 필요한 경우 특례를 적용한다.",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule(
+        "2100000248758",
+        articles=["10조의2"],
+    )
+
+    assert text.articles[0].article == "제10조의2"
+    assert text.articles[0].title == "특례"
+    assert "특례를 적용" in text.text
+
+
+def test_get_administrative_rule_preserves_branch_source_article_references():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙명": "119항공대 운영 규정",
+                    "위임법령명": "항공안전법",
+                    "위임조문번호": "10",
+                    "위임조문가지번호": "2",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "운영 기준",
+                                "조문내용": "항공대 운영 기준을 정한다.",
+                                "근거법령명": "119구조ㆍ구급에 관한 법률",
+                                "근거조문번호": "5",
+                                "근거조문가지번호": "3",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule("2100000248758")
+
+    assert text.identity.source_article == "제10조의2"
+    assert text.articles[0].source_law_name == "119구조ㆍ구급에 관한 법률"
+    assert text.articles[0].source_article == "제5조의3"
 
 
 def test_get_administrative_rule_accepts_live_service_wrapper():
@@ -1742,6 +2521,79 @@ def test_search_interpretations_all_ministries_queries_registry_and_preserves_la
         *[spec.target for spec in MINISTRY_INTERPRETATION_SOURCES.values()],
     ]
     assert all(call[2] == {"query": "근로기준", "display": 1, "search": 1} for call in source.calls)
+
+
+def test_search_interpretations_all_ministries_preserves_partial_hits_when_one_source_fails():
+    class InterpretationFanoutRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == MINISTRY_INTERPRETATION_SOURCES["고용노동부"].target:
+                raise RateLimitError("law.go.kr rate limited target moelCgmExpc after 3 attempt(s)")
+            if target == "expc":
+                return {
+                    "Expc": {
+                        "expc": [
+                            {
+                                "법령해석례일련번호": "330471",
+                                "안건명": "근로기준 공식 법령해석례",
+                                "회신기관명": "법제처",
+                            }
+                        ]
+                    }
+                }
+            if target == MINISTRY_INTERPRETATION_SOURCES["산업통상부"].target:
+                return {
+                    "CgmExpc": {
+                        "cgmExpc": [
+                            {
+                                "법령해석일련번호": "517984",
+                                "안건명": "근로기준 산업통상부 해석",
+                                "해석기관명": "산업통상부",
+                            }
+                        ]
+                    }
+                }
+            return {"CgmExpc": {"cgmExpc": []}}
+
+    source = InterpretationFanoutRateLimitedSource()
+
+    hits = MolegApi(source).search_interpretations(
+        "근로기준",
+        source="all_ministries",
+        display=1,
+    )
+
+    assert [(hit.identity.source_type, hit.identity.source_target, hit.identity.ministry) for hit in hits] == [
+        ("moleg", "expc", None),
+        ("ministry", MINISTRY_INTERPRETATION_SOURCES["산업통상부"].target, "산업통상부"),
+    ]
+    failures = hits[0].identity.raw_keys["source_failures"]
+    assert failures == hits[1].identity.raw_keys["source_failures"]
+    assert failures[0]["kind"] == "source_access_failure"
+    assert failures[0]["recommended_interface"] == "search_interpretations"
+    assert failures[0]["query"] == "근로기준"
+    assert "RateLimitError" in failures[0]["reason"]
+    assert "moelCgmExpc" in failures[0]["reason"]
+    assert MINISTRY_INTERPRETATION_SOURCES["고용노동부"].target in [call[1] for call in source.calls]
+
+
+def test_search_interpretations_preserves_source_failure_when_no_aggregate_hits_survive():
+    class InterpretationFanoutRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == MINISTRY_INTERPRETATION_SOURCES["고용노동부"].target:
+                raise RateLimitError("law.go.kr rate limited target moelCgmExpc after 3 attempt(s)")
+            return {"Expc": {"expc": []}} if target == "expc" else {"CgmExpc": {"cgmExpc": []}}
+
+    source = InterpretationFanoutRateLimitedSource()
+
+    with pytest.raises(RateLimitError):
+        MolegApi(source).search_interpretations(
+            "근로기준",
+            source="all",
+            ministry="고용노동부",
+            display=1,
+        )
 
 
 def test_get_interpretation_loads_full_text_by_identity():
@@ -2162,14 +3014,74 @@ def test_expand_legal_query_records_empty_sources_without_failing():
     assert "최신" in expansion.follow_up_searches[-1].query
 
 
-def institutional_law_payload(law_id: str, name: str, mst: str, article_no: str = "1"):
+def test_expand_legal_query_preserves_partial_context_when_one_source_fails():
+    class LegalTermRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "lstrmAI":
+                raise RateLimitError("law.go.kr rate limited target lstrmAI after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = LegalTermRateLimitedSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "001234",
+                            "법령명한글": "자동차관리법",
+                            "법령일련번호": "270001",
+                        }
+                    ]
+                }
+            },
+            {"dlytrm": [{"일상용어 id": "900", "일상용어명": "차량"}]},
+            {
+                "aiSearch": [
+                    {
+                        "법령ID": "001234",
+                        "법령명": "자동차관리법",
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                    }
+                ]
+            },
+            {"aiRltLs": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": [{"일상용어명": "차량", "법령용어명": "자동차"}]},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("자동차 방치 문제")
+
+    assert expansion.law_candidates[0].name == "자동차관리법"
+    assert expansion.term_candidates[0].term == "차량"
+    assert expansion.related_articles[0].article == "제26조"
+    assert "lstrmAI" not in expansion.empty_sources
+    assert [gap.kind for gap in expansion.source_failures] == ["source_access_failure"]
+    assert [gap.recommended_interface for gap in expansion.source_failures] == ["expand_legal_query"]
+    assert expansion.source_failures[0].query == "자동차 방치 문제"
+    assert "RateLimitError" in expansion.source_failures[0].reason
+    assert "lstrmAI" in expansion.source_failures[0].reason
+
+
+def institutional_law_payload(
+    law_id: str,
+    name: str,
+    mst: str,
+    article_no: str = "1",
+    effective_date: str = "20260101",
+):
     return {
         "eflaw": {
             "기본정보": {
                 "법령ID": law_id,
                 "법령명_한글": name,
                 "법령일련번호": mst,
-                "시행일자": "20260101",
+                "시행일자": effective_date,
             },
             "조문": {
                 "조문단위": [
@@ -2380,9 +3292,179 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
     assert len(bundle.candidates.cases) == 2
     assert len(bundle.candidates.constitutional_decisions) == 2
     assert len(bundle.candidates.annex_forms) == 4
+    admin_deferred = [
+        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+    ]
+    annex_deferred = [
+        item for item in bundle.deferred if item.interface == "get_annex_form_body"
+    ]
+    assert [item.filters.get("id") for item in admin_deferred] == [
+        "21전자금융거래법",
+        "21전자금융거래법 시행령",
+    ]
+    assert [(item.query, item.source_type, item.filters) for item in annex_deferred] == [
+        (
+            "전자금융거래법 별표",
+            "annex_form",
+            {
+                "id": "44전자금융거래법",
+                "annex_id": "44전자금융거래법",
+                "source": "law",
+                "source_target": "licbyl",
+                "related_name": "전자금융거래법",
+            },
+        ),
+        (
+            "전자금융거래법 행정규칙 서식",
+            "annex_form",
+            {
+                "id": "55전자금융거래법",
+                "annex_id": "55전자금융거래법",
+                "source": "administrative_rule",
+                "source_target": "admbyl",
+                "related_name": "전자금융거래법 고시",
+            },
+        ),
+        (
+            "전자금융거래법 시행령 별표",
+            "annex_form",
+            {
+                "id": "44전자금융거래법 시행령",
+                "annex_id": "44전자금융거래법 시행령",
+                "source": "law",
+                "source_target": "licbyl",
+                "related_name": "전자금융거래법 시행령",
+            },
+        ),
+        (
+            "전자금융거래법 시행령 행정규칙 서식",
+            "annex_form",
+            {
+                "id": "55전자금융거래법 시행령",
+                "annex_id": "55전자금융거래법 시행령",
+                "source": "administrative_rule",
+                "source_target": "admbyl",
+                "related_name": "전자금융거래법 시행령 고시",
+            },
+        ),
+    ]
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     assert all(gap.kind == "websearch_required" for gap in bundle.gaps)
+
+
+def test_load_institutional_system_marks_future_effective_statute_as_not_current_as_of():
+    identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("전자금융거래법"),
+            institutional_interpretation_search_payload("전자금융거래법"),
+            institutional_case_search_payload("전자금융거래법"),
+            institutional_constitutional_search_payload("전자금융거래법"),
+            institutional_law_annex_payload("전자금융거래법"),
+            institutional_admin_annex_payload("전자금융거래법"),
+        ],
+        service_payloads=[
+            institutional_law_payload("100001", "전자금융거래법", "300001", effective_date="20270101"),
+            institutional_structure_payload("100001", "전자금융거래법", "300001", "전자금융거래법 시행령"),
+            institutional_delegation_payload("100001", "전자금융거래법", "전자금융거래법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system(
+        [identity],
+        budget="minimal",
+        as_of="2026-06-17",
+    )
+
+    assert bundle.request.as_of == "20260617"
+    assert bundle.loaded.laws[0].identity.effective_date == "20270101"
+    assert any(gap.kind == "not_effective_as_of" for gap in bundle.gaps)
+    assert any("not effective as of 20260617" in note for note in bundle.source_notes)
+    assert source.calls[0] == ("service", "eflaw", {"MST": "300001", "efYd": "20260617"})
+
+
+def test_load_institutional_system_preserves_law_structure_load_failures():
+    identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("전자금융거래법"),
+            institutional_interpretation_search_payload("전자금융거래법"),
+            institutional_case_search_payload("전자금융거래법"),
+            institutional_constitutional_search_payload("전자금융거래법"),
+            institutional_law_annex_payload("전자금융거래법"),
+            institutional_admin_annex_payload("전자금융거래법"),
+        ],
+        service_payloads=[
+            institutional_law_payload("100001", "전자금융거래법", "300001"),
+            {"Law": "일치하는 상하위법이 없습니다. 법령명을 확인하여 주십시오."},
+            institutional_delegation_payload("100001", "전자금융거래법", "전자금융거래법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system([identity], budget="minimal")
+
+    assert bundle.loaded.laws[0].identity.name == "전자금융거래법"
+    assert bundle.loaded.law_structures == []
+    structure_gaps = [gap for gap in bundle.gaps if gap.kind == "law_structure_not_loaded"]
+    assert [(gap.recommended_interface, gap.query) for gap in structure_gaps] == [
+        ("get_law_structure", "전자금융거래법")
+    ]
+    assert "NoResultError" in structure_gaps[0].reason
+    structure_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_law_structure" and item.source_type == "law_structure"
+    ]
+    assert [(item.query, item.filters) for item in structure_deferred] == [
+        ("전자금융거래법", {"depth": 1, "law_id": "100001"})
+    ]
+
+
+def test_load_institutional_system_preserves_statute_resolution_source_access_failures():
+    class ResolutionRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "eflaw" and params.get("query") == "금융법":
+                raise RateLimitError("law.go.kr rate limited target eflaw after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
+    source = ResolutionRateLimitedSource(
+        search_payloads=[
+            institutional_admin_search_payload("전자금융거래법"),
+            institutional_interpretation_search_payload("전자금융거래법"),
+            institutional_case_search_payload("전자금융거래법"),
+            institutional_constitutional_search_payload("전자금융거래법"),
+            institutional_law_annex_payload("전자금융거래법"),
+            institutional_admin_annex_payload("전자금융거래법"),
+        ],
+        service_payloads=[
+            institutional_law_payload("100001", "전자금융거래법", "300001"),
+            institutional_structure_payload("100001", "전자금융거래법", "300001", "전자금융거래법 시행령"),
+            institutional_delegation_payload("100001", "전자금융거래법", "전자금융거래법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system(["금융법", identity], budget="minimal")
+
+    assert [law.identity.name for law in bundle.loaded.laws] == ["전자금융거래법"]
+    assert bundle.candidates.laws[0].name == "전자금융거래법"
+    resolution_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure" and gap.recommended_interface == "search_laws"
+    ]
+    assert [gap.query for gap in resolution_gaps] == ["금융법"]
+    assert "RateLimitError" in resolution_gaps[0].reason
+    assert "eflaw" in resolution_gaps[0].reason
+    resolution_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in resolution_deferred] == [("금융법", {})]
+    assert any("Statute resolution skipped for 금융법" in note for note in bundle.source_notes)
 
 
 def test_load_institutional_system_records_ambiguous_statute_identity_without_guessing():
@@ -2408,6 +3490,140 @@ def test_load_institutional_system_records_ambiguous_statute_identity_without_gu
     assert "금융법" in bundle.ambiguities[0].message
     assert bundle.gaps[0].kind == "manual_review_required"
     assert bundle.gaps[0].recommended_interface == "search_laws"
+
+
+def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            institutional_interpretation_search_payload("자동차관리법"),
+            institutional_case_search_payload("자동차관리법"),
+            institutional_constitutional_search_payload("자동차관리법"),
+            institutional_law_annex_payload("자동차관리법"),
+            institutional_admin_annex_payload("자동차관리법"),
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "위임조문번호": "26",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 자동차관리법 [별표]",
+                    "무단방치 자동차 처리 기준",
+                    "| 구분 | 기준 |",
+                    "| 견인 | 즉시 견인 |",
+                    "| 공고 | 14일 이상 공고 |",
+                ]
+            )
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    assert bundle.request.mode == "institutional_system"
+    assert bundle.loaded.laws[0].identity.name == "자동차관리법"
+    assert bundle.loaded.delegations[0].rules[0].delegated_name == "자동차관리법 시행령"
+    assert [rule.identity.name for rule in bundle.loaded.administrative_rules] == ["자동차관리법 고시"]
+    assert "무단방치 자동차" in bundle.loaded.administrative_rules[0].text
+    assert [annex.identity.title for annex in bundle.loaded.annex_forms] == ["자동차관리법 별표"]
+    assert bundle.loaded.annex_forms[0].structured_data is not None
+    assert bundle.loaded.annex_forms[0].structured_data.rows == [
+        {"구분": "견인", "기준": "즉시 견인"},
+        {"구분": "공고", "기준": "14일 이상 공고"},
+    ]
+    assert not any(item.interface == "get_administrative_rule" for item in bundle.deferred)
+    assert [
+        item.query
+        for item in bundle.deferred
+        if item.interface == "get_annex_form_body"
+    ] == ["자동차관리법 행정규칙 서식"]
+    assert ("service", "admrul", {"ID": "21자동차관리법"}) in source.calls
+    assert source.calls[-1] == (
+        "post_text",
+        "lsBylTextDownLoad.do",
+        {
+            "bylSeq": "44자동차관리법",
+            "title": "자동차관리법 별표",
+            "mode": "0",
+        },
+    )
+
+
+def test_load_delegated_criteria_preserves_detail_source_failures_as_deferred_gaps():
+    class DelegatedCriteriaRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            if target == "admrul":
+                raise RateLimitError("law.go.kr rate limited target admrul after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = DelegatedCriteriaRateLimitedSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            institutional_interpretation_search_payload("자동차관리법"),
+            institutional_case_search_payload("자동차관리법"),
+            institutional_constitutional_search_payload("자동차관리법"),
+            institutional_law_annex_payload("자동차관리법"),
+            institutional_admin_annex_payload("자동차관리법"),
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+        ],
+        text_payloads=["■ 자동차관리법 [별표]\n| 구분 | 기준 |\n| 공고 | 14일 |"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    assert bundle.loaded.administrative_rules == []
+    assert len(bundle.loaded.annex_forms) == 1
+    admin_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure"
+        and gap.recommended_interface == "get_administrative_rule"
+    ]
+    assert len(admin_gaps) == 1
+    assert "RateLimitError" in admin_gaps[0].reason
+    assert "admrul" in admin_gaps[0].reason
+    admin_deferred = [
+        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+    ]
+    assert [(item.query, item.filters.get("id")) for item in admin_deferred] == [
+        ("자동차관리법 고시", "21자동차관리법")
+    ]
 
 
 def test_expand_legal_query_normalizes_live_ai_search_nested_rows():
@@ -2558,6 +3774,78 @@ def test_find_comparable_mechanisms_raises_no_result_for_empty_sources():
 
     with pytest.raises(NoResultError):
         MolegApi(source).find_comparable_mechanisms("없는제도")
+
+
+def test_find_comparable_mechanisms_preserves_partial_candidates_when_one_source_fails():
+    class ComparableRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "aiSearch":
+                raise RateLimitError("law.go.kr rate limited target aiSearch after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = ComparableRateLimitedSource(
+        search_payloads=[
+            {
+                "aiRltLs": {
+                    "target": "aiRltLs",
+                    "법령조문": [
+                        {
+                            "법령ID": "003333",
+                            "법령명": "환경오염시설의 통합관리에 관한 법률",
+                            "조문번호": "35",
+                            "조문제목": "과징금",
+                        }
+                    ],
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "lstrmRltJo": [
+                    {
+                        "법령용어명": "과징금",
+                        "법령명": "전기통신사업법",
+                        "조번호": "53",
+                        "조문내용": "과징금 부과 기준",
+                    }
+                ]
+            },
+        ],
+    )
+
+    identities = MolegApi(source).find_comparable_mechanisms("과징금", display=3)
+
+    assert [identity.name for identity in identities] == [
+        "환경오염시설의 통합관리에 관한 법률",
+        "전기통신사업법",
+    ]
+    assert identities[0].raw_keys["discovery_endpoints"] == ["aiRltLs"]
+    assert identities[1].raw_keys["discovery_endpoints"] == ["lstrmRltJo"]
+    failures = identities[0].raw_keys["source_failures"]
+    assert failures == identities[1].raw_keys["source_failures"]
+    assert failures[0]["kind"] == "source_access_failure"
+    assert failures[0]["recommended_interface"] == "find_comparable_mechanisms"
+    assert failures[0]["query"] == "과징금"
+    assert "RateLimitError" in failures[0]["reason"]
+    assert "aiSearch" in failures[0]["reason"]
+
+
+def test_find_comparable_mechanisms_preserves_source_failure_when_no_candidates_survive():
+    class ComparableRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "aiSearch":
+                raise RateLimitError("law.go.kr rate limited target aiSearch after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = ComparableRateLimitedSource(
+        search_payloads=[{"aiRltLs": {"target": "aiRltLs", "법령조문": []}}],
+        service_payloads=[{"lstrmRltJo": []}],
+    )
+
+    with pytest.raises(RateLimitError):
+        MolegApi(source).find_comparable_mechanisms("과징금", display=3)
 
 
 def test_load_legal_context_bundle_stages_question_context():
@@ -2741,12 +4029,119 @@ def test_load_legal_context_bundle_stages_question_context():
     assert bundle.loaded.interpretations == []
     assert bundle.loaded.cases == []
     assert bundle.loaded.constitutional_decisions == []
-    for unloaded_field in ("administrative_rules", "histories", "diffs"):
+    assert bundle.loaded.administrative_rules == []
+    assert bundle.loaded.annex_forms == []
+    for unloaded_field in ("histories", "diffs"):
         assert not hasattr(bundle.loaded, unloaded_field)
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
+    admin_deferred = [
+        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+    ]
+    annex_deferred = [
+        item for item in bundle.deferred if item.interface == "get_annex_form_body"
+    ]
+    assert [(item.query, item.filters.get("id")) for item in admin_deferred] == [
+        ("무단방치 자동차 처리 규정", "2100000248758")
+    ]
+    assert [(item.query, item.source_type, item.filters) for item in annex_deferred] == [
+        (
+            "무단방치 자동차 처리 기준",
+            "annex_form",
+            {
+                "id": "220000001",
+                "annex_id": "220000001",
+                "source": "law",
+                "source_target": "licbyl",
+                "related_name": "자동차관리법",
+            },
+        ),
+        (
+            "무단방치 자동차 처리 서식",
+            "annex_form",
+            {
+                "id": "330000001",
+                "annex_id": "330000001",
+                "source": "administrative_rule",
+                "source_target": "admbyl",
+                "related_name": "무단방치 자동차 처리 규정",
+            },
+        ),
+    ]
     assert bundle.gaps[0].kind == "websearch_required"
     assert bundle.gaps[0].recommended_interface == "websearch"
+
+
+def test_load_legal_context_bundle_preserves_query_expansion_source_access_failure():
+    class QueryExpansionRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "eflaw":
+                raise RateLimitError("law.go.kr rate limited target eflaw after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = QueryExpansionRateLimitedSource(
+        search_payloads=[
+            {"lstrmAI": [{"법령용어 id": "100", "법령용어명": "자동차"}]},
+            {"dlytrm": []},
+            {
+                "aiSearch": [
+                    {
+                        "법령ID": "001234",
+                        "법령명": "자동차관리법",
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                    }
+                ]
+            },
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle("자동차 방치 문제")
+
+    assert bundle.request.mode == "question"
+    assert bundle.candidates.query_expansion is not None
+    assert bundle.candidates.query_expansion.term_candidates[0].term == "자동차"
+    assert bundle.candidates.query_expansion.related_articles[0].law_name == "자동차관리법"
+    assert bundle.candidates.query_expansion.source_failures[0].kind == "source_access_failure"
+    assert bundle.loaded.laws == []
+    assert [call[1] for call in source.calls if call[0] == "search"] == [
+        "eflaw",
+        "lstrmAI",
+        "dlytrm",
+        "aiSearch",
+        "aiRltLs",
+        "admrul",
+        "expc",
+        "prec",
+        "detc",
+        "licbyl",
+        "admbyl",
+    ]
+    expansion_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure" and gap.recommended_interface == "expand_legal_query"
+    ]
+    assert [gap.query for gap in expansion_gaps] == ["자동차 방치 문제"]
+    assert "RateLimitError" in expansion_gaps[0].reason
+    assert "eflaw" in expansion_gaps[0].reason
+    assert any(
+        item.interface == "expand_legal_query" and item.query == "자동차 방치 문제"
+        for item in bundle.deferred
+    )
 
 
 def test_load_legal_context_bundle_eager_loads_detail_for_legal_meaning_question():
@@ -2989,6 +4384,283 @@ def test_load_legal_context_bundle_keeps_failed_eager_detail_as_deferred():
     )
 
 
+def test_load_legal_context_bundle_preserves_failed_eager_detail_source_access_as_gap():
+    class EagerInterpretationRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            if target == "expc":
+                raise RateLimitError("law.go.kr rate limited target expc after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    source = EagerInterpretationRateLimitedSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "개인정보 보호법 동의 해석"},
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 동의의 의미",
+        budget="standard",
+    )
+
+    assert bundle.loaded.interpretations == []
+    source_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure" and gap.recommended_interface == "get_interpretation"
+    ]
+    assert [gap.query for gap in source_gaps] == ["개인정보 보호법 동의 해석"]
+    assert "RateLimitError" in source_gaps[0].reason
+    assert "expc" in source_gaps[0].reason
+    assert any(
+        item.interface == "get_interpretation" and item.filters.get("id") == "100"
+        for item in bundle.deferred
+    )
+
+
+def test_load_legal_context_bundle_preserves_source_access_failures_as_gaps():
+    class AdminRuleRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "admrul":
+                raise RateLimitError("law.go.kr rate limited target admrul after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = AdminRuleRateLimitedSource(
+        search_payloads=[
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "26",
+                                "조문제목": "자동차의 강제처리",
+                                "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 하위 기준",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.laws[0].identity.name == "자동차관리법"
+    assert bundle.candidates.administrative_rules == []
+    source_gaps = [gap for gap in bundle.gaps if gap.kind == "source_access_failure"]
+    assert [(gap.recommended_interface, gap.query) for gap in source_gaps] == [
+        ("search_administrative_rules", "자동차관리법 하위 기준")
+    ]
+    assert "RateLimitError" in source_gaps[0].reason
+    assert "admrul" in source_gaps[0].reason
+    assert any("Administrative-rule search skipped" in note for note in bundle.source_notes)
+
+
+def test_load_legal_context_bundle_preserves_requested_article_load_failures():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"eflawjosub": {"조문": {}}},
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제26조 하위 기준",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        articles=["제26조"],
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.articles == []
+    article_gaps = [gap for gap in bundle.gaps if gap.kind == "requested_article_not_loaded"]
+    assert [(gap.recommended_interface, gap.query) for gap in article_gaps] == [
+        ("get_article", "자동차관리법 제26조")
+    ]
+    assert "NoResultError" in article_gaps[0].reason
+    article_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_article" and item.source_type == "law_article"
+    ]
+    assert [(item.query, item.filters) for item in article_deferred] == [
+        (
+            "자동차관리법 제26조",
+            {"law_id": "001747", "article": "제26조"},
+        )
+    ]
+
+
+def test_load_legal_context_bundle_preserves_primary_law_load_failures():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"Law": "일치하는 법령이 없습니다. 법령명을 확인하여 주십시오."},
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 현행 내용",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.laws == []
+    law_gaps = [gap for gap in bundle.gaps if gap.kind == "requested_law_not_loaded"]
+    assert [(gap.recommended_interface, gap.query) for gap in law_gaps] == [
+        ("get_law", "자동차관리법")
+    ]
+    assert "NoResultError" in law_gaps[0].reason
+    law_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_law" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in law_deferred] == [
+        ("자동차관리법", {"law_id": "001747", "basis": "effective"})
+    ]
+
+
+def test_load_legal_context_bundle_preserves_delegation_source_access_failures():
+    class DelegationRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            if target == "lsDelegated":
+                raise RateLimitError("law.go.kr rate limited target lsDelegated after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    source = DelegationRateLimitedSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "26",
+                                "조문제목": "자동차의 강제처리",
+                                "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 하위 기준",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.laws[0].identity.name == "자동차관리법"
+    assert bundle.loaded.delegations == []
+    delegation_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure" and gap.recommended_interface == "find_delegated_rules"
+    ]
+    assert [gap.query for gap in delegation_gaps] == ["자동차관리법"]
+    assert "RateLimitError" in delegation_gaps[0].reason
+    assert "lsDelegated" in delegation_gaps[0].reason
+    delegation_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "find_delegated_rules" and item.source_type == "delegation"
+    ]
+    assert [(item.query, item.filters) for item in delegation_deferred] == [
+        ("자동차관리법", {"law_id": "001747"})
+    ]
+
+
 def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     source = FakeSource(
         search_payloads=[
@@ -3074,6 +4746,137 @@ def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     assert source.calls[1] == ("service", "eflaw", {"MST": "260001"})
 
 
+def test_load_legal_context_bundle_preserves_promulgation_bridge_source_access_failure():
+    class PromulgationBridgeRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target == "law":
+                raise RateLimitError("law.go.kr rate limited target law after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = PromulgationBridgeRateLimitedSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "20250101",
+        },
+        mode="promulgated_bill",
+    )
+
+    assert bundle.loaded.laws == []
+    assert bundle.candidates.laws == []
+    bridge_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "source_access_failure"
+        and gap.recommended_interface == "resolve_promulgated_law"
+    ]
+    assert [gap.query for gap in bridge_gaps] == ["데이터기본법"]
+    assert "RateLimitError" in bridge_gaps[0].reason
+    assert "law" in bridge_gaps[0].reason
+    bridge_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "resolve_promulgated_law" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in bridge_deferred] == [
+        (
+            "데이터기본법",
+            {
+                "prom_law_nm": "데이터기본법",
+                "prom_no": "20000",
+                "promulgation_dt": "20250101",
+            },
+        )
+    ]
+    assert [call[1] for call in source.calls if call[0] == "search"] == [
+        "law",
+        "admrul",
+        "expc",
+        "prec",
+        "detc",
+        "licbyl",
+        "admbyl",
+    ]
+    assert any("Promulgation bridge resolution skipped" in note for note in bundle.source_notes)
+
+
+def test_load_legal_context_bundle_marks_future_effective_promulgated_law_as_not_current_as_of():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "260001",
+                            "공포번호": "20000",
+                            "공포일자": "20260601",
+                            "시행일자": "20270101",
+                        }
+                    ]
+                }
+            },
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "111111",
+                        "법령명_한글": "데이터기본법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20270101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "이 법은 데이터 경제 활성화에 이바지함을 목적으로 한다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {"lsDelegated": {"법령": {"법령정보": {"법령ID": "111111", "법령명": "데이터기본법"}}}},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "20260601",
+        },
+        mode="promulgated_bill",
+        as_of="2026-06-17",
+    )
+
+    assert bundle.request.as_of == "20260617"
+    assert bundle.loaded.laws[0].identity.effective_date == "20270101"
+    assert any(gap.kind == "not_effective_as_of" for gap in bundle.gaps)
+    assert any("not effective as of 20260617" in note for note in bundle.source_notes)
+    assert source.calls[1] == ("service", "eflaw", {"MST": "260001", "efYd": "20260617"})
+
+
 def test_load_legal_context_bundle_statute_review_loads_requested_articles_first():
     identity = LawIdentity(law_id="001234", name="자동차관리법", basis="effective")
     source = FakeSource(
@@ -3126,6 +4929,456 @@ def test_load_legal_context_bundle_statute_review_loads_requested_articles_first
     assert bundle.loaded.delegations[0].rules[0].source_article == "제26조"
     assert bundle.request.budget == "minimal"
     assert source.calls[0] == ("service", "eflawjosub", {"ID": "001234", "JO": "002600"})
+
+
+def test_load_legal_context_bundle_marks_eager_authority_article_mismatches():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "개인정보 제3자 제공 해석"}
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "200", "사건명": "개인정보 목적 외 이용 사건"}
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "300", "사건명": "민감정보 처리 제한 위헌확인"}
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "009999", "법령명": "개인정보 보호법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "100",
+                    "안건명": "개인정보 제3자 제공 해석",
+                    "관련법령": "개인정보 보호법 제17조",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "200",
+                    "사건명": "개인정보 목적 외 이용 사건",
+                    "참조조문": "개인정보 보호법 제18조",
+                    "판례내용": "판례 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "300",
+                    "사건명": "민감정보 처리 제한 위헌확인",
+                    "심판대상조문": "개인정보 보호법 제23조",
+                    "전문": "결정 전문",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        law_identifier=identity,
+        articles=["제15조"],
+        mode="statute_review",
+        budget="standard",
+    )
+
+    assert bundle.loaded.articles[0].article == "제15조"
+    assert [(ref.law_name, ref.article) for ref in bundle.loaded.interpretations[0].referenced_articles] == [
+        ("개인정보 보호법", "제17조")
+    ]
+    assert [(ref.law_name, ref.article) for ref in bundle.loaded.cases[0].referenced_articles] == [
+        ("개인정보 보호법", "제18조")
+    ]
+    assert [
+        (ref.law_name, ref.article)
+        for ref in bundle.loaded.constitutional_decisions[0].reviewed_articles
+    ] == [("개인정보 보호법", "제23조")]
+    mismatch_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_article_mismatch"]
+    assert [gap.recommended_interface for gap in mismatch_gaps] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert all("개인정보 보호법 제15조" in gap.reason for gap in mismatch_gaps)
+
+
+def test_load_legal_context_bundle_marks_eager_authority_without_article_refs_as_unverified():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "101", "안건명": "개인정보 동의 해석"}
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "201", "사건명": "개인정보 동의 사건"}
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "301", "사건명": "개인정보 자기결정권 사건"}
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "009999", "법령명": "개인정보 보호법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "101",
+                    "안건명": "개인정보 동의 해석",
+                    "질의요지": "동의 요건 관련 질의",
+                    "회답": "사안별 판단",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "201",
+                    "사건명": "개인정보 동의 사건",
+                    "판례내용": "동의 관련 판례 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "301",
+                    "사건명": "개인정보 자기결정권 사건",
+                    "전문": "개인정보 자기결정권 결정 전문",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        law_identifier=identity,
+        articles=["제15조"],
+        mode="statute_review",
+        budget="standard",
+    )
+
+    assert bundle.loaded.articles[0].article == "제15조"
+    assert bundle.loaded.interpretations[0].referenced_articles == []
+    assert bundle.loaded.cases[0].referenced_articles == []
+    assert bundle.loaded.constitutional_decisions[0].reviewed_articles == []
+    unverified_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_article_unverified"]
+    assert [gap.recommended_interface for gap in unverified_gaps] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert all("개인정보 보호법 제15조" in gap.reason for gap in unverified_gaps)
+
+
+def test_load_legal_context_bundle_marks_eager_authority_partial_article_matches():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "102", "안건명": "개인정보 제공 해석"}
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "202", "사건명": "개인정보 제공 사건"}
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "302", "사건명": "개인정보 제공 제한 사건"}
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "17",
+                        "조문제목": "개인정보의 제공",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 제공할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "009999", "법령명": "개인정보 보호법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "102",
+                    "안건명": "개인정보 제공 해석",
+                    "관련법령": "개인정보 보호법 제17조",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "202",
+                    "사건명": "개인정보 제공 사건",
+                    "참조조문": "개인정보 보호법 제17조",
+                    "판례내용": "판례 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "302",
+                    "사건명": "개인정보 제공 제한 사건",
+                    "심판대상조문": "개인정보 보호법 제17조",
+                    "전문": "결정 전문",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 제15조와 제17조 동의의 의미와 위헌 위험",
+        law_identifier=identity,
+        articles=["제15조", "제17조"],
+        mode="statute_review",
+        budget="standard",
+    )
+
+    assert [article.article for article in bundle.loaded.articles] == ["제15조", "제17조"]
+    partial_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_article_partial_match"]
+    assert [gap.recommended_interface for gap in partial_gaps] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert all("개인정보 보호법 제15조" in gap.reason for gap in partial_gaps)
+    assert all("제17조" not in gap.query for gap in partial_gaps)
+
+
+def test_load_legal_context_bundle_marks_eager_authority_older_than_current_article():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "103",
+                            "안건명": "개인정보 동의 해석",
+                            "회신일자": "20210115",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "203",
+                            "사건명": "개인정보 동의 사건",
+                            "선고일자": "20210215",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "303",
+                            "사건명": "개인정보 자기결정권 사건",
+                            "종국일자": "20210315",
+                        }
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "009999", "법령명": "개인정보 보호법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "103",
+                    "안건명": "개인정보 동의 해석",
+                    "회신일자": "20210115",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "개정 전 동의 요건에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "203",
+                    "사건명": "개인정보 동의 사건",
+                    "선고일자": "20210215",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "개정 전 동의 요건에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "303",
+                    "사건명": "개인정보 자기결정권 사건",
+                    "종국일자": "20210315",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "개정 전 조문에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        law_identifier=identity,
+        articles=["제15조"],
+        mode="statute_review",
+        budget="standard",
+    )
+
+    assert bundle.loaded.articles[0].effective_date == "20250101"
+    assert [(ref.law_name, ref.article) for ref in bundle.loaded.interpretations[0].referenced_articles] == [
+        ("개인정보 보호법", "제15조")
+    ]
+    assert [(ref.law_name, ref.article) for ref in bundle.loaded.cases[0].referenced_articles] == [
+        ("개인정보 보호법", "제15조")
+    ]
+    assert [
+        (ref.law_name, ref.article)
+        for ref in bundle.loaded.constitutional_decisions[0].reviewed_articles
+    ] == [("개인정보 보호법", "제15조")]
+    temporal_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_temporal_mismatch"]
+    assert [gap.recommended_interface for gap in temporal_gaps] == [
+        "trace_law_history",
+        "trace_law_history",
+        "trace_law_history",
+    ]
+    assert all(gap.query == "개인정보 보호법 제15조" for gap in temporal_gaps)
+    assert all("20250101" in gap.reason for gap in temporal_gaps)
+    assert any("20210115" in gap.reason for gap in temporal_gaps)
+    assert any("20210215" in gap.reason for gap in temporal_gaps)
+    assert any("20210315" in gap.reason for gap in temporal_gaps)
+    temporal_deferred = [
+        item
+        for item in bundle.deferred
+        if item.source_type == "authority_temporal_mismatch"
+    ]
+    assert [(item.interface, item.query) for item in temporal_deferred] == [
+        ("trace_law_history", "개인정보 보호법 제15조"),
+        ("trace_law_history", "개인정보 보호법 제15조"),
+        ("trace_law_history", "개인정보 보호법 제15조"),
+    ]
+    assert [item.filters for item in temporal_deferred] == [
+        {
+            "law_name": "개인정보 보호법",
+            "article": "제15조",
+            "authority_source_type": "interpretation",
+            "authority_date": "20210115",
+            "current_article_effective_date": "20250101",
+        },
+        {
+            "law_name": "개인정보 보호법",
+            "article": "제15조",
+            "authority_source_type": "case",
+            "authority_date": "20210215",
+            "current_article_effective_date": "20250101",
+        },
+        {
+            "law_name": "개인정보 보호법",
+            "article": "제15조",
+            "authority_source_type": "constitutional",
+            "authority_date": "20210315",
+            "current_article_effective_date": "20250101",
+        },
+    ]
 
 
 def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():

@@ -179,6 +179,36 @@ class ArticleText:
     text: str
     title: str | None = None
     effective_date: str | None = None
+    article_kind: str | None = None
+    revision_type: str | None = None
+    moved_from: str | None = None
+    moved_to: str | None = None
+    has_changes: bool | None = None
+    is_deleted: bool = False
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ArticleContext:
+    """Article lookup context with movement/deletion guardrails."""
+
+    requested_article: ArticleText
+    current_article: ArticleText | None
+    loaded_articles: list[ArticleText] = field(default_factory=list)
+    deferred: list[DeferredLookup] = field(default_factory=list)
+    gaps: list[ContextGap] = field(default_factory=list)
+    source_notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SupplementaryProvision:
+    """Normalized supplementary provision/addendum text."""
+
+    source_type: Literal["law", "administrative_rule"]
+    text: str
+    promulgation_date: str | None = None
+    promulgation_number: str | None = None
+    title: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -188,6 +218,7 @@ class LawText:
 
     identity: LawIdentity
     articles: list[ArticleText]
+    supplementary_provisions: list[SupplementaryProvision] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -215,6 +246,7 @@ class LawHistory:
 
     identity: LawIdentity
     events: list[HistoryEvent]
+    source_failures: list[ContextGap] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -335,6 +367,12 @@ class AdministrativeRuleArticleText:
     text: str
     title: str | None = None
     effective_date: str | None = None
+    article_kind: str | None = None
+    revision_type: str | None = None
+    moved_from: str | None = None
+    moved_to: str | None = None
+    has_changes: bool | None = None
+    is_deleted: bool = False
     source_law_id: str | None = None
     source_law_name: str | None = None
     source_article: str | None = None
@@ -349,6 +387,7 @@ class AdministrativeRuleText:
     identity: AdministrativeRuleIdentity
     text: str
     articles: list[AdministrativeRuleArticleText]
+    supplementary_provisions: list[SupplementaryProvision] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -577,6 +616,7 @@ class LegalQueryExpansion:
     related_laws: list[LegalLawCandidate]
     follow_up_searches: list[FollowUpSearch]
     empty_sources: list[str] = field(default_factory=list)
+    source_failures: list[ContextGap] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -591,6 +631,7 @@ class BundleRequest:
     statute_ids: list[str] = field(default_factory=list)
     promulgation_bridge: dict[str, Any] = field(default_factory=dict)
     law_identifier: Any = None
+    as_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -601,6 +642,8 @@ class LoadedContext:
     articles: list[ArticleText] = field(default_factory=list)
     delegations: list[DelegationGraph] = field(default_factory=list)
     law_structures: list[LawStructure] = field(default_factory=list)
+    administrative_rules: list[AdministrativeRuleText] = field(default_factory=list)
+    annex_forms: list[AnnexFormText] = field(default_factory=list)
     interpretations: list[InterpretationText] = field(default_factory=list)
     cases: list[JudicialDecisionText] = field(default_factory=list)
     constitutional_decisions: list[JudicialDecisionText] = field(default_factory=list)

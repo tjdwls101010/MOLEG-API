@@ -58,6 +58,47 @@ def test_law_client_retries_transient_failure_then_returns_json(monkeypatch):
     assert responses == []
 
 
+def test_law_client_retries_read_timeout_then_returns_json(monkeypatch):
+    responses = [
+        TimeoutError("read timed out for secret-oc"),
+        FakeResponse('{"LawSearch": {"law": []}}'),
+    ]
+
+    def fake_urlopen(request, timeout, context=None):
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    assert client.search("eflaw", {"query": "자동차"}) == {"LawSearch": {"law": []}}
+    assert responses == []
+
+
+def test_law_client_wraps_read_timeout_after_allowed_attempts(monkeypatch):
+    responses = [
+        TimeoutError("first timeout for secret-oc"),
+        TimeoutError("second timeout for secret-oc"),
+    ]
+
+    def fake_urlopen(request, timeout, context=None):
+        raise responses.pop(0)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = LawGoKrClient(oc="secret-oc", max_retries=1, retry_delay_seconds=0)
+
+    with pytest.raises(RetryExhaustedError) as exc_info:
+        client.search("eflaw", {"query": "자동차"})
+
+    assert "retry exhausted" in str(exc_info.value)
+    assert "secret-oc" not in str(exc_info.value)
+    assert responses == []
+
+
 def test_law_client_raises_rate_limit_error_after_allowed_attempts(monkeypatch):
     responses = [
         http_error(429, "too many requests for secret-oc"),

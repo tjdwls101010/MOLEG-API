@@ -6,9 +6,9 @@ It is the durable record behind the 2026-06-16 improvement issues. The completio
 
 ## Current Status
 
-This document preserves the 2026-06-16 diagnosis that created issues #50-#68. The consumer-readiness roadmap from that diagnosis is implemented on integration PR #89, with #90 adding the fake-skill tracer-bullet gate and #91 adding visible deterministic GitHub Actions CI. Until #89 is reviewed and merged, treat the findings below as the historical problem statement plus per-item resolution notes, not as a claim that the current integration branch still has the original 2/5 readiness.
+This document preserves the 2026-06-16 diagnosis that created issues #50-#68. The consumer-readiness roadmap from that diagnosis was merged through PR #89, with #90 adding the fake-skill tracer-bullet gate and #91 adding visible deterministic GitHub Actions CI. Treat the findings below as the historical problem statement plus per-item resolution notes, not as a claim that current `main` still has the original 2/5 readiness.
 
-Post-integration status: PR #89 implements the #50-#68 roadmap and adds the two gate slices #90/#91. The remaining work for this roadmap is review/merge sequencing and any new issue discovered during that review, not re-implementation of the findings below.
+Post-integration status: PR #89 implemented the #50-#68 roadmap and added the two gate slices #90/#91. The roadmap issues are closed. The next validation layer is the deterministic answer-readiness audit in `docs/design/LEGISLATIVE-EXPERT-E2E-AUDIT.md` plus actual prompt-level dry-runs of the future skill.
 
 ## Method
 
@@ -19,7 +19,7 @@ Two adversarial multi-agent review rounds against the actual code (`moleg_api/*.
 
 ## Diagnosis Verdict
 
-This verdict is the pre-roadmap diagnosis that justified #50-#68. It should not be read as the current state of the integration branch after PR #89.
+This verdict is the pre-roadmap diagnosis that justified #50-#68. It should not be read as the current state of `main` after PR #89.
 
 **At diagnosis time, as a loader of single-statute legal materials: strong, production-grade.** Law-identity normalization, article-notation handling (`제10조의2` → six-digit `JO` through `format_article_jo()` in `moleg_api/normalization.py`), date-basis multiplicity, delegated-rule `source_article` linking, HTML-only `lsHistory` fallback, and authority-label separation (MOLEG interpretation / ministry interpretation / case / constitutional decision) were genuinely deep. 15 of 19 methods passed the deletion test as real abstractions.
 
@@ -76,7 +76,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ## Issue roadmap
 
-All themes were published as 2026-06-16 GitHub issues, tracked under umbrella **#49**. They are implemented on integration PR #89 unless a row explicitly says the result was a source-backed non-build decision. The `Original type` column preserves the implementation classification used when the issues were created; it is not current open-work status.
+All themes were published as 2026-06-16 GitHub issues, tracked under umbrella **#49**. They were implemented and merged through PR #89 unless a row explicitly says the result was a source-backed non-build decision. The `Original type` column preserves the implementation classification used when the issues were created; it is not current open-work status.
 
 | Theme | Issue | Original type |
 |---|---|---|
