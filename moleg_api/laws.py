@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from typing import Any
 
@@ -29,6 +29,7 @@ from .models import (
     DeferredLookup,
     DelegationGraph,
     FollowUpSearch,
+    HistoryEvent,
     InterpretationHit,
     InterpretationIdentity,
     InterpretationSearchSource,
@@ -501,9 +502,38 @@ class MolegApi:
             payload = self._search_full_law_history(identity)
 
         events = normalize_history_events(payload, identity)
+        if article is not None:
+            events = self._populate_article_history_text(identity, article, events)
         if not events:
             raise NoResultError("No law history events found")
         return LawHistory(identity=identity, events=events, raw=payload)
+
+    def _populate_article_history_text(
+        self,
+        identity: LawIdentity,
+        article: str | int,
+        events: list[HistoryEvent],
+    ) -> list[HistoryEvent]:
+        article_texts_by_lookup: dict[tuple[str, str], str | None] = {}
+        populated: list[HistoryEvent] = []
+        for event in events:
+            if event.article_text:
+                populated.append(event)
+                continue
+            as_of = event.effective_date or event.changed_date
+            if not as_of:
+                populated.append(event)
+                continue
+            event_article = article_label_for_filter(article)
+            lookup_key = (str(event_article), as_of)
+            if lookup_key not in article_texts_by_lookup:
+                try:
+                    article_snapshot = self.get_article(identity, event_article, as_of=as_of)
+                    article_texts_by_lookup[lookup_key] = article_snapshot.text
+                except MolegApiError:
+                    article_texts_by_lookup[lookup_key] = None
+            populated.append(replace(event, article_text=article_texts_by_lookup[lookup_key]))
+        return populated
 
     def _search_full_law_history(self, identity: LawIdentity) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []

@@ -136,6 +136,7 @@ class HistoryEvent:
     promulgation_number: str | None = None
     revision_type: str | None = None
     article: str | None = None
+    article_text: str | None = None
     reason: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 

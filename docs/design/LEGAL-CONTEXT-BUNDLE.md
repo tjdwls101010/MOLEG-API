@@ -109,7 +109,7 @@ Use only when the user asks for a survey, memo, or risk scan.
 
 1. Resolve `promulgation_bridge` through `resolve_promulgated_law()`.
 2. Load current effective text through `get_law()` or requested `get_article()`.
-3. Use `trace_law_history()` or `compare_law_versions()` when dates/articles make the change traceable.
+3. Use `trace_law_history()` or `compare_law_versions()` when dates/articles make the change traceable. When a specific article is known, article-scoped history may include post-change `article_text`; full-law chronology remains metadata-only.
 4. Use `find_delegated_rules()` to identify enforcement decrees, enforcement rules, notices, and administrative rules.
 5. Search annex/forms when operative standards may live in attached tables, thresholds, amounts, or forms. Load selected annex/form bodies only when needed. For table-like annexes, inspect `structured_data.parsing_confidence` before using extracted rows; keep the plain text as fallback authority.
 6. Search administrative-rule, interpretation, and judicial context as candidates; load selected detail only after Claude ranks the bundle unless eager detail loading is triggered by the question.

@@ -66,7 +66,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 
 - Prefer effective-date basis for "current law", "now in force", and "현재 시행" questions.
 - Use promulgation-date basis when resolving a `congress-db` promulgation bridge or reconstructing historical promulgation context.
-- Use `trace_law_history()` without article/date filters when law-level amendment chronology matters. It parses the HTML-only `lsHistory` list table into normalized events; article/date filters still use JSON-reachable history surfaces.
+- Use `trace_law_history()` without article/date filters when law-level amendment chronology matters. It parses the HTML-only `lsHistory` list table into normalized metadata events. Use `trace_law_history(article=...)` when the wording evolution of one provision matters; article-scoped events may include `article_text` for the post-change snapshot, while full-law history keeps `article_text=None`.
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. It exposes metadata and file/detail links; call `get_annex_form_body()` for a selected law/admin-rule candidate when the attached table, threshold, amount, criterion, or form may be operative. If `AnnexFormText.structured_data` is present, use `parsing_confidence` before relying on rows; the plain `text` remains the fallback source for irregular or low-confidence tables.
