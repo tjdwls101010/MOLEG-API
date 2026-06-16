@@ -210,7 +210,31 @@ MINISTRY_INTERPRETATION_SOURCES: dict[str, InterpretationSourceSpec] = {
 
 
 class MolegApi:
-    """Task-level MOLEG-API facade for legislative-expert callers."""
+    """Task-level MOLEG-API facade for legislative-expert callers.
+
+    MOLEG source targets, identifier quirks, article-number formatting, and
+    authority labels stay inside this module. Callers choose legal tasks.
+
+    Method selection:
+    - Start with `search_laws` for free-text statute candidates; use
+      `resolve_promulgated_law` only when congress-db provides promulgation
+      bridge fields such as `prom_law_nm`, `prom_no`, and `promulgation_dt`.
+    - Use `get_law` for statute text and `get_article` for one precise
+      article. Prefer effective basis for current-force questions.
+    - Use `trace_law_history` for amendment chronology and
+      `compare_law_versions` for the MOLEG before/after text surface; current
+      arbitrary two-date comparison is not modeled here.
+    - Use `find_delegated_rules`, `search_administrative_rules`, and
+      annex/form loaders when statute text may omit delegated criteria,
+      notices, attached tables, thresholds, amounts, or forms.
+    - Use `search_interpretations` for MOLEG/ministry interpretations,
+      `search_cases` for ordinary judicial decisions, and
+      `search_constitutional_decisions` for Constitutional Court decisions;
+      these are separate authority types, not flags on one search.
+    - Use `expand_legal_query` for search planning and
+      `load_legal_context_bundle` for a staged first pass over a broad
+      question. Both return source-loading context, not legal conclusions.
+    """
 
     def __init__(self, source: MolegSource | None = None) -> None:
         self.source = source or LawGoKrClient()
@@ -225,6 +249,17 @@ class MolegApi:
         ministry: str | None = None,
         display: int = 20,
     ) -> list[LawHit]:
+        """Search law.go.kr for statute identity candidates.
+
+        Use when: the skill has a law name, keyword, or expanded search term
+        and needs candidate current or promulgated statute identities.
+        Returns: a list of `LawHit` values carrying normalized `LawIdentity`
+        objects plus the source row; an empty list means no source rows.
+        Raises: source adapter errors or parse errors if a returned row cannot
+        be normalized; no-result is represented as an empty list.
+        Related: use `resolve_promulgated_law` for congress-db bridge fields
+        and `expand_legal_query` when the query itself needs planning.
+        """
         target = target_for(basis, "list")
         params: dict[str, Any] = {"query": query, "display": display}
         if as_of:
@@ -247,6 +282,17 @@ class MolegApi:
         prom_no: str | None = None,
         promulgation_dt: str | None = None,
     ) -> LawIdentity:
+        """Resolve a congress-db promulgation bridge to one law identity.
+
+        Use when: a National Assembly bill row has reached the promulgation
+        side and provides bridge fields such as law name, promulgation number,
+        or promulgation date.
+        Returns: one normalized `LawIdentity` on the promulgated basis.
+        Raises: `NoResultError` when required bridge fields are missing or no
+        source row matches; `AmbiguousLawError` when several identities remain.
+        Related: `search_laws(basis="promulgated")` is free-text discovery;
+        this method is the stricter bridge resolver for enacted bill facts.
+        """
         if not prom_law_nm and not prom_no:
             raise NoResultError("prom_law_nm or prom_no is required to resolve a promulgated law")
 
@@ -273,6 +319,18 @@ class MolegApi:
         articles: list[str | int] | None = None,
         include_metadata: bool = True,
     ) -> LawText:
+        """Load normalized statute text for one law identity.
+
+        Use when: the skill already has a plausible statute identity and needs
+        the effective or promulgated text behind it. Pass a `LawIdentity` or
+        `LawHit` when possible; a bare string should be a source identifier.
+        Returns: `LawText` with a normalized identity and extracted articles,
+        optionally preserving raw metadata for audit.
+        Raises: `NoResultError` for unusable identifiers and source/parse
+        errors when law.go.kr cannot provide normalizable statute text.
+        Related: use `get_article` for precise article lookup and
+        `search_laws` first when the identity is still uncertain.
+        """
         identity_hint = identity_from_identifier(identifier, basis=basis)
         target = target_for(basis, "detail")
         params = law_text_identity_params(identity_hint, as_of=as_of, basis=basis)
@@ -293,6 +351,17 @@ class MolegApi:
         as_of: str | None = None,
         basis: Basis = "effective",
     ) -> ArticleText:
+        """Load one article by human article notation.
+
+        Use when: the skill needs a specific provision such as `제10조의2`
+        without formatting MOLEG's six-digit `JO` value itself.
+        Returns: `ArticleText` with the article label, title, text, effective
+        date when available, and normalized source identity.
+        Raises: `NoResultError` when the article text is absent, plus source or
+        parse errors for invalid source payloads.
+        Related: use `get_law` for whole-statute context and
+        `trace_law_history(article=...)` for article-level history events.
+        """
         identity = identity_from_identifier(law_identifier, basis=basis)
         target = target_for(basis, "article")
         params = identity_params(identity, as_of=as_of, basis=basis)
@@ -317,6 +386,17 @@ class MolegApi:
         date_range: tuple[str, str] | None = None,
         article: str | int | None = None,
     ) -> LawHistory:
+        """Load amendment-history events for a statute or article.
+
+        Use when: the skill needs chronology, amendment reasons, promulgation
+        numbers, or effective dates rather than the current text itself.
+        Returns: `LawHistory` with normalized `HistoryEvent` records; full-law
+        history uses the HTML-only `lsHistory` list parser.
+        Raises: `NoResultError` when no matching events exist; parse/source
+        errors surface when the source shape is unusable.
+        Related: use `compare_law_versions` for before/after text rows and
+        `resolve_promulgated_law` before history when starting from a bill.
+        """
         identity = identity_from_identifier(law_identifier, basis="effective")
         if article is not None:
             params = identity_params(identity, as_of=None, basis="effective")
@@ -381,6 +461,18 @@ class MolegApi:
         after: str | None = None,
         article: str | int | None = None,
     ) -> LawDiff:
+        """Load MOLEG before/after text rows for one statute.
+
+        Use when: the skill needs the source `oldAndNew` comparison surface for
+        a candidate law or article. The current implementation does not select
+        arbitrary before/after dates; requested dates are preserved in `raw`.
+        Returns: `LawDiff` with before and after identities when the source
+        exposes them and normalized changed article text.
+        Raises: `NoResultError` when the source returns no comparable changes,
+        plus source/parse errors for unusable payloads.
+        Related: use `trace_law_history` to choose dates or amendment events;
+        use `get_law`/`get_article` for current text.
+        """
         identity = identity_from_identifier(law_identifier, basis="effective")
         params = identity_params(identity, as_of=None, basis="effective")
         payload = self.source.service("oldAndNew", params)
@@ -404,6 +496,17 @@ class MolegApi:
         *,
         article: str | int | None = None,
     ) -> DelegationGraph:
+        """Find delegated lower-rule context for a statute.
+
+        Use when: statute text may delegate details to enforcement decrees,
+        enforcement rules, notices, or administrative rules.
+        Returns: a `DelegationGraph` rooted at the law identity with normalized
+        delegated-rule rows, optionally filtered by source article.
+        Raises: `NoResultError` when no delegated rows remain after filtering,
+        plus source/parse errors for unusable source data.
+        Related: use `search_administrative_rules` and
+        `get_administrative_rule` to search or load the lower rules themselves.
+        """
         identity = identity_from_identifier(law_identifier, basis="effective")
         params = identity_params(identity, as_of=None, basis="effective")
         payload = self.source.service("lsDelegated", params)
@@ -427,6 +530,16 @@ class MolegApi:
         include_history: bool = False,
         display: int = 20,
     ) -> list[AdministrativeRuleHit]:
+        """Search notices, directives, established rules, and other admin rules.
+
+        Use when: delegated or practical execution criteria may live outside
+        statute text, especially in ministry-level administrative rules.
+        Returns: a list of `AdministrativeRuleHit` values with normalized
+        serial ID, rule ID, issuing/effective dates, ministry, and status.
+        Raises: source adapter or parse errors; no-result is an empty list.
+        Related: use `find_delegated_rules` from a known statute and
+        `get_administrative_rule` to load a selected rule body.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -458,6 +571,17 @@ class MolegApi:
         ministry: str | None = None,
         display: int = 20,
     ) -> list[AnnexFormHit]:
+        """Search statute or administrative-rule annex/form candidates.
+
+        Use when: operative content may be in 별표ㆍ서식 material such as
+        tables, thresholds, criteria, amounts, or required forms.
+        Returns: a list of `AnnexFormHit` values with source law/rule identity,
+        annex title/number/type, dates, ministry, and file/detail links.
+        Raises: `UnsupportedFormatError` for unsupported source, scope, or
+        annex type values; source/parse errors may also propagate.
+        Related: call `get_annex_form_body` for a selected candidate before
+        treating attached material as inspected.
+        """
         source_type = annex_source_type(source)
         target = annex_target_for(source_type)
         params: dict[str, Any] = {
@@ -491,6 +615,17 @@ class MolegApi:
         title: str | None = None,
         include_metadata: bool = True,
     ) -> AnnexFormText:
+        """Load text for one selected law or administrative-rule annex/form.
+
+        Use when: an annex/form candidate may carry operative criteria and the
+        skill needs the body text before citing or reasoning from it.
+        Returns: `AnnexFormText` with text/plain content, source identity,
+        extraction method, confidence, and optional metadata.
+        Raises: `NoResultError` when the identity lacks a source ID or returns
+        empty text; `UnsupportedFormatError` for unsupported source targets.
+        Related: call `search_annex_forms` first; direct HWP/PDF parsing is
+        outside this interface.
+        """
         identity = annex_form_identity_from_identifier(identifier, source=source, title=title)
         if not identity.annex_id:
             raise NoResultError("Annex/form identity has no source ID")
@@ -533,6 +668,17 @@ class MolegApi:
         articles: list[str | int] | None = None,
         include_metadata: bool = True,
     ) -> AdministrativeRuleText:
+        """Load one administrative-rule body by identity, ID, or exact name.
+
+        Use when: the skill selected a notice, directive, established rule, or
+        similar administrative rule and needs inspectable text.
+        Returns: `AdministrativeRuleText` with normalized identity, full joined
+        text, structured articles when available, and optional raw metadata.
+        Raises: `NoResultError` when the identity cannot locate text or article
+        filtering removes all rows; source/parse errors may also propagate.
+        Related: use `search_administrative_rules` for discovery and
+        `find_delegated_rules` when starting from a statute.
+        """
         identity_hint = administrative_rule_identity_from_identifier(identifier)
         params = administrative_rule_identity_params(identity_hint)
         payload = self.source.service("admrul", params)
@@ -565,6 +711,17 @@ class MolegApi:
         interpreted_on: str | None = None,
         display: int = 20,
     ) -> list[InterpretationHit]:
+        """Search MOLEG or ministry first-instance legal interpretations.
+
+        Use when: the skill needs official or ministry interpretation context
+        about how a statute is applied, distinct from court decisions.
+        Returns: `InterpretationHit` rows with normalized source authority
+        labels, ministry where relevant, case number, title, and date.
+        Raises: `NoResultError` when ministry search lacks a ministry;
+        `UnsupportedFormatError` for unsupported source/ministry values.
+        Related: use `search_cases` for ordinary judicial decisions and
+        `search_constitutional_decisions` for Constitutional Court decisions.
+        """
         specs = interpretation_sources_for(source, ministry)
         hits: list[InterpretationHit] = []
         for spec in specs:
@@ -598,6 +755,17 @@ class MolegApi:
         ministry: str | None = None,
         include_metadata: bool = True,
     ) -> InterpretationText:
+        """Load one MOLEG or ministry interpretation detail.
+
+        Use when: a selected interpretation needs question, answer, reason, and
+        related-law text before the skill cites or reasons from it.
+        Returns: `InterpretationText` with preserved source authority labels,
+        agencies, case number, interpretation date, and optional raw metadata.
+        Raises: `NoResultError` for missing source IDs and
+        `UnsupportedFormatError` for sources without cataloged detail support.
+        Related: call `search_interpretations` first; use judicial loaders for
+        cases or constitutional decisions, not this method.
+        """
         spec = interpretation_source_for_identifier(identifier, source=source, ministry=ministry)
         if not spec.can_get:
             raise UnsupportedFormatError(
@@ -636,6 +804,17 @@ class MolegApi:
         case_number: str | None = None,
         display: int = 20,
     ) -> list[JudicialDecisionHit]:
+        """Search ordinary court cases through the MOLEG case source.
+
+        Use when: the skill needs Supreme Court or lower-court precedent,
+        holdings, or judicial limits for a statute or issue.
+        Returns: `JudicialDecisionHit` rows labeled as `case` with decision ID,
+        title, court, case number, decision date, and summary metadata.
+        Raises: `UnsupportedFormatError` for unsupported court filters; source
+        or parse errors may also propagate. Empty search results return [].
+        Related: use `get_case` for detail and
+        `search_constitutional_decisions` for Constitutional Court authority.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -670,6 +849,17 @@ class MolegApi:
         *,
         include_metadata: bool = True,
     ) -> JudicialDecisionText:
+        """Load one ordinary court case detail.
+
+        Use when: a selected case must be inspected for holdings, summary, full
+        text, referenced statutes, or referenced cases.
+        Returns: `JudicialDecisionText` labeled as `case`, optionally without
+        raw metadata when the caller is budgeting context.
+        Raises: `NoResultError` for missing/non-numeric source IDs and
+        `UnsupportedFormatError` if a non-case identity is passed here.
+        Related: call `search_cases` first; use constitutional loaders for
+        `detc` Constitutional Court decisions.
+        """
         identity_hint = judicial_decision_identity_from_identifier(
             identifier,
             source_type="case",
@@ -706,6 +896,17 @@ class MolegApi:
         case_number: str | None = None,
         display: int = 20,
     ) -> list[JudicialDecisionHit]:
+        """Search Constitutional Court decisions.
+
+        Use when: the skill needs constitutional-risk context, reviewed
+        statutes, holdings, or constitutional reasoning distinct from ordinary
+        court precedent.
+        Returns: `JudicialDecisionHit` rows labeled as `constitutional` with
+        decision ID, case number, decision date, title, and summary metadata.
+        Raises: source adapter or parse errors; no-result is an empty list.
+        Related: use `get_constitutional_decision` for detail and
+        `search_cases` for ordinary Supreme Court/lower-court cases.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -735,6 +936,17 @@ class MolegApi:
         *,
         include_metadata: bool = True,
     ) -> JudicialDecisionText:
+        """Load one Constitutional Court decision detail.
+
+        Use when: a selected constitutional decision needs holdings, summary,
+        full text, reviewed statutes, or referenced authority.
+        Returns: `JudicialDecisionText` labeled as `constitutional`, optionally
+        without raw metadata for context budgeting.
+        Raises: `NoResultError` for missing/non-numeric source IDs and
+        `UnsupportedFormatError` if an ordinary case identity is passed here.
+        Related: call `search_constitutional_decisions` first; use `get_case`
+        for ordinary judicial decisions.
+        """
         identity_hint = judicial_decision_identity_from_identifier(
             identifier,
             source_type="constitutional",
@@ -769,6 +981,18 @@ class MolegApi:
         display: int = 5,
         include_websearch_hint: bool = True,
     ) -> LegalQueryExpansion:
+        """Build legal search-planning context for a broad query.
+
+        Use when: the user's wording may need legal terms, everyday terms,
+        related articles/laws, AI-search hints, or WebSearch handoff guidance
+        before loading primary source text.
+        Returns: `LegalQueryExpansion` with candidate laws, terms, related
+        articles/laws, follow-up search recommendations, and empty-source notes.
+        Raises: `NoResultError` for blank queries; source or parse errors may
+        propagate from the planning sources.
+        Related: this is not legal authority. Use returned follow-ups with
+        `get_law`, `get_article`, interpretation, case, or annex loaders.
+        """
         if not query.strip():
             raise NoResultError("query is required for legal query expansion")
 
@@ -875,6 +1099,20 @@ class MolegApi:
         mode: str = "question",
         budget: str = "standard",
     ) -> LegalContextBundle:
+        """Load a staged legal context bundle for Claude inspection.
+
+        Use when: the question is broad, under-specified, or begins from a
+        statute/bill anchor and the skill needs one bounded first pass over
+        likely MOLEG sources.
+        Returns: `LegalContextBundle` with loaded primary law/article/delegation
+        context, bounded candidates, deferred lookups, ambiguities, gaps, and
+        source notes.
+        Raises: `NoResultError` for missing required mode inputs and
+        `UnsupportedFormatError` for unsupported mode or budget values; many
+        source failures are recorded as `source_notes` instead of aborting.
+        Related: the bundle loads sources, not conclusions. Use explicit
+        loaders for selected candidates and WebSearch for non-MOLEG facts.
+        """
         limits = bundle_limits(budget)
         request = BundleRequest(
             query=query,
