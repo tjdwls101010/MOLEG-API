@@ -609,14 +609,14 @@ def extract_administrative_rule_articles(
 
 def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText | None:
     number = first_value(row, "조문번호", "조번호", "JO")
+    branch = first_value(row, "조문가지번호", "조가지번호")
     text = first_value(row, "조문내용", "조문본문", "내용")
     title = first_value(row, "조문제목", "제목")
     if number is None and text is None and title is None:
         return None
-    article = f"제{number}조" if number not in (None, "") and not str(number).startswith("제") else str(number or "")
     return ArticleText(
         identity=identity,
-        article=article,
+        article=article_label_from_parts(number, branch) or "",
         title=string_or_none(title),
         text=str(text or ""),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),

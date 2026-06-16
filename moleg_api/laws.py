@@ -273,16 +273,19 @@ class MolegApi:
         articles: list[str | int] | None = None,
         include_metadata: bool = True,
     ) -> LawText:
+        if articles is not None and not articles:
+            raise NoResultError("articles must contain at least one article when provided")
+
         identity_hint = identity_from_identifier(identifier, basis=basis)
         target = target_for(basis, "detail")
         params = law_text_identity_params(identity_hint, as_of=as_of, basis=basis)
-        if articles:
-            params["JO"] = format_article_jo(articles[0])
 
         payload = self.source.service(target, params)
         raw_law = unwrap_service_payload(payload, target)
         identity = normalize_law_identity(raw_law, basis=basis)
         law_articles = extract_articles(raw_law, identity)
+        if articles is not None:
+            law_articles = select_requested_articles(law_articles, articles)
         return LawText(identity=identity, articles=law_articles, raw=raw_law if include_metadata else {})
 
     def get_article(
@@ -1250,6 +1253,46 @@ def law_text_identity_params(identity: LawIdentity, *, as_of: str | None, basis:
     if basis == "effective" and as_of:
         params["efYd"] = compact_date(as_of)
     return params
+
+
+def select_requested_articles(
+    available_articles: list[ArticleText],
+    requested_articles: list[str | int],
+) -> list[ArticleText]:
+    articles_by_jo: dict[str, list[ArticleText]] = {}
+    for article in available_articles:
+        try:
+            jo = format_article_jo(article.article)
+        except ParseFailureError:
+            continue
+        articles_by_jo.setdefault(jo, []).append(article)
+
+    selected: list[ArticleText] = []
+    missing: list[str] = []
+    for requested in requested_articles:
+        jo = format_article_jo(requested)
+        matches = articles_by_jo.get(jo)
+        if not matches:
+            missing.append(str(requested))
+            continue
+        selected.append(preferred_article_match(matches))
+
+    if missing:
+        raise NoResultError(f"No law article text found for: {', '.join(missing)}")
+    return selected
+
+
+def preferred_article_match(matches: list[ArticleText]) -> ArticleText:
+    for article in matches:
+        if str(article.raw.get("조문여부") or "").strip() == "조문":
+            return article
+    for article in matches:
+        if article.title:
+            return article
+    for article in matches:
+        if article.text.strip().startswith(article.article):
+            return article
+    return matches[0]
 
 
 def matches_bridge(
