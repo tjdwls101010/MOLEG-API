@@ -177,6 +177,24 @@ def test_skill_author_cookbook_distinguishes_pre_publication_install_paths():
     assert "python -m pip install dist/moleg_api-*.whl --no-deps" in installation
 
 
+def test_installation_docs_use_pyproject_package_name():
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+    package_name_match = re.search(r'^name = "([^"]+)"$', pyproject, re.MULTILINE)
+    assert package_name_match is not None
+    package_name = package_name_match.group(1)
+    wheel_name = package_name.replace("-", "_")
+    readme = Path("README.md").read_text(encoding="utf-8")
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    installation = cookbook.split("## Installation And Setup", 1)[1].split(
+        "## Serialization",
+        1,
+    )[0]
+
+    assert f"`{package_name}`" in readme
+    assert f"pip install {package_name}" in installation
+    assert f"python -m pip install dist/{wheel_name}-*.whl --no-deps" in installation
+
+
 def test_skill_author_cookbook_import_examples_are_package_root_exports():
     cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
     imported_names = {
