@@ -565,6 +565,13 @@ class MolegApi:
         interpreted_on: str | None = None,
         display: int = 20,
     ) -> list[InterpretationHit]:
+        """Search MOLEG and ministry first-instance interpretation candidates.
+
+        `source="all"` means official MOLEG plus one specified ministry and
+        requires `ministry`. Use `source="all_ministries"` only for deep
+        institutional analysis; it fans out across every ministry registry
+        source plus official MOLEG interpretations.
+        """
         specs = interpretation_sources_for(source, ministry)
         hits: list[InterpretationHit] = []
         for spec in specs:
@@ -1366,10 +1373,15 @@ def interpretation_sources_for(source: str, ministry: str | None) -> list[Interp
     if source == "ministry":
         return [ministry_interpretation_source(ministry)]
     if source == "all":
+        if not ministry:
+            raise NoResultError(
+                "ministry is required for source='all'; use source='moleg' or source='all_ministries'"
+            )
         specs = [OFFICIAL_INTERPRETATION_SOURCE]
-        if ministry:
-            specs.append(ministry_interpretation_source(ministry))
+        specs.append(ministry_interpretation_source(ministry))
         return specs
+    if source == "all_ministries":
+        return [OFFICIAL_INTERPRETATION_SOURCE, *MINISTRY_INTERPRETATION_SOURCES.values()]
     raise UnsupportedFormatError(f"Unsupported interpretation source: {source}")
 
 

@@ -2,6 +2,7 @@ import pytest
 
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
 from moleg_api.errors import ParseFailureError, UnsupportedFormatError
+from moleg_api.laws import MINISTRY_INTERPRETATION_SOURCES
 from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity
 from moleg_api.normalization import format_article_jo
 
@@ -1018,6 +1019,69 @@ def test_search_interpretations_all_keeps_official_and_ministry_labels_distinct(
         ("ministry", "dapaCgmExpc"),
     ]
     assert [hit.identity.ministry for hit in hits] == [None, "방위사업청"]
+
+
+def test_search_interpretations_all_requires_ministry():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError, match="source='all'"):
+        MolegApi(source).search_interpretations("재산권", source="all")
+
+    assert source.calls == []
+
+
+def test_search_interpretations_all_ministries_queries_registry_and_preserves_labels():
+    search_payloads = [
+        {
+            "Expc": {
+                "expc": [
+                    {
+                        "법령해석례일련번호": "330471",
+                        "안건명": "근로기준 공식 법령해석례",
+                        "회신기관명": "법제처",
+                    }
+                ]
+            }
+        }
+    ]
+    for spec in MINISTRY_INTERPRETATION_SOURCES.values():
+        if spec.ministry == "고용노동부":
+            rows = [
+                {
+                    "법령해석일련번호": "417984",
+                    "안건명": "근로기준 고용노동부 해석",
+                    "해석기관명": "고용노동부",
+                }
+            ]
+        elif spec.ministry == "산업통상부":
+            rows = [
+                {
+                    "법령해석일련번호": "517984",
+                    "안건명": "근로기준 산업통상부 해석",
+                    "해석기관명": "산업통상부",
+                }
+            ]
+        else:
+            rows = []
+        search_payloads.append({"CgmExpc": {"cgmExpc": rows}})
+    source = FakeSource(search_payloads=search_payloads)
+
+    hits = MolegApi(source).search_interpretations(
+        "근로기준",
+        source="all_ministries",
+        display=1,
+    )
+
+    assert [(hit.identity.source_type, hit.identity.source_target, hit.identity.ministry) for hit in hits] == [
+        ("moleg", "expc", None),
+        ("ministry", MINISTRY_INTERPRETATION_SOURCES["고용노동부"].target, "고용노동부"),
+        ("ministry", MINISTRY_INTERPRETATION_SOURCES["산업통상부"].target, "산업통상부"),
+    ]
+    assert [call[1] for call in source.calls] == [
+        "expc",
+        *[spec.target for spec in MINISTRY_INTERPRETATION_SOURCES.values()],
+    ]
+    assert all(call[2] == {"query": "근로기준", "display": 1, "search": 1} for call in source.calls)
 
 
 def test_get_interpretation_loads_full_text_by_identity():
