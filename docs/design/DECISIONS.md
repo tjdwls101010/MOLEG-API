@@ -40,7 +40,7 @@ Returning to MOLEG-API after the legislative-expert skill integrates it is expen
 
 ## 2026-06-16 — Analysis-readiness is hybrid: structuring in MOLEG-API, synthesis in the skill
 
-The consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loads sources well but leaves all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
+At diagnosis time, the consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loaded sources well but left all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
 
 ## 2026-06-16 — Bundle LoadedContext made honest now; eager conditional loading deferred
 

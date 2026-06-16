@@ -76,9 +76,9 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ## Issue roadmap
 
-All themes were published as 2026-06-16 GitHub issues, tracked under umbrella **#49**. They are implemented on integration PR #89 unless a row explicitly says the result was a source-backed non-build decision.
+All themes were published as 2026-06-16 GitHub issues, tracked under umbrella **#49**. They are implemented on integration PR #89 unless a row explicitly says the result was a source-backed non-build decision. The `Original type` column preserves the implementation classification used when the issues were created; it is not current open-work status.
 
-| Theme | Issue | Type |
+| Theme | Issue | Original type |
 |---|---|---|
 | T0.1 serialization + PyPI + cookbook | #50 | HITL release step after implementation |
 | T1.1 `get_law(articles)` first-article bug | #51 | bug, AFK |
