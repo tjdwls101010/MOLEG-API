@@ -60,6 +60,16 @@ def compact_date(value: str | date | None) -> str | None:
     return text
 
 
+def compact_promulgation_number(value: Any) -> str | None:
+    text = string_or_none(value)
+    if text is None:
+        return None
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"^제", "", text)
+    text = re.sub(r"호$", "", text)
+    return text or None
+
+
 def first_value(row: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         value = row.get(key)
@@ -648,6 +658,7 @@ def normalize_history_events(
     identity: LawIdentity,
     *,
     article_text_map: dict[str, str | None] | None = None,
+    bill_id_map: dict[tuple[str, str, str], str] | None = None,
 ) -> list[HistoryEvent]:
     rows = collect_rows(
         payload,
@@ -675,12 +686,24 @@ def normalize_history_events(
             effective_date=effective_date,
             article_text_map=article_text_map,
         )
+        promulgation_law_name = string_or_none(
+            first_value(row, "법령명한글", "법령명_한글", "법령명")
+        ) or row_identity.name
+        promulgation_date = string_or_none(compact_date(first_value(row, "공포일자")))
+        promulgation_number = compact_promulgation_number(first_value(row, "공포번호"))
         event = HistoryEvent(
             identity=row_identity,
             changed_date=changed_date,
             effective_date=effective_date,
-            promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
-            promulgation_number=string_or_none(first_value(row, "공포번호")),
+            promulgation_law_name=promulgation_law_name,
+            promulgation_date=promulgation_date,
+            promulgation_number=promulgation_number,
+            bill_id=history_event_bill_id(
+                bill_id_map,
+                law_name=promulgation_law_name,
+                promulgation_number=promulgation_number,
+                promulgation_date=promulgation_date,
+            ),
             revision_type=string_or_none(first_value(row, "제개정구분명", "제개정구분")),
             article=article_label(first_value(row, "조문번호", "조문정보", "JO")),
             article_text=article_text,
@@ -707,6 +730,18 @@ def history_event_article_text(
         if key and key in article_text_map:
             return article_text_map[key]
     return None
+
+
+def history_event_bill_id(
+    bill_id_map: dict[tuple[str, str, str], str] | None,
+    *,
+    law_name: str | None,
+    promulgation_number: str | None,
+    promulgation_date: str | None,
+) -> str | None:
+    if not bill_id_map or not law_name or not promulgation_number or not promulgation_date:
+        return None
+    return bill_id_map.get((law_name, promulgation_number, promulgation_date))
 
 
 def parse_law_history_html(html: str) -> list[dict[str, Any]]:

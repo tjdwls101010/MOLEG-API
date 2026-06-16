@@ -51,7 +51,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 2. Call `resolve_promulgated_law(prom_law_nm=..., prom_no=..., promulgation_dt=...)`.
 3. If the result is ambiguous, surface the candidates instead of choosing silently.
 4. Call `get_law(..., basis="effective")` or `get_article(..., basis="effective")` to inspect the text currently in force.
-5. Call `trace_law_history()` or `compare_law_versions()` to explain what the bill changed.
+5. Call `trace_law_history()` or `compare_law_versions()` to explain what the bill changed. When `congress-db` already returned the enacting `bill_id`, pass a `promulgation_bridge` map so matching `HistoryEvent` rows carry that `bill_id`.
 6. Call `find_delegated_rules()` to inspect enforcement decrees, enforcement rules, notices, and administrative rules.
 7. Call `search_administrative_rules()` and `get_administrative_rule()` when delegated or practical execution criteria may live in notices, directives, established rules, or other administrative rules.
 8. Call `search_annex_forms()` when the legal question may depend on attached tables, thresholds, amounts, criteria, application formats, or other 별표ㆍ서식 material. Call `get_annex_form_body()` for selected candidates before treating the attached content as inspected.
@@ -63,6 +63,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 - Prefer effective-date basis for "current law", "now in force", and "현재 시행" questions.
 - Use promulgation-date basis when resolving a `congress-db` promulgation bridge or reconstructing historical promulgation context.
 - Use `trace_law_history()` without article/date filters when law-level amendment chronology matters. It parses the HTML-only `lsHistory` list table into normalized metadata events. Use `trace_law_history(article=...)` when the wording evolution of one provision matters; article-scoped events may include `article_text` for the post-change snapshot, while full-law history keeps `article_text=None`.
+- Treat `HistoryEvent.promulgation_law_name`, `HistoryEvent.promulgation_number`, and `HistoryEvent.promulgation_date` as the bridge keys for joining back to `congress-db.public.bill_final_outcomes(prom_law_nm, prom_no, promulgation_dt)`. `HistoryEvent.bill_id` is populated only when the caller supplies a bridge map; MOLEG-API does not query `congress-db` directly.
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. It exposes metadata and file/detail links; call `get_annex_form_body()` for a selected law/admin-rule candidate when the attached table, threshold, amount, criterion, or form may be operative.

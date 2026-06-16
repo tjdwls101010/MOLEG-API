@@ -62,8 +62,10 @@ class HistoryEvent:
     identity: LawIdentity
     changed_date: str | None = None
     effective_date: str | None = None
+    promulgation_law_name: str | None = None
     promulgation_date: str | None = None
     promulgation_number: str | None = None
+    bill_id: str | None = None
     revision_type: str | None = None
     article: str | None = None
     article_text: str | None = None

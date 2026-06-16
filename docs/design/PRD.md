@@ -68,7 +68,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - `search_laws(query, *, as_of=None, basis="effective", law_type=None, ministry=None)`
 - `get_law(identifier, *, as_of=None, basis="effective", articles=None, include_metadata=True)`
 - `get_article(law_identifier, article, *, as_of=None, basis="effective")`
-- `trace_law_history(law_identifier, *, date_range=None, article=None)`
+- `trace_law_history(law_identifier, *, date_range=None, article=None, promulgation_bridge=None)`
 - `compare_law_versions(law_identifier, *, before, after, article=None)`
 - `find_delegated_rules(law_identifier, *, article=None)`
 - `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
@@ -100,7 +100,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.resolve_promulgated_law()` accepts `congress-db` bridge fields (`prom_law_nm`, `prom_no`, `promulgation_dt`) and returns one normalized `LawIdentity` or raises no-result/ambiguity errors.
 - `MolegApi.get_law()` retrieves effective/promulgation-basis law text and normalizes articles.
 - `MolegApi.get_article()` accepts human article notation such as `제10조의2` and formats the source `JO` value internally.
-- `MolegApi.trace_law_history()` supports JSON-reachable article/date-range change history and full law-level history through the HTML-only `lsHistory` list table. Article-scoped history events carry `article_text` for the post-change article snapshot when law.go.kr provides it or when the snapshot can be loaded by effective/change date; full-law history remains metadata-only. If the live HTML shape changes, parsing fails explicitly instead of returning partial or misleading history.
+- `MolegApi.trace_law_history()` supports JSON-reachable article/date-range change history and full law-level history through the HTML-only `lsHistory` list table. Article-scoped history events carry `article_text` for the post-change article snapshot when law.go.kr provides it or when the snapshot can be loaded by effective/change date; full-law history remains metadata-only. Every history event exposes `promulgation_law_name`, normalized `promulgation_number`, and `promulgation_date` bridge keys for `congress-db` joins, and can carry `bill_id` when the caller supplies a bridge map. If the live HTML shape changes, parsing fails explicitly instead of returning partial or misleading history.
 - `MolegApi.compare_law_versions()` normalizes `oldAndNew` before/after article text behind a public comparison interface.
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.

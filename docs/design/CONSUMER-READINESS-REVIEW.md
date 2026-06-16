@@ -55,7 +55,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.6 Annex/form structured table parsing (P2; HITL — tension with the no-HWP/PDF-parsing decision).** Penalty/criteria tables (별표) lose row/column structure as plain text-export. Optional structured extraction for table-type annexes.
 - **T3.7 Similar-제도 / mechanism catalog for comparative design (P2; HITL).** "Find statutes with similar sanction/permit/authorization structures" — directly serves 법안 설계.
 - **T3.8 Per-article text version history (P2).** #66 adds `HistoryEvent.article_text` for article-scoped `trace_law_history(article=...)` calls, populated from source text when present or by bounded post-change article snapshot lookups. Full-law history remains metadata-only.
-- **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** `HistoryEvent.reason` is free text; link each amendment to the enacting bill for legislative-intent analysis.
+- **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** #67 adds `HistoryEvent` bridge keys (`promulgation_law_name`, normalized `promulgation_number`, `promulgation_date`) and optional caller-supplied `bill_id` population, without making MOLEG-API query `congress-db`.
 - **T3.10 Doctrine-indexed constitutional search (P3; conditional on source fields).** No filter for 과잉금지원칙/평등원칙; free-text keyword only.
 
 ## What was refuted (do not act on these)

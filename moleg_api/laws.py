@@ -43,6 +43,7 @@ from .models import (
 )
 from .normalization import (
     compact_date,
+    compact_promulgation_number,
     extract_administrative_rule_articles,
     extract_articles,
     format_article_jo,
@@ -317,8 +318,10 @@ class MolegApi:
         *,
         date_range: tuple[str, str] | None = None,
         article: str | int | None = None,
+        promulgation_bridge: dict[tuple[Any, Any, Any], Any] | None = None,
     ) -> LawHistory:
         identity = identity_from_identifier(law_identifier, basis="effective")
+        bill_id_map = normalize_history_bill_id_map(promulgation_bridge)
         if article is not None:
             params = identity_params(identity, as_of=None, basis="effective")
             params["JO"] = format_article_jo(article)
@@ -332,7 +335,7 @@ class MolegApi:
         else:
             payload = self._search_full_law_history(identity)
 
-        events = normalize_history_events(payload, identity)
+        events = normalize_history_events(payload, identity, bill_id_map=bill_id_map)
         if article is not None:
             events = self._populate_article_history_text(identity, article, events)
         if not events:
@@ -1679,6 +1682,33 @@ def string_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def normalize_history_bill_id_map(
+    promulgation_bridge: dict[tuple[Any, Any, Any], Any] | None,
+) -> dict[tuple[str, str, str], str] | None:
+    if not promulgation_bridge:
+        return None
+    bill_id_map: dict[tuple[str, str, str], str] = {}
+    for key, bill_id in promulgation_bridge.items():
+        if not isinstance(key, tuple) or len(key) != 3:
+            raise UnsupportedFormatError(
+                "promulgation_bridge keys must be (prom_law_nm, prom_no, promulgation_dt)"
+            )
+        law_name, prom_no, promulgation_dt = key
+        normalized_law_name = string_value(law_name)
+        normalized_prom_no = compact_promulgation_number(prom_no)
+        normalized_dt = compact_date(promulgation_dt)
+        normalized_bill_id = string_value(bill_id)
+        if (
+            not normalized_law_name
+            or not normalized_prom_no
+            or not normalized_dt
+            or not normalized_bill_id
+        ):
+            continue
+        bill_id_map[(normalized_law_name, normalized_prom_no, normalized_dt)] = normalized_bill_id
+    return bill_id_map or None
 
 
 def safe_list(fn: Any, source_notes: list[str], label: str) -> list[Any]:
