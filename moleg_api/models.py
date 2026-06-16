@@ -389,6 +389,9 @@ class LoadedContext:
     laws: list[LawText] = field(default_factory=list)
     articles: list[ArticleText] = field(default_factory=list)
     delegations: list[DelegationGraph] = field(default_factory=list)
+    interpretations: list[InterpretationText] = field(default_factory=list)
+    cases: list[JudicialDecisionText] = field(default_factory=list)
+    constitutional_decisions: list[JudicialDecisionText] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
