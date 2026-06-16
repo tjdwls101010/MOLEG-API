@@ -80,8 +80,19 @@ jobs:
           target="$(mktemp -d)"
           python -m pip install dist/*.whl --no-deps --target "$target"
           cd /tmp
-          PYTHONPATH="$target" python - <<'PY'
+          INSTALL_TARGET="$target" PYTHONPATH="$target" python - <<'PY'
+          import importlib.resources
+          import os
+          from pathlib import Path
+
+          import moleg_api
           from moleg_api import Basis, LawIdentity, MolegApi
+
+          package_file = Path(moleg_api.__file__).resolve()
+          install_target = Path(os.environ["INSTALL_TARGET"]).resolve()
+          assert package_file.is_relative_to(install_target), package_file
+          assert importlib.resources.files("moleg_api").joinpath("py.typed").is_file()
+          assert all(hasattr(moleg_api, name) for name in moleg_api.__all__)
 
           identity = LawIdentity(law_id="001234", name="테스트법", basis="effective")
           data = identity.to_dict()
