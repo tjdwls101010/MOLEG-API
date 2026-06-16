@@ -216,6 +216,7 @@ def test_to_dict_serializes_follow_up_filter_values_deterministically():
         filters={
             ("law", "identity"): identity,
             "articles": {"제3조", "제1조", "제2조"},
+            "mixed_keys": {1: "one", None: "none", "two": 2},
         },
     )
 
@@ -227,6 +228,7 @@ def test_to_dict_serializes_follow_up_filter_values_deterministically():
         "raw": "normalized identity metadata is not a raw payload",
     }
     assert data["filters"]["articles"] == ["제1조", "제2조", "제3조"]
+    assert data["filters"]["mixed_keys"] == {"1": "one", "None": "none", "two": 2}
     assert json_text == lookup.to_json_string()
 
 

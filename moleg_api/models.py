@@ -72,8 +72,8 @@ def _json_sort_key(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
-def _serialize_key(key: Any) -> str | int | float | bool | None:
-    if isinstance(key, str | int | float | bool) or key is None:
+def _serialize_key(key: Any) -> str:
+    if isinstance(key, str):
         return key
     return str(key)
 
