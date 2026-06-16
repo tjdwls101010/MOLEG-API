@@ -202,6 +202,99 @@ def test_get_law_prefers_mst_for_effective_detail_when_available():
     assert source.calls[0] == ("service", "eflaw", {"MST": "283767"})
 
 
+def test_get_law_filters_requested_articles_in_request_order():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "제1조(목적) 이 법은 자동차를 효율적으로 관리한다.",
+                                "조문여부": "조문",
+                            },
+                            {
+                                "조문번호": "2",
+                                "조문내용": "제1장 총칙",
+                                "조문여부": "전문",
+                            },
+                            {
+                                "조문번호": "2",
+                                "조문제목": "정의",
+                                "조문내용": "제2조(정의) 이 법에서 사용하는 용어의 뜻은 다음과 같다.",
+                                "조문여부": "조문",
+                            },
+                            {
+                                "조문번호": "4",
+                                "조문제목": "자동차관리 사무의 지도ㆍ감독",
+                                "조문내용": "제4조(자동차관리 사무의 지도ㆍ감독) 국토교통부장관은...",
+                                "조문여부": "조문",
+                            },
+                            {
+                                "조문번호": "4",
+                                "조문가지번호": "2",
+                                "조문제목": "자동차정책기본계획의 수립",
+                                "조문내용": "제4조의2(자동차정책기본계획의 수립) 국토교통부장관은...",
+                                "조문여부": "조문",
+                            },
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    law = MolegApi(source).get_law(identity, articles=["제4조의2", "제2조"])
+
+    assert [(article.article, article.title) for article in law.articles] == [
+        ("제4조의2", "자동차정책기본계획의 수립"),
+        ("제2조", "정의"),
+    ]
+    assert source.calls[0] == ("service", "eflaw", {"ID": "001747"})
+
+
+def test_get_law_raises_when_requested_article_is_absent():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "제1조(목적) 이 법은 자동차를 효율적으로 관리한다.",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    with pytest.raises(NoResultError):
+        MolegApi(source).get_law(identity, articles=["제10조"])
+
+
+def test_get_law_rejects_empty_articles_list():
+    source = FakeSource()
+
+    with pytest.raises(NoResultError):
+        MolegApi(source).get_law("001747", articles=[])
+
+
 def test_get_article_formats_human_article_notation_and_returns_text():
     identity = LawIdentity(
         law_id="014152",
