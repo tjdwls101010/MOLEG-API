@@ -620,6 +620,7 @@ class MolegApi:
                 answer=text.answer,
                 reason=text.reason,
                 related_laws=text.related_laws,
+                referenced_articles=text.referenced_articles,
                 text=text.text,
                 raw={},
             )
@@ -693,6 +694,8 @@ class MolegApi:
             referenced_statutes=text.referenced_statutes,
             reviewed_statutes=text.reviewed_statutes,
             referenced_cases=text.referenced_cases,
+            referenced_articles=text.referenced_articles,
+            reviewed_articles=text.reviewed_articles,
             text=text.text,
             raw={},
         )
@@ -758,6 +761,8 @@ class MolegApi:
             referenced_statutes=text.referenced_statutes,
             reviewed_statutes=text.reviewed_statutes,
             referenced_cases=text.referenced_cases,
+            referenced_articles=text.referenced_articles,
+            reviewed_articles=text.reviewed_articles,
             text=text.text,
             raw={},
         )
