@@ -11,19 +11,26 @@ from .models import (
     AdministrativeRuleIdentity,
     AdministrativeRuleText,
     Ambiguity,
+    AnnexFormSource,
     AnnexFormHit,
     AnnexFormIdentity,
     AnnexFormText,
+    AnnexSearchScope,
+    AnnexType,
     ArticleText,
     Basis,
+    BundleBudget,
+    BundleMode,
     BundleRequest,
     CandidateContext,
+    CaseCourt,
     ContextGap,
     DeferredLookup,
     DelegationGraph,
     FollowUpSearch,
     InterpretationHit,
     InterpretationIdentity,
+    InterpretationSearchSource,
     InterpretationText,
     JudicialDecisionHit,
     JudicialDecisionIdentity,
@@ -150,6 +157,14 @@ ANNEX_TYPE_CODES = {
         "별지": "3",
     },
 }
+
+BASIS_VALUES = ("effective", "promulgated")
+ANNEX_SOURCE_VALUES = ("law", "administrative_rule")
+ANNEX_SEARCH_SCOPE_VALUES = ("title", "source", "body")
+INTERPRETATION_SOURCE_VALUES = ("moleg", "ministry", "all")
+COURT_VALUES = ("all", "supreme", "lower")
+BUNDLE_MODE_VALUES = ("question", "promulgated_bill", "statute_review")
+BUNDLE_BUDGET_VALUES = ("minimal", "standard", "broad")
 
 
 @dataclass(frozen=True)
@@ -452,9 +467,9 @@ class MolegApi:
         self,
         query: str,
         *,
-        source: str = "law",
-        search_scope: str = "source",
-        annex_type: str | None = None,
+        source: AnnexFormSource = "law",
+        search_scope: AnnexSearchScope = "source",
+        annex_type: AnnexType | None = None,
         ministry: str | None = None,
         display: int = 20,
     ) -> list[AnnexFormHit]:
@@ -487,7 +502,7 @@ class MolegApi:
         self,
         identifier: AnnexFormIdentity | AnnexFormHit | str,
         *,
-        source: str = "law",
+        source: AnnexFormSource = "law",
         title: str | None = None,
         include_metadata: bool = True,
     ) -> AnnexFormText:
@@ -559,7 +574,7 @@ class MolegApi:
         self,
         query: str,
         *,
-        source: str = "moleg",
+        source: InterpretationSearchSource = "moleg",
         ministry: str | None = None,
         search_body: bool = False,
         interpreted_on: str | None = None,
@@ -594,7 +609,7 @@ class MolegApi:
         self,
         identifier: InterpretationIdentity | InterpretationHit | str,
         *,
-        source: str | None = None,
+        source: InterpretationSearchSource | None = None,
         ministry: str | None = None,
         include_metadata: bool = True,
     ) -> InterpretationText:
@@ -629,7 +644,7 @@ class MolegApi:
         self,
         query: str,
         *,
-        court: str = "all",
+        court: CaseCourt = "all",
         court_name: str | None = None,
         search_body: bool = False,
         decided_on: str | None = None,
@@ -872,9 +887,10 @@ class MolegApi:
         promulgation_bridge: dict[str, Any] | None = None,
         law_identifier: LawIdentity | LawHit | str | None = None,
         articles: list[str | int] | None = None,
-        mode: str = "question",
-        budget: str = "standard",
+        mode: BundleMode = "question",
+        budget: BundleBudget = "standard",
     ) -> LegalContextBundle:
+        validate_choice("mode", mode, BUNDLE_MODE_VALUES)
         limits = bundle_limits(budget)
         request = BundleRequest(
             query=query,
@@ -1160,39 +1176,48 @@ class MolegApi:
         return rows
 
 
+def validate_choice(
+    param: str,
+    value: str,
+    valid_values: tuple[str, ...],
+    *,
+    context: str | None = None,
+) -> None:
+    if value in valid_values:
+        return
+    label = f"{param} for {context}" if context else param
+    valid = ", ".join(repr(item) for item in valid_values)
+    raise UnsupportedFormatError(f"Invalid {label}: {value!r}. Valid values: {valid}.")
+
+
 def target_for(basis: Basis, kind: str) -> str:
+    validate_choice("basis", basis, BASIS_VALUES)
     return TARGETS[basis][kind]
 
 
 def annex_source_type(source: str) -> str:
-    if source in ("law", "statute"):
+    validate_choice("source", source, ANNEX_SOURCE_VALUES)
+    if source == "law":
         return "law"
-    if source in ("administrative_rule", "admin_rule"):
+    if source == "administrative_rule":
         return "administrative_rule"
-    raise UnsupportedFormatError(f"Unsupported annex/form source: {source}")
+    raise AssertionError("validated annex/form source should be reachable")
 
 
 def annex_target_for(source_type: str) -> str:
-    try:
-        return ANNEX_FORM_TARGETS[source_type]
-    except KeyError as exc:
-        raise UnsupportedFormatError(f"Unsupported annex/form source: {source_type}") from exc
+    validate_choice("source", source_type, ANNEX_SOURCE_VALUES)
+    return ANNEX_FORM_TARGETS[source_type]
 
 
 def annex_search_scope(search_scope: str) -> int:
-    try:
-        return ANNEX_SEARCH_SCOPES[search_scope]
-    except KeyError as exc:
-        raise UnsupportedFormatError(f"Unsupported annex/form search scope: {search_scope}") from exc
+    validate_choice("search_scope", search_scope, ANNEX_SEARCH_SCOPE_VALUES)
+    return ANNEX_SEARCH_SCOPES[search_scope]
 
 
 def annex_type_code(source_type: str, annex_type: str) -> str:
-    try:
-        return ANNEX_TYPE_CODES[source_type][annex_type]
-    except KeyError as exc:
-        raise UnsupportedFormatError(
-            f"Unsupported annex/form type for {source_type}: {annex_type}"
-        ) from exc
+    valid_values = tuple(ANNEX_TYPE_CODES[annex_source_type(source_type)])
+    validate_choice("annex_type", annex_type, valid_values, context=source_type)
+    return ANNEX_TYPE_CODES[source_type][annex_type]
 
 
 def annex_form_identity_from_identifier(
@@ -1361,6 +1386,7 @@ def article_label_for_filter(article: str | int) -> str:
 
 
 def interpretation_sources_for(source: str, ministry: str | None) -> list[InterpretationSourceSpec]:
+    validate_choice("source", source, INTERPRETATION_SOURCE_VALUES)
     if source == "moleg":
         return [OFFICIAL_INTERPRETATION_SOURCE]
     if source == "ministry":
@@ -1370,7 +1396,7 @@ def interpretation_sources_for(source: str, ministry: str | None) -> list[Interp
         if ministry:
             specs.append(ministry_interpretation_source(ministry))
         return specs
-    raise UnsupportedFormatError(f"Unsupported interpretation source: {source}")
+    raise AssertionError("validated interpretation source should be reachable")
 
 
 def ministry_interpretation_source(ministry: str | None) -> InterpretationSourceSpec:
@@ -1433,13 +1459,14 @@ def interpretation_identity_params(identity: InterpretationIdentity) -> dict[str
 
 
 def court_filter_code(court: str) -> str | None:
+    validate_choice("court", court, COURT_VALUES)
     if court == "all":
         return None
     if court == "supreme":
         return "400201"
     if court == "lower":
         return "400202"
-    raise UnsupportedFormatError(f"Unsupported court filter: {court}")
+    raise AssertionError("validated court filter should be reachable")
 
 
 def judicial_decision_identity_from_identifier(
@@ -1639,10 +1666,8 @@ def build_follow_up_searches(
 
 
 def bundle_limits(budget: str) -> dict[str, int]:
-    try:
-        return BUNDLE_BUDGETS[budget]
-    except KeyError as exc:
-        raise UnsupportedFormatError(f"Unsupported legal context bundle budget: {budget}") from exc
+    validate_choice("budget", budget, BUNDLE_BUDGET_VALUES)
+    return BUNDLE_BUDGETS[budget]
 
 
 def string_value(value: Any) -> str | None:
