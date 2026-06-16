@@ -227,7 +227,13 @@ def test_skill_author_cookbook_api_calls_match_public_signatures():
     cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
     python_blocks = re.findall(r"```python\n(.*?)\n```", cookbook, re.DOTALL)
     public_signatures = {
-        name: inspect.signature(member)
+        name: inspect.Signature(
+            parameters=[
+                param
+                for param in inspect.signature(member).parameters.values()
+                if param.name != "self"
+            ],
+        )
         for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
         if not name.startswith("_")
     }
@@ -249,36 +255,13 @@ def test_skill_author_cookbook_api_calls_match_public_signatures():
 
             method_name = node.func.attr
             assert method_name in public_signatures, method_name
-            signature = public_signatures[method_name]
-            params = [
-                param
-                for param in signature.parameters.values()
-                if param.name != "self"
-            ]
-            positional_slots = [
-                param
-                for param in params
-                if param.kind
-                in (
-                    inspect.Parameter.POSITIONAL_ONLY,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                )
-            ]
-            keyword_names = {
-                param.name
-                for param in params
-                if param.kind
-                in (
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    inspect.Parameter.KEYWORD_ONLY,
-                )
-            }
-
             checked_calls.append((block_index, method_name))
-            assert len(node.args) <= len(positional_slots), method_name
+            arguments = [object() for _ in node.args]
+            keywords = {}
             for keyword in node.keywords:
                 assert keyword.arg is not None, method_name
-                assert keyword.arg in keyword_names, method_name
+                keywords[keyword.arg] = object()
+            public_signatures[method_name].bind(*arguments, **keywords)
 
     assert checked_calls
 
