@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import get_type_hints
 
+import moleg_api
 from moleg_api.laws import MolegApi
 from moleg_api.models import BundleBudget
 
@@ -127,3 +128,40 @@ def test_skill_author_cookbook_distinguishes_pre_publication_install_paths():
     assert "python -m pip install ." in installation
     assert "python -m pip wheel . --no-deps -w dist" in installation
     assert "python -m pip install dist/moleg_api-*.whl --no-deps" in installation
+
+
+def test_skill_author_cookbook_import_examples_are_package_root_exports():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    imported_names = {
+        name.strip()
+        for import_line in re.findall(
+            r"^from moleg_api import ([^\n]+)$",
+            cookbook,
+            re.MULTILINE,
+        )
+        for name in import_line.split(",")
+    }
+
+    assert imported_names
+    assert {
+        name for name in imported_names if not hasattr(moleg_api, name)
+    } == set()
+
+
+def test_skill_author_cookbook_method_examples_are_public_moleg_api_methods():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    documented_methods = {
+        match.group(1)
+        for match in re.finditer(
+            r"\bapi\.([a-zA-Z_][a-zA-Z0-9_]*)\(",
+            cookbook,
+        )
+    }
+    public_methods = {
+        name
+        for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
+        if not name.startswith("_")
+    }
+
+    assert documented_methods
+    assert documented_methods <= public_methods
