@@ -894,12 +894,6 @@ class MolegApi:
         loaded_laws: list[LawText] = []
         loaded_articles: list[ArticleText] = []
         loaded_delegations: list[DelegationGraph] = []
-        admin_texts: list[AdministrativeRuleText] = []
-        interpretation_texts: list[InterpretationText] = []
-        case_texts: list[JudicialDecisionText] = []
-        constitutional_texts: list[JudicialDecisionText] = []
-        histories: list[LawHistory] = []
-        diffs: list[LawDiff] = []
         query_expansion: LegalQueryExpansion | None = None
         law_candidates: list[LawIdentity] = []
         administrative_candidates: list[AdministrativeRuleHit] = []
@@ -1123,12 +1117,6 @@ class MolegApi:
                 laws=loaded_laws,
                 articles=loaded_articles,
                 delegations=loaded_delegations,
-                administrative_rules=admin_texts,
-                interpretations=interpretation_texts,
-                cases=case_texts,
-                constitutional_decisions=constitutional_texts,
-                histories=histories,
-                diffs=diffs,
             ),
             candidates=CandidateContext(
                 query_expansion=query_expansion,

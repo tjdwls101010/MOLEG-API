@@ -80,7 +80,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 
 ## Context Bundle
 
-The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated and administrative context next, annex/form candidates when attached material may matter, interpretation and judicial context as bounded candidates with selective full-text loading, and explicit WebSearch gaps for latest social context.
+The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated context next, administrative-rule and annex/form candidates when attached material may matter, interpretation and judicial context as bounded candidates with explicit follow-up detail loading, and WebSearch gaps for latest social context.
 
 ## Expected Public Interfaces
 

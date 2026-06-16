@@ -1556,6 +1556,15 @@ def test_load_legal_context_bundle_stages_question_context():
     assert bundle.candidates.annex_forms[0].identity.title == "무단방치 자동차 처리 기준"
     assert bundle.candidates.annex_forms[0].identity.source_target == "licbyl"
     assert bundle.candidates.annex_forms[1].identity.source_target == "admbyl"
+    for unloaded_field in (
+        "administrative_rules",
+        "interpretations",
+        "cases",
+        "constitutional_decisions",
+        "histories",
+        "diffs",
+    ):
+        assert not hasattr(bundle.loaded, unloaded_field)
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     assert bundle.gaps[0].kind == "websearch_required"
