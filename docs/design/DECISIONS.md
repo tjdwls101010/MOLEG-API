@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-16 — compare_law_versions rejects arbitrary date windows
+
+The law.go.kr `oldAndNew` detail surface exposes a source-supplied before/after pair, not arbitrary caller-selected `before`/`after` dates. MOLEG-API keeps `compare_law_versions()` for that source-supplied pair and rejects date-window arguments with `UnsupportedFormatError`, rather than pretending to compare dates it cannot actually honor.
+
 ## 2026-06-16 — Detail loaders reject bare law-name strings
 
 Detail loaders still accept numeric law ID strings for compatibility, but non-numeric bare strings are treated as unresolved law names and rejected with guidance to call `search_laws()` first. This was chosen over auto-resolving names inside detail loaders because implicit search would hide ambiguity, rate-limit, and progressive-loading behavior behind methods that are supposed to load already-resolved law identities.

@@ -388,6 +388,13 @@ class MolegApi:
         after: str | None = None,
         article: str | int | None = None,
     ) -> LawDiff:
+        if before is not None or after is not None:
+            raise UnsupportedFormatError(
+                "Arbitrary two-date comparison is not supported by law.go.kr oldAndNew; "
+                "call compare_law_versions() without before/after to load the source-supplied "
+                "before/after pair."
+            )
+
         identity = identity_from_identifier(law_identifier, basis="effective")
         params = identity_params(identity, as_of=None, basis="effective")
         payload = self.source.service("oldAndNew", params)
@@ -402,7 +409,7 @@ class MolegApi:
             before_identity=before_identity,
             after_identity=after_identity,
             changes=changes,
-            raw={**raw_diff, "requested_before": before, "requested_after": after},
+            raw=raw_diff,
         )
 
     def find_delegated_rules(
