@@ -19,15 +19,15 @@ MolegApi.load_legal_context_bundle(
     promulgation_bridge: dict | None = None,
     law_identifier=None,
     articles: list[str | int] | None = None,
-    mode: str = "question",  # "question" | "promulgated_bill" | "statute_review"
-    budget: str = "standard",  # "minimal" | "standard" | "broad"
+    mode: BundleMode = "question",
+    budget: BundleBudget = "standard",
 ) -> LegalContextBundle
 
 MolegApi.load_institutional_system(
     statute_identifiers: list[str | LawIdentity | LawHit],
     *,
     articles: list[str | int] | None = None,
-    budget: str = "standard",
+    budget: BundleBudget = "standard",
 ) -> LegalContextBundle
 ```
 

@@ -1,6 +1,6 @@
 import json
 from dataclasses import is_dataclass
-from typing import get_args
+from typing import get_args, get_type_hints
 
 import moleg_api
 import moleg_api.models as models
@@ -44,6 +44,7 @@ def test_bundle_request_mode_covers_returned_bundle_modes_without_widening_call_
         "statute_review",
         "institutional_system",
     }
+    assert get_type_hints(models.BundleRequest)["budget"] == models.BundleBudget
 
 
 def test_all_public_dataclasses_have_serialization_methods():

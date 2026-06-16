@@ -521,7 +521,7 @@ class BundleRequest:
 
     query: str | None
     mode: BundleRequestMode
-    budget: str
+    budget: BundleBudget
     articles: list[str | int] = field(default_factory=list)
     statute_ids: list[str] = field(default_factory=list)
     promulgation_bridge: dict[str, Any] = field(default_factory=dict)

@@ -1,6 +1,8 @@
 import inspect
+from typing import get_type_hints
 
 from moleg_api.laws import MolegApi
+from moleg_api.models import BundleBudget
 
 
 CORE_METHODS = [
@@ -58,3 +60,11 @@ def test_all_public_methods_have_skill_author_contract_docstrings():
         assert doc is not None, method_name
         for required_section in ["Use when:", "Returns:", "Raises:", "Related:"]:
             assert required_section in doc, method_name
+
+
+def test_bundle_loader_budget_signatures_use_public_literal_vocabulary():
+    institutional_hints = get_type_hints(MolegApi.load_institutional_system)
+    context_hints = get_type_hints(MolegApi.load_legal_context_bundle)
+
+    assert institutional_hints["budget"] == BundleBudget
+    assert context_hints["budget"] == BundleBudget

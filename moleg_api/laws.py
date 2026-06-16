@@ -1311,7 +1311,7 @@ class MolegApi:
         statute_identifiers: list[str | LawIdentity | LawHit],
         *,
         articles: list[str | int] | None = None,
-        budget: str = "standard",
+        budget: BundleBudget = "standard",
     ) -> LegalContextBundle:
         """Load one explicit multi-statute institutional system.
 
@@ -2726,7 +2726,7 @@ def build_follow_up_searches(
     return searches
 
 
-def bundle_limits(budget: str) -> dict[str, int]:
+def bundle_limits(budget: BundleBudget) -> dict[str, int]:
     validate_choice("budget", budget, BUNDLE_BUDGET_VALUES)
     return BUNDLE_BUDGETS[budget]
 
@@ -2734,8 +2734,8 @@ def bundle_limits(budget: str) -> dict[str, int]:
 def bundle_eager_detail_limits(
     query: str | None,
     *,
-    mode: str,
-    budget: str,
+    mode: BundleMode,
+    budget: BundleBudget,
 ) -> dict[str, int]:
     try:
         budget_limits = BUNDLE_EAGER_DETAIL_LIMITS[budget]
@@ -2758,7 +2758,7 @@ def bundle_eager_detail_limits(
     return limits
 
 
-def bundle_query_intents(query: str | None, *, mode: str) -> set[str]:
+def bundle_query_intents(query: str | None, *, mode: BundleMode) -> set[str]:
     if mode not in ("question", "statute_review"):
         return set()
     text = str(query or "")
