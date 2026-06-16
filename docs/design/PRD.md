@@ -86,6 +86,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - `get_constitutional_decision(identifier)`
 - `expand_legal_query(query)`
 - `load_legal_context_bundle(query=None, *, promulgation_bridge=None, law_identifier=None, articles=None, mode="question", budget="standard")`
+- `load_institutional_system(statute_identifiers, *, articles=None, budget="standard")`
 - `resolve_promulgated_law(*, prom_law_nm=None, prom_no=None, promulgation_dt=None)`
 
 Names may change to match code style, but the interface principle should not: one deep module per recurring legal task is better than one shallow function per MOLEG endpoint.
@@ -118,6 +119,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.expand_legal_query()` combines law-name search, legal terms, everyday terms, related terms, related articles, AI search, and related-law surfaces into query-planning candidates and follow-up search recommendations, including annex/form discovery before WebSearch handoff. Its output is not final legal authority.
 - `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded administrative-rule and annex/form candidates, conditional eager loading for top-ranked interpretation/case/Constitutional Court detail when query intent warrants it, explicit follow-up detail loading for the rest, ambiguity records, and structured WebSearch gaps.
 - `MolegApi` class and public-method docstrings provide method-selection guidance, return-shape summaries, error modes, and neighboring-interface distinctions for skill authors.
+- `MolegApi.load_institutional_system()` composes an explicit set of statute identities into one staged institutional-system bundle, loading statute text/articles, law-structure hierarchy, and delegations while keeping administrative-rule, annex/form, interpretation, case, and constitutional detail as bounded candidates and deferred lookups. It does not infer which statutes belong to a 제도 or decide which statute is primary.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - `LawGoKrClient` performs bounded retries for transient law.go.kr failures and raises `RateLimitError` or `RetryExhaustedError` instead of collapsing temporary source-access failures into legal no-result states.
 - Public model dataclasses expose recursive `to_dict()` and `to_json_string()` serialization. `raw` source payloads are omitted by default and included only when `include_raw=True`.

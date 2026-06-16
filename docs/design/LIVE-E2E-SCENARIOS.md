@@ -19,9 +19,10 @@ The gate exercises:
 - Constitutional Court detail loading through a stable live decision ID.
 - Legal query expansion as planning context, including WebSearch handoff gaps.
 - Legal context bundles for broad questions and specific statute review.
+- Institutional-system bundles for explicit multi-statute 제도 loading.
 - Real `congress-db` promulgation bridge rows resolved through MOLEG identity lookup.
 
-The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
+The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, law-structure presence, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
 
 ## Scenario Groups
 
@@ -40,11 +41,12 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Query planning | 5 | `expand_legal_query()` |
 | Question bundles | 4 | `load_legal_context_bundle(mode="question")` |
 | Statute-review bundles | 2 | `load_legal_context_bundle(mode="statute_review")` |
+| Institutional-system bundles | 1 | `load_institutional_system()` |
 | congress-db bridge | 1 credential-dependent | `bill_final_outcomes` -> `resolve_promulgated_law()` |
 
 ## Current Evidence
 
-Last run on 2026-06-15:
+Last run on 2026-06-17:
 
 ```bash
 .venv/bin/python -m pytest tests/test_live_e2e_scenarios.py -q
@@ -53,13 +55,14 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-43 passed in 195.25s (0:03:15)
+43 passed, 1 skipped in 132.70s (0:02:12)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
 The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from the specified ministry `dapaCgmExpc` results when `source="all"`.
 The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
 The annex/form body scenario searches 식품위생법 law annexes, selects the 과태료 별표 candidate, and verifies non-empty text from `lsBylTextDownLoad.do`.
+The institutional-system scenario uses exact loadable statute identities for 자동차관리법 and 자동차관리법 시행령 because live law-name search can surface future effective rows before detail lookup is available.
 
 ## Operating Notes
 
