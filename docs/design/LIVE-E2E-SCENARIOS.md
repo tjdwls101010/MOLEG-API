@@ -4,6 +4,8 @@ This document records the live scenario gate for MOLEG-API as used by a future l
 
 The executable gate is `tests/test_live_e2e_scenarios.py`.
 
+The companion deterministic consumer-shape gate is `scripts/fake_skill_tracer_bullet.py`, documented in `docs/design/FAKE-SKILL-TRACER-BULLET.md`. Use the live e2e gate for source reachability and the fake-skill gate for public-interface orchestration across the seven consumer-readiness archetypes.
+
 ## Scope
 
 The gate exercises:

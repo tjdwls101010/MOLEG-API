@@ -17,7 +17,8 @@ Current environment evidence:
 - Legislative live e2e passed with local credentials: `python3 -m pytest tests/test_live_e2e_scenarios.py -q` -> `44 passed, 1 skipped`.
 - Fresh congress-db read-only introspection passed with local `.env.local` `CONGRESS_DB_READONLY_URL`: `.venv/bin/python scripts/introspect_congress_db.py`.
 - Fresh congress-db evidence shows `current_user: congress_ro`, `session_user: congress_ro`, and `transaction_read_only: on`.
-- Last deterministic command excluding live tests: `python3 -m pytest -q -m 'not live'` -> `107 passed, 54 deselected`.
+- Fake-skill tracer-bullet gate passed: `python3 scripts/fake_skill_tracer_bullet.py` -> emitted JSON summaries for 7 archetypes; `python3 -m pytest tests/test_fake_skill_tracer_bullet.py -q` -> `2 passed`.
+- Last deterministic command excluding live tests: `python3 -m pytest -q -m 'not live'` -> `109 passed, 54 deselected`.
 - Integration hygiene: `rg -n "<<<<<<<|=======|>>>>>>>" .` -> no conflict markers; `python3 -m compileall moleg_api` -> passed; `git diff --check` -> passed.
 
 ## Requirement Audit
@@ -46,6 +47,7 @@ Current environment evidence:
 | Avoid large mirror DB/cache at the start. | No committed mirror/cache implementation exists; `.gitignore` excludes local DB files. `docs/design/PRD.md` records "Caching starts small." | Proven by repository state. |
 | Write skill integration docs explaining MOLEG-API, congress-db, and WebSearch responsibilities. | `docs/SKILL-INTEGRATION.md` documents source responsibilities, promulgated-bill workflow, query planning, fallback rules, public interfaces, and answering discipline. | Proven by document. |
 | Run dozens of realistic e2e scenarios from a legislative-expert Claude perspective. | `tests/test_live_e2e_scenarios.py` covers 43 statute/article, full law history, delegation, administrative-rule, annex/form search, selected annex/form body loading, official/ministry interpretation, case, constitutional, query-planning, bundle, and congress bridge scenarios through public `MolegApi` methods. | Proven by live e2e gate. |
+| Run a pre-skill fake-skill tracer bullet across the seven consumer-readiness archetypes. | `scripts/fake_skill_tracer_bullet.py` and `tests/test_fake_skill_tracer_bullet.py` cover sanction design, delegated-criteria tracing, statute evolution, congress-bill to current-law bridge, constitutional-risk scan, multi-law concept assembly, and comparative design using public `MolegApi` methods only. | Proven by deterministic fake-skill gate. |
 | Avoid overclaiming perfection. | `docs/design/COMPLETION-RISK-AUDIT.md` records no known initial-core blocker and keeps demand-gated extensions such as direct HWP/PDF parsing outside the completion claim; recent bridge lag, Constitutional Court detail coverage, ministry interpretation live coverage, full law history, and annex/form body loading are recorded as mitigated. | Proven by risk audit and GitHub issues. |
 | Record decisions and API traps in decision log. | `docs/design/DECISIONS.md` contains decisions for deep interface, effective-date default, congress-db read-only use, admin `issued_on`, interpretation registry, judicial/constitutional separation, query expansion, context bundles, and retry semantics. | Proven by document. |
 | Use GitHub issues/branches/PRs to maintain progress visibility. | Merged PRs include #2, #7, #8, #9, #11, #12, #14, #17, #19, #23, #25, #27, #29, #31, and #33; this final verification branch closes #15. | Proven by GitHub state at audit time. |
@@ -75,4 +77,4 @@ Expected behavior:
 
 None for the initial core completion criteria.
 
-For the consumer-readiness roadmap, draft PR #89 is the current integration gate for #50-#68. The remaining work is review/merge sequencing and any issues discovered by that review or by the planned pre-skill tracer-bullet gate. Demand-gated extensions such as direct HWP/PDF annex/form parsing remain documented out of scope until repeated skill scenarios justify them.
+For the consumer-readiness roadmap, draft PR #89 is the current integration gate for #50-#68 and #90. The remaining work is review/merge sequencing and any issues discovered by that review. Demand-gated extensions such as direct HWP/PDF annex/form parsing remain documented out of scope until repeated skill scenarios justify them.
