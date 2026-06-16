@@ -210,3 +210,26 @@ def test_skill_author_cookbook_method_examples_are_public_moleg_api_methods():
 
     assert documented_methods
     assert documented_methods <= public_methods
+
+
+def test_skill_author_cookbook_vendored_fallback_lists_package_files():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    section = cookbook.split("## Vendored Fallback", 1)[1].split(
+        "## Error Handling",
+        1,
+    )[0]
+    documented_files = {
+        match.group(1)
+        for match in re.finditer(
+            r"^      ([a-zA-Z_][a-zA-Z0-9_]*(?:\.py)?|py\.typed)$",
+            section,
+            re.MULTILINE,
+        )
+    }
+    package_files = {
+        path.name
+        for path in Path("moleg_api").iterdir()
+        if path.is_file() and (path.suffix == ".py" or path.name == "py.typed")
+    }
+
+    assert documented_files == package_files

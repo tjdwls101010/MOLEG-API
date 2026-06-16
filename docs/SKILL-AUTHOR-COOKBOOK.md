@@ -298,6 +298,7 @@ If the skill sandbox cannot install from PyPI, vendor the source tree into the s
       laws.py
       models.py
       normalization.py
+      py.typed
       source.py
 ```
 

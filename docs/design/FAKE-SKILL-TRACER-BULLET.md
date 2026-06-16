@@ -46,7 +46,7 @@ Results:
 ```text
 scripts/fake_skill_tracer_bullet.py -> emitted JSON summaries for 7 archetypes
 tests/test_fake_skill_tracer_bullet.py -q -> 2 passed
-python3 -m pytest -q -m 'not live' -> 123 passed, 54 deselected
+python3 -m pytest -q -m 'not live' -> 124 passed, 54 deselected
 ```
 
 ## Non-Goals
