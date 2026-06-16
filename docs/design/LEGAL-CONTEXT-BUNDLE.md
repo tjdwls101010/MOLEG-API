@@ -22,9 +22,17 @@ MolegApi.load_legal_context_bundle(
     mode: str = "question",  # "question" | "promulgated_bill" | "statute_review"
     budget: str = "standard",  # "minimal" | "standard" | "broad"
 ) -> LegalContextBundle
+
+MolegApi.load_institutional_system(
+    statute_identifiers: list[str | LawIdentity | LawHit],
+    *,
+    articles: list[str | int] | None = None,
+    budget: str = "standard",
+) -> LegalContextBundle
 ```
 
 The interface accepts either a user question, a `congress-db` promulgation bridge, or a known law identity. Passing raw MOLEG `target` values remains unsupported.
+`load_institutional_system()` accepts an explicit statute set and returns the same bundle shape with `request.mode="institutional_system"` and `request.statute_ids` preserving the input statutes.
 
 ## Response Shape
 
@@ -40,7 +48,7 @@ LegalContextBundle(
 )
 ```
 
-`loaded` is source material already retrieved and safe for Claude to inspect.
+`loaded` is source material already retrieved and safe for Claude to inspect. Institutional-system bundles may include `loaded.law_structures`, the `lsStmd` hierarchy for each statute.
 
 `candidates` are possible next sources, not authority. This includes annex/form candidates whose bodies should be loaded separately when attached material may be operative.
 
@@ -53,6 +61,7 @@ LegalContextBundle(
 - `mode="question"` calls `expand_legal_query()`, loads the first law candidate when available, finds delegated rules, searches administrative rules, law/admin-rule annex forms, interpretations, Supreme Court cases, and Constitutional Court decisions, and leaves detail loading for interpretation/case candidates in `deferred`.
 - `mode="promulgated_bill"` starts from `congress-db` bridge fields and calls `resolve_promulgated_law()`. Ambiguity or no-result becomes structured `Ambiguity` plus a gap instead of a silent best guess. If exact `prom_no` / `promulgation_dt` matching fails but law-name candidates exist, the bundle preserves those candidates and emits `source_lag_or_manual_review_required` so Claude does not confuse MOLEG source lag with "not enacted."
 - `mode="statute_review"` starts from a supplied law identity and loads the current law text or requested articles.
+- `mode="institutional_system"` is produced by `load_institutional_system()`. It starts from an explicit statute set, loads statute text or requested articles for each statute, loads `get_law_structure(depth=1)`, loads article-level delegations where available, and keeps administrative-rule, annex/form, interpretation, case, and constitutional detail as bounded candidates/deferred lookups.
 - Every bundle with a search query includes a `websearch_required` gap because latest social facts, statistics, policy announcements, and news are outside law.go.kr.
 - `budget="standard"` is the default. `minimal` and `broad` adjust candidate counts but still keep interpretation and judicial full text deferred by default.
 
@@ -122,6 +131,15 @@ Use only when the user asks for a survey, memo, or risk scan.
 4. Search annex/forms when the loaded text references 별표, 서식, 기준표, 금액, 요건, 신청서, or similar attached material. Use `get_annex_form_body()` for selected candidates before relying on the attached content.
 5. Search interpretations and cases second.
 6. Search constitutional decisions when the review asks about limits, rights, sanctions, equality, proportionality, or constitutional risk.
+
+### `institutional_system`
+
+1. Start from the statute identities Claude already selected. Do not use this mode to infer a 제도 from a concept alone.
+2. Load current text or requested articles for each statute.
+3. Load the `lsStmd` law hierarchy and article-level `lsDelegated` rows for each statute.
+4. Search administrative rules, annex/forms, interpretations, cases, and Constitutional Court decisions by statute name.
+5. Keep those secondary sources as candidates/deferred detail unless a later explicit loader is needed.
+6. Preserve ambiguous or unresolved statute identifiers in `ambiguities`, `gaps`, and `deferred` instead of guessing.
 
 ## Default Answer To #6 Open Questions
 

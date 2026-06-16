@@ -1544,6 +1544,254 @@ def test_expand_legal_query_records_empty_sources_without_failing():
     assert "최신" in expansion.follow_up_searches[-1].query
 
 
+def institutional_law_payload(law_id: str, name: str, mst: str, article_no: str = "1"):
+    return {
+        "eflaw": {
+            "기본정보": {
+                "법령ID": law_id,
+                "법령명_한글": name,
+                "법령일련번호": mst,
+                "시행일자": "20260101",
+            },
+            "조문": {
+                "조문단위": [
+                    {
+                        "조문번호": article_no,
+                        "조문제목": "목적",
+                        "조문내용": f"{name}의 목적 조문이다.",
+                    }
+                ]
+            },
+        }
+    }
+
+
+def institutional_structure_payload(law_id: str, name: str, mst: str, child_name: str):
+    return {
+        "lsStmd": {
+            "기본정보": {
+                "법령ID": law_id,
+                "법령일련번호": mst,
+                "법령명": name,
+                "법종구분": {"content": "법률"},
+                "시행일자": "20260101",
+            },
+            "상하위법": {
+                "법률": {
+                    "기본정보": {
+                        "법령ID": law_id,
+                        "법령일련번호": mst,
+                        "법령명": name,
+                        "법종구분": {"content": "법률"},
+                        "시행일자": "20260101",
+                    },
+                    "시행령": [
+                        {
+                            "기본정보": {
+                                "법령ID": f"{law_id}1",
+                                "법령일련번호": f"{mst}1",
+                                "법령명": child_name,
+                                "법종구분": {"content": "대통령령"},
+                                "시행일자": "20260101",
+                            }
+                        }
+                    ],
+                }
+            },
+        }
+    }
+
+
+def institutional_delegation_payload(law_id: str, name: str, delegated_name: str | None = None):
+    return {
+        "lsDelegated": {
+            "법령": {
+                "법령정보": {
+                    "법령ID": law_id,
+                    "법령명": name,
+                },
+                "위임조문정보": [
+                    {
+                        "조정보": {"조문번호": "1", "조문제목": "목적"},
+                        "위임정보": {
+                            "위임구분": "시행령",
+                            "위임법령제목": delegated_name,
+                            "라인텍스트": "대통령령으로 정하는 바에 따라",
+                        },
+                    }
+                ]
+                if delegated_name
+                else [],
+            }
+        }
+    }
+
+
+def institutional_admin_search_payload(name: str):
+    return {
+        "AdmRulSearch": {
+            "admrul": [
+                {
+                    "행정규칙 일련번호": f"21{name}",
+                    "행정규칙명": f"{name} 고시",
+                    "행정규칙종류": "고시",
+                    "발령일자": "20250101",
+                }
+            ]
+        }
+    }
+
+
+def institutional_interpretation_search_payload(name: str):
+    return {
+        "ExpcSearch": {
+            "expc": [
+                {
+                    "법령해석례일련번호": f"33{name}",
+                    "안건명": f"{name} 해석례",
+                    "안건번호": "21-0001",
+                    "회신기관명": "법제처",
+                }
+            ]
+        }
+    }
+
+
+def institutional_case_search_payload(name: str):
+    return {
+        "PrecSearch": {
+            "prec": [
+                {
+                    "판례일련번호": f"22{name}",
+                    "사건명": f"{name} 판례",
+                    "사건번호": "2020다12345",
+                    "법원명": "대법원",
+                }
+            ]
+        }
+    }
+
+
+def institutional_constitutional_search_payload(name: str):
+    return {
+        "DetcSearch": {
+            "detc": [
+                {
+                    "헌재결정례일련번호": f"58{name}",
+                    "사건명": f"{name} 헌재결정",
+                    "사건번호": "2020헌마1",
+                }
+            ]
+        }
+    }
+
+
+def institutional_law_annex_payload(name: str):
+    return {
+        "licbyl": [
+            {
+                "licbyl id": f"44{name}",
+                "별표명": f"{name} 별표",
+                "관련법령명": name,
+                "별표종류": "별표",
+            }
+        ]
+    }
+
+
+def institutional_admin_annex_payload(name: str):
+    return {
+        "admbyl": [
+            {
+                "admrulbyl id": f"55{name}",
+                "별표명": f"{name} 행정규칙 서식",
+                "관련행정규칙명": f"{name} 고시",
+                "별표종류": "서식",
+            }
+        ]
+    }
+
+
+def test_load_institutional_system_stages_multiple_explicit_statutes():
+    first = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
+    second = LawIdentity(law_id="100002", mst="300002", name="전자금융거래법 시행령", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("전자금융거래법"),
+            institutional_interpretation_search_payload("전자금융거래법"),
+            institutional_case_search_payload("전자금융거래법"),
+            institutional_constitutional_search_payload("전자금융거래법"),
+            institutional_law_annex_payload("전자금융거래법"),
+            institutional_admin_annex_payload("전자금융거래법"),
+            institutional_admin_search_payload("전자금융거래법 시행령"),
+            institutional_interpretation_search_payload("전자금융거래법 시행령"),
+            institutional_case_search_payload("전자금융거래법 시행령"),
+            institutional_constitutional_search_payload("전자금융거래법 시행령"),
+            institutional_law_annex_payload("전자금융거래법 시행령"),
+            institutional_admin_annex_payload("전자금융거래법 시행령"),
+        ],
+        service_payloads=[
+            institutional_law_payload("100001", "전자금융거래법", "300001"),
+            institutional_structure_payload("100001", "전자금융거래법", "300001", "전자금융거래법 시행령"),
+            institutional_delegation_payload("100001", "전자금융거래법", "전자금융거래법 시행령"),
+            institutional_law_payload("100002", "전자금융거래법 시행령", "300002"),
+            institutional_structure_payload("100002", "전자금융거래법 시행령", "300002", "전자금융거래법 시행규칙"),
+            institutional_delegation_payload("100002", "전자금융거래법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system([first, second], budget="minimal")
+
+    assert bundle.request.mode == "institutional_system"
+    assert bundle.request.statute_ids == ["전자금융거래법", "전자금융거래법 시행령"]
+    assert [law.identity.name for law in bundle.loaded.laws] == ["전자금융거래법", "전자금융거래법 시행령"]
+    assert [structure.identity.name for structure in bundle.loaded.law_structures] == [
+        "전자금융거래법",
+        "전자금융거래법 시행령",
+    ]
+    assert bundle.loaded.law_structures[0].instruments[0].name == "전자금융거래법 시행령"
+    assert len(bundle.loaded.delegations) == 2
+    assert bundle.loaded.delegations[0].rules[0].delegated_name == "전자금융거래법 시행령"
+    assert bundle.loaded.delegations[1].rules == []
+    assert [candidate.name for candidate in bundle.candidates.laws] == [
+        "전자금융거래법",
+        "전자금융거래법 시행령",
+    ]
+    assert len(bundle.candidates.administrative_rules) == 2
+    assert len(bundle.candidates.interpretations) == 2
+    assert len(bundle.candidates.cases) == 2
+    assert len(bundle.candidates.constitutional_decisions) == 2
+    assert len(bundle.candidates.annex_forms) == 4
+    assert any(item.interface == "get_interpretation" for item in bundle.deferred)
+    assert any(item.interface == "get_case" for item in bundle.deferred)
+    assert all(gap.kind == "websearch_required" for gap in bundle.gaps)
+
+
+def test_load_institutional_system_records_ambiguous_statute_identity_without_guessing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {"법령ID": "100001", "법령명한글": "금융감독법"},
+                        {"법령ID": "100002", "법령명한글": "금융위원회법"},
+                    ]
+                }
+            }
+        ]
+    )
+
+    bundle = MolegApi(source).load_institutional_system(["금융법"], budget="minimal")
+
+    assert bundle.loaded.laws == []
+    assert bundle.candidates.laws[0].name == "금융감독법"
+    assert bundle.candidates.laws[1].name == "금융위원회법"
+    assert bundle.ambiguities[0].kind == "statute_identity"
+    assert "금융법" in bundle.ambiguities[0].message
+    assert bundle.gaps[0].kind == "manual_review_required"
+    assert bundle.gaps[0].recommended_interface == "search_laws"
+
+
 def test_load_legal_context_bundle_stages_question_context():
     source = FakeSource(
         search_payloads=[

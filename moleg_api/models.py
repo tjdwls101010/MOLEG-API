@@ -410,6 +410,7 @@ class BundleRequest:
     mode: str
     budget: str
     articles: list[str | int] = field(default_factory=list)
+    statute_ids: list[str] = field(default_factory=list)
     promulgation_bridge: dict[str, Any] = field(default_factory=dict)
     law_identifier: Any = None
 
@@ -421,6 +422,7 @@ class LoadedContext:
     laws: list[LawText] = field(default_factory=list)
     articles: list[ArticleText] = field(default_factory=list)
     delegations: list[DelegationGraph] = field(default_factory=list)
+    law_structures: list[LawStructure] = field(default_factory=list)
     administrative_rules: list[AdministrativeRuleText] = field(default_factory=list)
     interpretations: list[InterpretationText] = field(default_factory=list)
     cases: list[JudicialDecisionText] = field(default_factory=list)

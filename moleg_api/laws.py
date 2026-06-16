@@ -162,6 +162,15 @@ class InterpretationSourceSpec:
     can_get: bool = True
 
 
+@dataclass(frozen=True)
+class InstitutionalStatuteResolution:
+    identifier: str
+    identity: LawIdentity | None
+    candidates: list[LawIdentity]
+    error_kind: str | None = None
+    message: str | None = None
+
+
 OFFICIAL_INTERPRETATION_SOURCE = InterpretationSourceSpec(
     source_type="moleg",
     target="expc",
@@ -894,6 +903,288 @@ class MolegApi:
         if not rows:
             empty_sources.append(target)
         return rows
+
+    def load_institutional_system(
+        self,
+        statute_identifiers: list[str | LawIdentity | LawHit],
+        *,
+        articles: list[str | int] | None = None,
+        budget: str = "standard",
+    ) -> LegalContextBundle:
+        """Load one explicit multi-statute institutional system.
+
+        Use when: the skill has already selected the statute set for a 제도 and
+        needs one staged source bundle across those statutes.
+        Returns: `LegalContextBundle` with `request.mode="institutional_system"`,
+        `request.statute_ids`, loaded law/article text, law structures,
+        delegation graphs, candidates, deferred lookups, ambiguities, and gaps.
+        Raises: `NoResultError` for an empty statute set and budget validation
+        errors from the normal bundle limits; per-statute failures are recorded
+        in the returned bundle instead of aborting the whole load.
+        Related: use `search_laws` or `expand_legal_query` before this method
+        when the statute set itself is uncertain.
+        """
+        if not statute_identifiers:
+            raise NoResultError("statute_identifiers is required for institutional-system bundles")
+
+        limits = bundle_limits(budget)
+        request = BundleRequest(
+            query=None,
+            mode="institutional_system",
+            budget=budget,
+            articles=list(articles or []),
+            statute_ids=[statute_identifier_label(identifier) for identifier in statute_identifiers],
+        )
+        source_notes: list[str] = [
+            "Institutional-system bundle is staged source context, not a legal conclusion."
+        ]
+        ambiguities: list[Ambiguity] = []
+        gaps: list[ContextGap] = []
+        deferred: list[DeferredLookup] = []
+        loaded_laws: list[LawText] = []
+        loaded_articles: list[ArticleText] = []
+        loaded_delegations: list[DelegationGraph] = []
+        law_structures: list[LawStructure] = []
+        law_candidates: list[LawIdentity] = []
+        administrative_candidates: list[AdministrativeRuleHit] = []
+        annex_form_candidates: list[AnnexFormHit] = []
+        interpretation_candidates: list[InterpretationHit] = []
+        case_candidates: list[JudicialDecisionHit] = []
+        constitutional_candidates: list[JudicialDecisionHit] = []
+
+        for statute_identifier in statute_identifiers:
+            resolution = self._resolve_institutional_statute(
+                statute_identifier,
+                display=max(2, limits["law_candidates"]),
+            )
+            law_candidates.extend(resolution.candidates)
+            if resolution.identity is None:
+                if resolution.error_kind == "ambiguous":
+                    ambiguities.append(
+                        Ambiguity(
+                            kind="statute_identity",
+                            message=resolution.message
+                            or f"Statute identifier is ambiguous: {resolution.identifier}",
+                            candidates=resolution.candidates,
+                        )
+                    )
+                else:
+                    source_notes.append(
+                        resolution.message or f"Statute '{resolution.identifier}' was not found"
+                    )
+                gaps.append(
+                    ContextGap(
+                        kind="manual_review_required",
+                        reason="A statute identifier could not be resolved to one MOLEG law identity.",
+                        query=resolution.identifier,
+                        recommended_interface="search_laws",
+                    )
+                )
+                deferred.append(
+                    DeferredLookup(
+                        interface="search_laws",
+                        query=resolution.identifier,
+                        reason="Resolve the statute identity before loading this part of the institutional system.",
+                        source_type="law",
+                    )
+                )
+                continue
+
+            identity = resolution.identity
+            if articles:
+                for article in articles[: limits["articles"]]:
+                    try:
+                        loaded_articles.append(self.get_article(identity, article))
+                    except MolegApiError as exc:
+                        source_notes.append(f"Article load skipped for {identity.name} {article}: {exc}")
+            else:
+                try:
+                    law_text = self.get_law(identity)
+                    loaded_laws.append(law_text)
+                    identity = law_text.identity
+                    law_candidates.append(identity)
+                except MolegApiError as exc:
+                    source_notes.append(f"Law load skipped for {identity.name}: {exc}")
+
+            try:
+                law_structures.append(self.get_law_structure(identity, depth=1))
+            except MolegApiError as exc:
+                source_notes.append(f"Law-structure lookup skipped for {identity.name}: {exc}")
+
+            try:
+                graph = self.find_delegated_rules(identity)
+                loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
+            except NoResultError:
+                loaded_delegations.append(DelegationGraph(identity=identity, rules=[], raw={}))
+            except MolegApiError as exc:
+                source_notes.append(f"Delegation lookup skipped for {identity.name}: {exc}")
+
+            administrative_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_administrative_rules(
+                        identity.name,
+                        display=limits["administrative_rules"],
+                    ),
+                    source_notes,
+                    f"Administrative-rule search for {identity.name}",
+                )
+            )
+            interpretation_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_interpretations(
+                        identity.name,
+                        display=limits["interpretations"],
+                    ),
+                    source_notes,
+                    f"Interpretation search for {identity.name}",
+                )
+            )
+            case_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_cases(
+                        identity.name,
+                        display=limits["cases"],
+                    ),
+                    source_notes,
+                    f"Case search for {identity.name}",
+                )
+            )
+            constitutional_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_constitutional_decisions(
+                        identity.name,
+                        display=limits["constitutional_decisions"],
+                    ),
+                    source_notes,
+                    f"Constitutional decision search for {identity.name}",
+                )
+            )
+
+            annex_form_limit = limits["annex_forms"]
+            law_annex_limit = (annex_form_limit + 1) // 2
+            admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
+            annex_form_candidates.extend(
+                [
+                    *safe_list(
+                        lambda identity=identity: self.search_annex_forms(
+                            identity.name,
+                            source="law",
+                            search_scope="source",
+                            display=law_annex_limit,
+                        ),
+                        source_notes,
+                        f"Law annex/form search for {identity.name}",
+                    ),
+                    *safe_list(
+                        lambda identity=identity: self.search_annex_forms(
+                            identity.name,
+                            source="administrative_rule",
+                            search_scope="source",
+                            display=admin_annex_limit,
+                        ),
+                        source_notes,
+                        f"Administrative-rule annex/form search for {identity.name}",
+                    ),
+                ]
+            )
+            gaps.append(
+                ContextGap(
+                    kind="websearch_required",
+                    reason="Use WebSearch for latest social facts, statistics, policy announcements, news, or non-MOLEG background.",
+                    query=identity.name,
+                    recommended_interface="websearch",
+                )
+            )
+
+        deferred.extend(
+            deferred_from_candidates(administrative_candidates, "get_administrative_rule", "administrative_rule")
+        )
+        deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
+        deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
+        deferred.extend(
+            deferred_from_candidates(
+                constitutional_candidates,
+                "get_constitutional_decision",
+                "constitutional",
+            )
+        )
+
+        return LegalContextBundle(
+            request=request,
+            loaded=LoadedContext(
+                laws=loaded_laws,
+                articles=loaded_articles,
+                delegations=loaded_delegations,
+                law_structures=law_structures,
+            ),
+            candidates=CandidateContext(
+                laws=dedupe_identities(law_candidates),
+                administrative_rules=administrative_candidates,
+                annex_forms=annex_form_candidates,
+                interpretations=interpretation_candidates,
+                cases=case_candidates,
+                constitutional_decisions=constitutional_candidates,
+            ),
+            deferred=deferred,
+            ambiguities=ambiguities,
+            gaps=gaps,
+            source_notes=source_notes,
+        )
+
+    def _resolve_institutional_statute(
+        self,
+        identifier: str | LawIdentity | LawHit,
+        *,
+        display: int,
+    ) -> InstitutionalStatuteResolution:
+        label = statute_identifier_label(identifier)
+        if isinstance(identifier, LawHit):
+            return InstitutionalStatuteResolution(label, identifier.identity, [identifier.identity])
+        if isinstance(identifier, LawIdentity):
+            return InstitutionalStatuteResolution(label, identifier, [identifier])
+        text = label.strip()
+        if not text:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                [],
+                error_kind="no_result",
+                message="Blank statute identifier cannot be resolved",
+            )
+        if text.isdigit():
+            identity = LawIdentity(law_id=text, name=text, basis="effective")
+            return InstitutionalStatuteResolution(label, identity, [identity])
+
+        hits = self.search_laws(text, display=display)
+        identities = dedupe_identities([hit.identity for hit in hits])
+        if not identities:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                [],
+                error_kind="no_result",
+                message=f"Statute '{text}' was not found",
+            )
+        exact = [identity for identity in identities if identity.name == text]
+        if len(exact) == 1:
+            return InstitutionalStatuteResolution(label, exact[0], identities)
+        if len(exact) > 1:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                exact,
+                error_kind="ambiguous",
+                message=f"Statute identifier '{text}' matched multiple exact law identities",
+            )
+        if len(identities) == 1:
+            return InstitutionalStatuteResolution(label, identities[0], identities)
+        return InstitutionalStatuteResolution(
+            label,
+            None,
+            identities,
+            error_kind="ambiguous",
+            message=f"Statute identifier '{text}' matched multiple law identities",
+        )
 
     def load_legal_context_bundle(
         self,
@@ -1679,6 +1970,14 @@ def string_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def statute_identifier_label(identifier: str | LawIdentity | LawHit) -> str:
+    if isinstance(identifier, LawHit):
+        return identifier.identity.name
+    if isinstance(identifier, LawIdentity):
+        return identifier.name
+    return str(identifier)
 
 
 def safe_list(fn: Any, source_notes: list[str], label: str) -> list[Any]:

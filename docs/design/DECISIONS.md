@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — Institutional-system loading composes explicit statutes, not inferred 제도 reasoning
+
+The multi-statute 제도 helper could either infer which statutes form an institution or compose a statute set the skill already selected. MOLEG-API chooses the latter: `load_institutional_system()` loads explicit statute identities, law structures, delegations, and bounded candidates/deferred lookups, while relationship reasoning, primary-statute judgment, and full legal-authority detail loading remain in the skill or later eager-loading slices.
+
 ## 2026-06-17 — lsStmd is a hierarchy source, not article delegation
 
 Live `lsStmd` JSON exposes a nested law hierarchy (`법률` → `시행령` / `시행규칙` / `행정규칙`) but no `조문` or article-level delegation keys. MOLEG-API therefore exposes `get_law_structure()` as a structural hierarchy loader and keeps article-level delegation on `find_delegated_rules()` / `lsDelegated`, rather than inventing `source_article` links the source does not provide.
