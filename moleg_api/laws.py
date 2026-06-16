@@ -38,6 +38,7 @@ from .models import (
     LawHit,
     LawHistory,
     LawIdentity,
+    LawStructure,
     LawText,
 )
 from .normalization import (
@@ -55,6 +56,7 @@ from .normalization import (
     normalize_interpretation_text,
     normalize_judicial_decision_identity,
     normalize_judicial_decision_text,
+    normalize_law_structure,
     normalize_law_identity,
     normalize_related_article_candidate,
     normalize_related_law_candidate,
@@ -416,6 +418,23 @@ class MolegApi:
         if not rules:
             raise NoResultError("No delegated rules found")
         return DelegationGraph(identity=root_identity, rules=rules, raw=raw_delegation)
+
+    def get_law_structure(
+        self,
+        law_identifier: LawIdentity | LawHit | str,
+        *,
+        depth: int = 0,
+    ) -> LawStructure:
+        if depth < 0:
+            raise UnsupportedFormatError("Law structure depth must be 0 or greater")
+        identity = identity_from_identifier(law_identifier, basis="effective")
+        params = identity_params(identity, as_of=None, basis="effective")
+        payload = self.source.service("lsStmd", params)
+        raw_structure = unwrap_service_payload(payload, "lsStmd")
+        structure = normalize_law_structure(raw_structure, max_depth=depth)
+        if not structure.instruments:
+            raise NoResultError("No law structure instruments found")
+        return structure
 
     def search_administrative_rules(
         self,

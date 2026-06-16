@@ -497,6 +497,172 @@ def test_find_delegated_rules_normalizes_lower_rule_relationships():
     assert source.calls[0] == ("service", "lsDelegated", {"ID": "000182"})
 
 
+def law_structure_payload():
+    return {
+        "법령체계도": {
+            "기본정보": {
+                "법령ID": "001747",
+                "법령일련번호": "286989",
+                "법령명": "자동차관리법",
+                "법종구분": {"content": "법률"},
+                "시행일자": "20260616",
+                "공포번호": "21817",
+                "공포일자": "20260616",
+            },
+            "관련법령": "",
+            "상하위법": {
+                "법률": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령일련번호": "286989",
+                        "법령명": "자동차관리법",
+                        "법종구분": {"content": "법률"},
+                        "시행일자": "20260616",
+                        "공포번호": "21817",
+                        "공포일자": "20260616",
+                    },
+                    "시행령": [
+                        {
+                            "기본정보": {
+                                "법령ID": "004590",
+                                "법령일련번호": "286479",
+                                "법령명": "자동차관리법 시행령",
+                                "법종구분": {"content": "대통령령"},
+                                "시행일자": "20260603",
+                                "공포번호": "36376",
+                                "공포일자": "20260602",
+                                "본문상세링크": "/DRF/lawService.do?target=law&MST=286479",
+                            },
+                            "시행규칙": {
+                                "기본정보": {
+                                    "법령ID": "004591",
+                                    "법령일련번호": "286480",
+                                    "법령명": "자동차관리법 시행규칙",
+                                    "법종구분": {"content": "국토교통부령"},
+                                    "시행일자": "20260603",
+                                    "공포번호": "1500",
+                                    "공포일자": "20260602",
+                                }
+                            },
+                            "행정규칙": {
+                                "고시": [
+                                    {
+                                        "기본정보": {
+                                            "행정규칙ID": "012345",
+                                            "행정규칙일련번호": "2100000248758",
+                                            "행정규칙명": "자동차등록번호판 등의 기준에 관한 고시",
+                                            "법종구분": {"content": "고시"},
+                                            "발령일자": "20250115",
+                                            "시행일자": "20250120",
+                                            "발령번호": "2025-1",
+                                            "본문상세링크": "/DRF/lawService.do?target=admrul&ID=2100000248758",
+                                        }
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                    "행정규칙": {
+                        "훈령": {
+                            "기본정보": {
+                                "행정규칙ID": "678901",
+                                "행정규칙일련번호": "2100000999999",
+                                "행정규칙명": "자동차관리 업무처리 규정",
+                                "법종구분": {"content": "훈령"},
+                                "발령일자": "20250201",
+                                "시행일자": "20250201",
+                                "발령번호": "2025-2",
+                            }
+                        }
+                    },
+                    "자치법규": {
+                        "조례": [
+                            {
+                                "기본정보": {
+                                    "자치법규명": "경기도 자동차관리사업 등록기준 등에 관한 조례",
+                                }
+                            }
+                        ]
+                    },
+                }
+            },
+        }
+    }
+
+
+def test_get_law_structure_normalizes_direct_hierarchy_without_local_ordinances():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(service_payloads=[law_structure_payload()])
+
+    structure = MolegApi(source).get_law_structure(identity, depth=0)
+
+    assert structure.identity.name == "자동차관리법"
+    assert [(node.name, node.source_type, node.instrument_type) for node in structure.instruments] == [
+        ("자동차관리법 시행령", "law", "enforcement_decree"),
+        ("자동차관리 업무처리 규정", "administrative_rule", "directive"),
+    ]
+    assert structure.instruments[0].mst == "286479"
+    assert structure.instruments[0].detail_link.endswith("MST=286479")
+    assert structure.instruments[0].children == []
+    assert source.calls[0] == ("service", "lsStmd", {"ID": "001747"})
+
+
+def test_get_law_structure_includes_subordinate_children_when_depth_requested():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(service_payloads=[law_structure_payload()])
+
+    structure = MolegApi(source).get_law_structure(identity, depth=1)
+
+    decree = structure.instruments[0]
+    assert [(node.name, node.source_type, node.instrument_type) for node in decree.children] == [
+        ("자동차관리법 시행규칙", "law", "enforcement_rule"),
+        ("자동차등록번호판 등의 기준에 관한 고시", "administrative_rule", "notice"),
+    ]
+    assert decree.children[1].serial_id == "2100000248758"
+
+
+def test_get_law_structure_raises_parse_failure_on_unexpected_shape():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "법령체계도": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명": "자동차관리법",
+                    },
+                    "상하위법": [],
+                }
+            }
+        ]
+    )
+
+    with pytest.raises(ParseFailureError, match="상하위법"):
+        MolegApi(source).get_law_structure(identity)
+
+
+def test_get_law_structure_raises_no_result_for_empty_structure():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        service_payloads=[
+            {
+                "법령체계도": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령일련번호": "286989",
+                        "법령명": "자동차관리법",
+                        "법종구분": {"content": "법률"},
+                    },
+                    "상하위법": {},
+                }
+            }
+        ]
+    )
+
+    with pytest.raises(NoResultError, match="No law structure"):
+        MolegApi(source).get_law_structure(identity)
+
+
 def test_search_administrative_rules_normalizes_current_rule_hits():
     source = FakeSource(
         search_payloads=[

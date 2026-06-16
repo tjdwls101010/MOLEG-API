@@ -52,11 +52,12 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 3. If the result is ambiguous, surface the candidates instead of choosing silently.
 4. Call `get_law(..., basis="effective")` or `get_article(..., basis="effective")` to inspect the text currently in force.
 5. Call `trace_law_history()` or `compare_law_versions()` to explain what the bill changed.
-6. Call `find_delegated_rules()` to inspect enforcement decrees, enforcement rules, notices, and administrative rules.
-7. Call `search_administrative_rules()` and `get_administrative_rule()` when delegated or practical execution criteria may live in notices, directives, established rules, or other administrative rules.
-8. Call `search_annex_forms()` when the legal question may depend on attached tables, thresholds, amounts, criteria, application formats, or other 별표ㆍ서식 material. Call `get_annex_form_body()` for selected candidates before treating the attached content as inspected.
-9. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
-10. Use WebSearch only for current social facts or context outside law.go.kr.
+6. Call `find_delegated_rules()` to inspect article-level delegation to enforcement decrees, enforcement rules, notices, and administrative rules.
+7. Call `get_law_structure()` when the task needs the broader `lsStmd` law hierarchy across statutes, enforcement instruments, and administrative rules; do not expect article-level `source_article` links from this structure.
+8. Call `search_administrative_rules()` and `get_administrative_rule()` when delegated or practical execution criteria may live in notices, directives, established rules, or other administrative rules.
+9. Call `search_annex_forms()` when the legal question may depend on attached tables, thresholds, amounts, criteria, application formats, or other 별표ㆍ서식 material. Call `get_annex_form_body()` for selected candidates before treating the attached content as inspected.
+10. Call `search_interpretations()` and `search_cases()` when legal meaning, application constraints, or constitutional risk matter.
+11. Use WebSearch only for current social facts or context outside law.go.kr.
 
 ## Query Planning Rules
 
@@ -93,6 +94,7 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.trace_law_history()`
 - `MolegApi.compare_law_versions()`
 - `MolegApi.find_delegated_rules()`
+- `MolegApi.get_law_structure()`
 - `MolegApi.search_administrative_rules()`
 - `MolegApi.get_administrative_rule()`
 - `MolegApi.search_annex_forms()`

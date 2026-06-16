@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — lsStmd is a hierarchy source, not article delegation
+
+Live `lsStmd` JSON exposes a nested law hierarchy (`법률` → `시행령` / `시행규칙` / `행정규칙`) but no `조문` or article-level delegation keys. MOLEG-API therefore exposes `get_law_structure()` as a structural hierarchy loader and keeps article-level delegation on `find_delegated_rules()` / `lsDelegated`, rather than inventing `source_article` links the source does not provide.
+
 ## 2026-06-16 — Full pre-skill gate, de-risked by a tracer-bullet fake skill
 
 Returning to MOLEG-API after the legislative-expert skill integrates it is expensive (repo freeze/handoff plus skill↔API coupling — an API change then forces a skill change), so the API must clear a full gate before stage 2 begins. Decision: do not start skill creation until MOLEG-API passes a full gate (Tier 0–2 plus all justified Tier 3); and because the real skill is too costly to use as the feedback loop, pull consumer feedback forward with a throwaway "fake skill" tracer-bullet E2E across the seven review scenarios to reveal the correct shape of the design-led interfaces (#62/#64/#65…) before building them. Sequence: low-regret first (Tier 0–2, #59/#60/#61) → tracer-bullet → design-led Tier 3 → final gate.
