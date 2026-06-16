@@ -4,6 +4,10 @@ Reviewed on 2026-06-16, from the perspective of the **future legislative-expert 
 
 It is the durable record behind the 2026-06-16 improvement issues. The completion audits (`GOAL-COMPLETION-AUDIT.md`, `COMPLETION-RISK-AUDIT.md`) established that the *initial loader core* is implemented and live-proven; this review opens the next layer: **is the loaded context discoverable, callable, and analysis-ready for institutional (제도) analysis and legislative design?**
 
+## Current Status
+
+This document preserves the 2026-06-16 diagnosis that created issues #50-#68. The consumer-readiness roadmap from that diagnosis is implemented on integration PR #89, with #90 adding the fake-skill tracer-bullet gate and #91 adding visible deterministic GitHub Actions CI. Until #89 is reviewed and merged, treat the findings below as the historical problem statement plus per-item resolution notes, not as a claim that the current integration branch still has the original 2/5 readiness.
+
 ## Method
 
 Two adversarial multi-agent review rounds against the actual code (`moleg_api/*.py`) and docs:
