@@ -13,6 +13,7 @@ from .models import (
     AdministrativeRuleArticleText,
     AdministrativeRuleIdentity,
     AnnexFormIdentity,
+    ArticleReference,
     ArticleText,
     Basis,
     DelegatedRule,
@@ -26,10 +27,128 @@ from .models import (
     LegalTermCandidate,
     LawDiffChange,
     LawIdentity,
+    LawStructure,
+    LawStructureNode,
 )
 
 
 LAW_SEARCH_ENVELOPES = ("LawSearch", "lawSearch", "LawSearchService")
+ARTICLE_REFERENCE_RE = re.compile(r"제\s*(?P<number>\d+)\s*조(?:\s*의\s*(?P<branch>\d+))?")
+LAW_NAME_RE = re.compile(
+    r"[가-힣A-Za-z0-9ㆍ·().\s]+(?:법률|시행령|시행규칙|법|령|규칙|조례|고시|예규|훈령|규정|지침)"
+)
+MAX_EXPANDED_ARTICLE_RANGE = 100
+
+ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS = (
+    "위임법령ID",
+    "위임법령 ID",
+    "위임 법령ID",
+    "위임 법령 ID",
+    "근거법령ID",
+    "근거법령 ID",
+    "근거 법령ID",
+    "근거 법령 ID",
+    "수권법령ID",
+    "수권법령 ID",
+    "수권 법령ID",
+    "수권 법령 ID",
+    "상위법령ID",
+    "상위법령 ID",
+    "상위 법령ID",
+    "상위 법령 ID",
+    "모법령ID",
+    "모법령 ID",
+    "모법 ID",
+    "법적근거법령ID",
+    "법적근거 법령ID",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS = (
+    "위임법령명",
+    "위임법령",
+    "위임 법령명",
+    "위임 법령",
+    "근거법령명",
+    "근거법령",
+    "근거 법령명",
+    "근거 법령",
+    "수권법령명",
+    "수권법령",
+    "수권 법령명",
+    "수권 법령",
+    "상위법령명",
+    "상위법령",
+    "상위 법령명",
+    "상위 법령",
+    "모법령명",
+    "모법령",
+    "모법명",
+    "모법",
+    "법적근거법령명",
+    "법적근거법령",
+    "법적근거 법령명",
+    "법적근거 법령",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS = (
+    "위임조문번호",
+    "위임조문",
+    "위임 조문번호",
+    "위임 조문",
+    "위임근거조문",
+    "위임근거 조문",
+    "근거조문번호",
+    "근거조문",
+    "근거 조문번호",
+    "근거 조문",
+    "수권조문번호",
+    "수권조문",
+    "수권 조문번호",
+    "수권 조문",
+    "상위조문번호",
+    "상위조문",
+    "상위 조문번호",
+    "상위 조문",
+    "모법령조문",
+    "모법조문",
+    "법적근거조문",
+    "법적근거 조문",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS = (
+    "위임조문제목",
+    "위임 조문제목",
+    "위임 조문 제목",
+    "근거조문제목",
+    "근거 조문제목",
+    "근거 조문 제목",
+    "수권조문제목",
+    "수권 조문제목",
+    "상위조문제목",
+    "상위 조문제목",
+    "모법령조문제목",
+    "모법조문제목",
+    "법적근거조문제목",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS = (
+    "위임근거",
+    "위임 근거",
+    "근거",
+    "법적근거",
+    "법적 근거",
+    "수권근거",
+    "수권 근거",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_KEYS = (
+    *ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS,
+)
+AI_ROW_KEYS = ("법령조문", "법령별표서식", "행정규칙조문", "행정규칙별표서식")
 
 
 def ensure_list(value: Any) -> list[Any]:
@@ -60,6 +179,122 @@ def compact_date(value: str | date | None) -> str | None:
     return text
 
 
+def parse_article_references(text: str | None) -> list[ArticleReference]:
+    """Parse conservative law-name/article references from Korean source text."""
+
+    if not text:
+        return []
+    source_text = re.sub(r"\s+", " ", str(text)).strip()
+    if not source_text:
+        return []
+
+    references: list[ArticleReference] = []
+    current_law_name: str | None = None
+    previous_end = 0
+    matches = list(ARTICLE_REFERENCE_RE.finditer(source_text))
+    index = 0
+    while index < len(matches):
+        match = matches[index]
+        law_name = law_name_before_article(source_text[previous_end : match.start()])
+        if law_name:
+            current_law_name = law_name
+        article = article_label_from_reference_match(match)
+
+        if not current_law_name:
+            previous_end = match.end()
+            index += 1
+            continue
+
+        if index + 1 < len(matches):
+            next_match = matches[index + 1]
+            delimiter = source_text[match.end() : next_match.start()]
+            if is_article_range_delimiter(delimiter):
+                for expanded in expand_article_range(article, article_label_from_reference_match(next_match)):
+                    references.append(ArticleReference(law_name=current_law_name, article=expanded))
+                previous_end = next_match.end()
+                index += 2
+                continue
+
+        references.append(ArticleReference(law_name=current_law_name, article=article))
+        previous_end = match.end()
+        index += 1
+
+    return dedupe_article_references(references)
+
+
+def law_name_before_article(segment: str) -> str | None:
+    pieces = re.split(r"[:;,\n/]|(?:\s및\s)|(?:\s또는\s)", segment)
+    for piece in reversed(pieces):
+        candidate = piece.strip(" \t\r\n,.;()[]{}「」『』\"'")
+        if not candidate:
+            continue
+        matches = list(LAW_NAME_RE.finditer(candidate))
+        if matches:
+            return re.sub(r"\s+", " ", matches[-1].group(0)).strip()
+    return None
+
+
+def article_label_from_reference_match(match: re.Match[str]) -> str:
+    number = int(match.group("number"))
+    branch = match.group("branch")
+    if branch is not None:
+        return f"제{number}조의{int(branch)}"
+    return f"제{number}조"
+
+
+def is_article_range_delimiter(delimiter: str) -> bool:
+    compacted = re.sub(r"\s+", "", delimiter)
+    return compacted in {"~", "-", "부터", "내지"}
+
+
+def expand_article_range(start: str, end: str) -> list[str]:
+    start_parts = article_label_parts(start)
+    end_parts = article_label_parts(end)
+    if not start_parts or not end_parts:
+        return [start, end]
+
+    start_number, start_branch = start_parts
+    end_number, end_branch = end_parts
+    if start_branch is None and end_branch is None:
+        if start_number <= end_number <= start_number + MAX_EXPANDED_ARTICLE_RANGE:
+            return [f"제{number}조" for number in range(start_number, end_number + 1)]
+        return [start, end]
+    if start_number == end_number and start_branch is not None and end_branch is not None:
+        if start_branch <= end_branch <= start_branch + MAX_EXPANDED_ARTICLE_RANGE:
+            return [f"제{start_number}조의{branch}" for branch in range(start_branch, end_branch + 1)]
+    return [start, end]
+
+
+def article_label_parts(article: str) -> tuple[int, int | None] | None:
+    match = re.fullmatch(r"제(\d+)조(?:의(\d+))?", article)
+    if not match:
+        return None
+    branch = match.group(2)
+    return int(match.group(1)), int(branch) if branch is not None else None
+
+
+def dedupe_article_references(references: list[ArticleReference]) -> list[ArticleReference]:
+    seen: set[tuple[str, str, str | None]] = set()
+    deduped: list[ArticleReference] = []
+    for reference in references:
+        key = (reference.law_name, reference.article, reference.law_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(reference)
+    return deduped
+
+
+def compact_promulgation_number(value: Any) -> str | None:
+    text = string_or_none(value)
+    if text is None:
+        return None
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"^제", "", text)
+    text = re.sub(r"호$", "", text)
+    return text or None
+
+
 def first_value(row: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         value = row.get(key)
@@ -72,6 +307,43 @@ def content_value(value: Any) -> Any:
     if isinstance(value, dict) and "content" in value:
         return value.get("content")
     return value
+
+
+def administrative_rule_source_reference(row: dict[str, Any]) -> dict[str, str | None]:
+    basis_text = string_or_none(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS))
+    return {
+        "source_law_id": string_or_none(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS)),
+        "source_law_name": string_or_none(
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS)
+        )
+        or quoted_law_name(basis_text),
+        "source_article": article_label(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS))
+        or article_from_source_basis(basis_text),
+        "source_article_title": string_or_none(
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS)
+        ),
+    }
+
+
+def quoted_law_name(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"[「『](.+?)[」』]", text)
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
+def article_from_source_basis(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(
+        r"제\s*\d+\s*조(?:\s*의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?",
+        text,
+    )
+    if not match:
+        return None
+    return re.sub(r"\s+", "", match.group(0))
 
 
 def normalize_law_identity(row: dict[str, Any], *, basis: Basis) -> LawIdentity:
@@ -115,12 +387,13 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
         info = row["행정규칙기본정보"]
     else:
         info = row
+    source_info = {**row, **info} if info is not row else info
     name = first_value(info, "행정규칙명", "신구법명", "LM")
     if not name:
         raise ParseFailureError("Administrative-rule identity is missing a name")
 
     raw_keys = {
-        key: info.get(key)
+        key: source_info.get(key)
         for key in (
             "행정규칙 일련번호",
             "행정규칙일련번호",
@@ -129,9 +402,11 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
             "LID",
             "행정규칙 상세링크",
             "신구법 상세링크",
+            *ADMINISTRATIVE_RULE_SOURCE_KEYS,
         )
-        if info.get(key) not in (None, "")
+        if source_info.get(key) not in (None, "")
     }
+    source_reference = administrative_rule_source_reference(source_info)
     return AdministrativeRuleIdentity(
         serial_id=string_or_none(first_value(info, "행정규칙 일련번호", "행정규칙일련번호", "ID", "admrul id")),
         rule_id=string_or_none(first_value(info, "행정규칙ID", "LID")),
@@ -144,8 +419,156 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
         ministry_code=string_or_none(first_value(info, "소관부처코드")),
         current_status=string_or_none(first_value(info, "현행여부", "현행연혁구분")),
         revision_type=string_or_none(first_value(info, "제개정구분명")),
+        **source_reference,
         raw_keys=raw_keys,
     )
+
+
+def normalize_law_structure(raw_structure: dict[str, Any], *, max_depth: int = 0) -> LawStructure:
+    if not isinstance(raw_structure, dict):
+        raise ParseFailureError("Law structure payload must be an object")
+    root_info = raw_structure.get("기본정보")
+    if not isinstance(root_info, dict):
+        raise ParseFailureError("Law structure payload is missing 기본정보")
+    hierarchy = raw_structure.get("상하위법")
+    if hierarchy in (None, ""):
+        hierarchy = {}
+    if not isinstance(hierarchy, dict):
+        raise ParseFailureError("Law structure 상하위법 must be an object")
+
+    root_identity = normalize_law_identity(root_info, basis="effective")
+    root_node = structure_root_node(hierarchy, root_identity)
+    instruments = law_structure_children(root_node, depth_remaining=max_depth)
+    return LawStructure(identity=root_identity, instruments=instruments, raw=raw_structure)
+
+
+def structure_root_node(hierarchy: dict[str, Any], root_identity: LawIdentity) -> dict[str, Any]:
+    for value in hierarchy.values():
+        for node in structure_node_values(value):
+            info = node.get("기본정보") if isinstance(node, dict) else None
+            if isinstance(info, dict):
+                identity = normalize_law_identity(info, basis="effective")
+                if (
+                    identity.law_id == root_identity.law_id
+                    or identity.mst == root_identity.mst
+                    or identity.name == root_identity.name
+                ):
+                    return node
+    for value in hierarchy.values():
+        for node in structure_node_values(value):
+            if isinstance(node, dict) and isinstance(node.get("기본정보"), dict):
+                return node
+    return {}
+
+
+def law_structure_children(container: dict[str, Any], *, depth_remaining: int) -> list[LawStructureNode]:
+    if not isinstance(container, dict):
+        raise ParseFailureError("Law structure node must be an object")
+    children: list[LawStructureNode] = []
+    for key, value in container.items():
+        if key in {"기본정보", "자치법규"}:
+            continue
+        if key in {"시행령", "시행규칙", "법률"}:
+            children.extend(law_structure_law_nodes(value, key, depth_remaining=depth_remaining))
+        elif key == "행정규칙":
+            children.extend(law_structure_administrative_nodes(value))
+    return children
+
+
+def law_structure_law_nodes(value: Any, key: str, *, depth_remaining: int) -> list[LawStructureNode]:
+    nodes: list[LawStructureNode] = []
+    for node in structure_node_values(value):
+        info = node.get("기본정보")
+        if not isinstance(info, dict):
+            raise ParseFailureError(f"Law structure {key} node is missing 기본정보")
+        identity = normalize_law_identity(info, basis="effective")
+        children = law_structure_children(node, depth_remaining=depth_remaining - 1) if depth_remaining > 0 else []
+        nodes.append(
+            LawStructureNode(
+                name=identity.name,
+                source_type="law",
+                instrument_type=instrument_type_for_law_node(key, identity.law_type),
+                law_id=identity.law_id,
+                mst=identity.mst,
+                law_type=identity.law_type,
+                effective_date=identity.effective_date,
+                promulgation_date=identity.promulgation_date,
+                promulgation_number=identity.promulgation_number,
+                ministry=identity.ministry,
+                detail_link=string_or_none(first_value(info, "본문상세링크", "법령상세링크")),
+                children=children,
+                raw=node,
+            )
+        )
+    return nodes
+
+
+def law_structure_administrative_nodes(value: Any) -> list[LawStructureNode]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, dict):
+        raise ParseFailureError("Law structure 행정규칙 must be an object")
+    nodes: list[LawStructureNode] = []
+    for rule_type, rule_value in value.items():
+        for node in structure_node_values(rule_value):
+            info = node.get("기본정보")
+            if not isinstance(info, dict):
+                raise ParseFailureError(f"Law structure {rule_type} node is missing 기본정보")
+            identity = normalize_administrative_rule_identity(info)
+            nodes.append(
+                LawStructureNode(
+                    name=identity.name,
+                    source_type="administrative_rule",
+                    instrument_type=instrument_type_for_admin_rule(rule_type),
+                    serial_id=identity.serial_id,
+                    rule_id=identity.rule_id,
+                    law_type=identity.rule_type,
+                    effective_date=identity.effective_date,
+                    issuing_date=identity.issuing_date,
+                    issuing_number=identity.issuing_number,
+                    ministry=identity.ministry,
+                    detail_link=string_or_none(first_value(info, "본문상세링크", "행정규칙 상세링크")),
+                    raw=node,
+                )
+            )
+    return nodes
+
+
+def structure_node_values(value: Any) -> list[dict[str, Any]]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        if not all(isinstance(item, dict) for item in value):
+            raise ParseFailureError("Law structure node list contains non-object entries")
+        return value
+    if isinstance(value, dict):
+        if "기본정보" in value:
+            return [value]
+        nodes: list[dict[str, Any]] = []
+        for child in value.values():
+            nodes.extend(structure_node_values(child))
+        return nodes
+    raise ParseFailureError("Law structure node must be an object or list")
+
+
+def instrument_type_for_law_node(key: str, law_type: str | None) -> str:
+    if key == "시행령":
+        return "enforcement_decree"
+    if key == "시행규칙":
+        return "enforcement_rule"
+    if key == "법률":
+        return "related_law"
+    if law_type:
+        return law_type
+    return key
+
+
+def instrument_type_for_admin_rule(rule_type: str) -> str:
+    return {
+        "고시": "notice",
+        "훈령": "directive",
+        "예규": "established_rule",
+    }.get(rule_type, rule_type)
 
 
 def normalize_annex_form_identity(
@@ -291,6 +714,7 @@ def normalize_interpretation_text(
         answer=answer,
         reason=reason,
         related_laws=related_laws,
+        referenced_articles=parse_article_references(related_laws),
         text="\n\n".join(parts),
         raw=row,
     )
@@ -373,6 +797,8 @@ def normalize_judicial_decision_text(
         referenced_statutes=referenced_statutes,
         reviewed_statutes=reviewed_statutes,
         referenced_cases=referenced_cases,
+        referenced_articles=parse_article_references(referenced_statutes),
+        reviewed_articles=parse_article_references(reviewed_statutes),
         text="\n\n".join(parts),
         raw=row,
     )
@@ -450,6 +876,7 @@ def normalize_related_law_candidate(
     return LegalLawCandidate(
         name=str(name),
         law_id=string_or_none(first_value(row, "관련법령ID", "법령ID", "행정규칙ID")),
+        mst=string_or_none(first_value(row, "MST", "법령일련번호", "lsi_seq")),
         source_type=source_type,
         source_target=source_target,
         relation=string_or_none(first_value(row, "법령간관계", "제개정구분명", "행정규칙 종류명")),
@@ -458,6 +885,11 @@ def normalize_related_law_candidate(
             first_value(row, "조문가지번호", "조가지번호"),
         ),
         article_title=string_or_none(first_value(row, "조문제목")),
+        promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
+        effective_date=string_or_none(compact_date(first_value(row, "시행일자"))),
+        promulgation_number=string_or_none(first_value(row, "공포번호")),
+        law_type=string_or_none(first_value(row, "법령종류명", "법령구분명")),
+        ministry=string_or_none(first_value(row, "소관부처명", "소관부처")),
         raw=row,
     )
 
@@ -515,6 +947,10 @@ def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> li
 
 
 def unwrap_target_rows(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
+    if target in ("aiSearch", "aiRltLs"):
+        rows = collect_rows(payload, *AI_ROW_KEYS)
+        if rows or isinstance(payload.get(target), dict):
+            return rows
     rows = payload.get(target)
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]
@@ -601,6 +1037,10 @@ def extract_administrative_rule_articles(
                 title=string_or_none(first_value(raw_rule, "조문제목", "제목")),
                 text=str(flat_text),
                 effective_date=string_or_none(compact_date(first_value(raw_rule, "시행일자"))),
+                source_law_id=identity.source_law_id,
+                source_law_name=identity.source_law_name,
+                source_article=identity.source_article,
+                source_article_title=identity.source_article_title,
                 raw=raw_rule,
             )
         )
@@ -609,14 +1049,14 @@ def extract_administrative_rule_articles(
 
 def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText | None:
     number = first_value(row, "조문번호", "조번호", "JO")
+    branch = first_value(row, "조문가지번호", "조가지번호")
     text = first_value(row, "조문내용", "조문본문", "내용")
     title = first_value(row, "조문제목", "제목")
     if number is None and text is None and title is None:
         return None
-    article = f"제{number}조" if number not in (None, "") and not str(number).startswith("제") else str(number or "")
     return ArticleText(
         identity=identity,
-        article=article,
+        article=article_label_from_parts(number, branch) or "",
         title=string_or_none(title),
         text=str(text or ""),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
@@ -633,17 +1073,39 @@ def normalize_administrative_rule_article(
     title = first_value(row, "조문제목", "제목", "title")
     if number is None and text is None and title is None:
         return None
+    source_reference = administrative_rule_source_reference(row)
+    if not any(source_reference.values()):
+        source_reference = {
+            "source_law_id": identity.source_law_id,
+            "source_law_name": identity.source_law_name,
+            "source_article": identity.source_article,
+            "source_article_title": identity.source_article_title,
+        }
+    else:
+        source_reference = {
+            "source_law_id": source_reference["source_law_id"] or identity.source_law_id,
+            "source_law_name": source_reference["source_law_name"] or identity.source_law_name,
+            "source_article": source_reference["source_article"],
+            "source_article_title": source_reference["source_article_title"],
+        }
     return AdministrativeRuleArticleText(
         identity=identity,
         article=article_label(number),
         title=string_or_none(title),
         text=str(text or ""),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
+        **source_reference,
         raw=row,
     )
 
 
-def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> list[HistoryEvent]:
+def normalize_history_events(
+    payload: dict[str, Any],
+    identity: LawIdentity,
+    *,
+    article_text_map: dict[str, str | None] | None = None,
+    bill_id_map: dict[tuple[str, str, str], str] | None = None,
+) -> list[HistoryEvent]:
     rows = collect_rows(
         payload,
         "law",
@@ -662,19 +1124,70 @@ def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> 
             row_identity = normalize_law_identity(row, basis=identity.basis)
         except ParseFailureError:
             row_identity = identity
+        changed_date = string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자")))
+        effective_date = string_or_none(compact_date(first_value(row, "조문시행일", "시행일자")))
+        article_text = history_event_article_text(
+            row,
+            changed_date=changed_date,
+            effective_date=effective_date,
+            article_text_map=article_text_map,
+        )
+        promulgation_law_name = string_or_none(
+            first_value(row, "법령명한글", "법령명_한글", "법령명")
+        ) or row_identity.name
+        promulgation_date = string_or_none(compact_date(first_value(row, "공포일자")))
+        promulgation_number = compact_promulgation_number(first_value(row, "공포번호"))
         event = HistoryEvent(
             identity=row_identity,
-            changed_date=string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자"))),
-            effective_date=string_or_none(compact_date(first_value(row, "조문시행일", "시행일자"))),
-            promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
-            promulgation_number=string_or_none(first_value(row, "공포번호")),
+            changed_date=changed_date,
+            effective_date=effective_date,
+            promulgation_law_name=promulgation_law_name,
+            promulgation_date=promulgation_date,
+            promulgation_number=promulgation_number,
+            bill_id=history_event_bill_id(
+                bill_id_map,
+                law_name=promulgation_law_name,
+                promulgation_number=promulgation_number,
+                promulgation_date=promulgation_date,
+            ),
             revision_type=string_or_none(first_value(row, "제개정구분명", "제개정구분")),
             article=article_label(first_value(row, "조문번호", "조문정보", "JO")),
+            article_text=article_text,
             reason=string_or_none(first_value(row, "변경사유")),
             raw=row,
         )
         events.append(event)
     return events
+
+
+def history_event_article_text(
+    row: dict[str, Any],
+    *,
+    changed_date: str | None,
+    effective_date: str | None,
+    article_text_map: dict[str, str | None] | None,
+) -> str | None:
+    source_text = string_or_none(first_value(row, "조문내용", "조문본문", "현행조문내용", "개정조문내용"))
+    if source_text:
+        return source_text
+    if not article_text_map:
+        return None
+    for key in (effective_date, changed_date):
+        if key and key in article_text_map:
+            return article_text_map[key]
+    return None
+
+
+def history_event_bill_id(
+    bill_id_map: dict[tuple[str, str, str], str] | None,
+    *,
+    law_name: str | None,
+    promulgation_number: str | None,
+    promulgation_date: str | None,
+) -> str | None:
+    if not bill_id_map or not law_name or not promulgation_number or not promulgation_date:
+        return None
+    return bill_id_map.get((law_name, promulgation_number, promulgation_date))
 
 
 def parse_law_history_html(html: str) -> list[dict[str, Any]]:

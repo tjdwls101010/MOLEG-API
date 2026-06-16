@@ -7,12 +7,13 @@ import argparse
 import json
 import os
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_OUTPUT_DIR = Path("docs/design/congress-db-introspection")
+DEFAULT_SCHEMAS = ("public",)
 dict_row = None
 psycopg = None
 
@@ -97,17 +98,22 @@ def assert_read_only(conn: "psycopg.Connection") -> dict[str, Any]:
     return identity
 
 
-def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
+def introspect(
+    conn: "psycopg.Connection",
+    *,
+    included_schemas: tuple[str, ...] = DEFAULT_SCHEMAS,
+) -> dict[str, Any]:
     identity = assert_read_only(conn)
+    schema_params = (list(included_schemas),)
     schemas = fetch_all(
         conn,
         """
         SELECT schema_name
         FROM information_schema.schemata
-        WHERE schema_name NOT IN ('pg_catalog', 'information_schema')
-          AND schema_name NOT LIKE 'pg_toast%%'
+        WHERE schema_name = ANY(%s)
         ORDER BY schema_name
         """,
+        schema_params,
     )
     tables = fetch_all(
         conn,
@@ -125,11 +131,11 @@ def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
           obj_description(c.oid, 'pg_class') AS comment
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND n.nspname NOT LIKE 'pg_toast%%'
+        WHERE n.nspname = ANY(%s)
           AND c.relkind IN ('r', 'p', 'v', 'm')
         ORDER BY n.nspname, c.relname
         """,
+        schema_params,
     )
     columns = [
         Column(
@@ -159,10 +165,10 @@ def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
             FROM information_schema.columns c
             JOIN pg_namespace pn ON pn.nspname = c.table_schema
             JOIN pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = c.table_name
-            WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
-              AND c.table_schema NOT LIKE 'pg_toast%%'
+            WHERE c.table_schema = ANY(%s)
             ORDER BY c.table_schema, c.table_name, c.ordinal_position
             """,
+            schema_params,
         )
     ]
     foreign_keys = [
@@ -195,10 +201,12 @@ def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
             JOIN pg_attribute src_att ON src_att.attrelid = src.oid AND src_att.attnum = ord.attnum
             JOIN pg_attribute dst_att ON dst_att.attrelid = dst.oid AND dst_att.attnum = con.confkey[ord.ordinality]
             WHERE con.contype = 'f'
-              AND src_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND src_ns.nspname = ANY(%s)
+              AND dst_ns.nspname = ANY(%s)
             GROUP BY con.conname, src_ns.nspname, src.relname, dst_ns.nspname, dst.relname
             ORDER BY src_ns.nspname, src.relname, con.conname
             """,
+            (list(included_schemas), list(included_schemas)),
         )
     ]
     indexes = [
@@ -214,9 +222,10 @@ def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
             SELECT schemaname AS table_schema, tablename AS table_name,
                    indexname AS index_name, indexdef AS index_definition
             FROM pg_indexes
-            WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+            WHERE schemaname = ANY(%s)
             ORDER BY schemaname, tablename, indexname
             """,
+            schema_params,
         )
     ]
     bridge_columns = [
@@ -225,8 +234,9 @@ def introspect(conn: "psycopg.Connection") -> dict[str, Any]:
         if column.column_name in {"prom_law_nm", "prom_no", "promulgation_dt"}
     ]
     return {
-        "generated_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "connection_identity": identity,
+        "included_schemas": list(included_schemas),
         "schemas": schemas,
         "tables": tables,
         "columns": [asdict(column) for column in columns],
@@ -253,6 +263,7 @@ def render_markdown(data: dict[str, Any]) -> str:
     lines.append(f"- Session user: `{identity['session_user']}`")
     lines.append(f"- Transaction read-only: `{identity['transaction_read_only']}`")
     lines.append(f"- Server in recovery: `{identity['server_in_recovery']}`")
+    lines.append(f"- Included schemas: `{', '.join(data.get('included_schemas', []))}`")
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -324,6 +335,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env.local"))
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--schema",
+        action="append",
+        default=None,
+        help="Schema to introspect. Defaults to public; pass more than once to include multiple schemas.",
+    )
     return parser.parse_args()
 
 
@@ -338,9 +355,10 @@ def main() -> None:
 
     ensure_psycopg()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    included_schemas = tuple(args.schema or DEFAULT_SCHEMAS)
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute("SET default_transaction_read_only = on")
-        data = introspect(conn)
+        data = introspect(conn, included_schemas=included_schemas)
 
     (args.output_dir / "schema.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2, default=json_default),

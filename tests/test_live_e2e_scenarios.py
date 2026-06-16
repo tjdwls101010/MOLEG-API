@@ -73,6 +73,10 @@ QUERY_EXPANSION_SCENARIOS = [
     "중대재해 사업주 의무",
 ]
 
+COMPARABLE_MECHANISM_SCENARIOS = [
+    "과징금",
+]
+
 BUNDLE_QUESTION_SCENARIOS = [
     "자동차 방치",
     "탄소중립 기본계획",
@@ -83,6 +87,10 @@ BUNDLE_QUESTION_SCENARIOS = [
 BUNDLE_STATUTE_SCENARIOS = [
     ("자동차관리법 제26조 검토", "자동차관리법", "제26조"),
     ("개인정보 보호법 제15조 검토", "개인정보 보호법", "제15조"),
+]
+
+INSTITUTIONAL_SYSTEM_SCENARIOS = [
+    ("자동차관리 제도", ["자동차관리법", "자동차관리법 시행령"]),
 ]
 
 CONSTITUTIONAL_DETAIL_SCENARIO = (
@@ -108,8 +116,10 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
         + 1  # Ministry first-instance interpretation search/detail/source labels.
         + len(CASE_SCENARIOS)
         + len(QUERY_EXPANSION_SCENARIOS)
+        + len(COMPARABLE_MECHANISM_SCENARIOS)
         + len(BUNDLE_QUESTION_SCENARIOS)
         + len(BUNDLE_STATUTE_SCENARIOS)
+        + len(INSTITUTIONAL_SYSTEM_SCENARIOS)
         + 1  # Constitutional detail source label.
         + 1  # congress-db bridge, credential-dependent.
     )
@@ -280,6 +290,17 @@ def test_live_e2e_expands_queries_as_planning_context(api: MolegApi, query: str)
     assert any(search.interface != "websearch" for search in expansion.follow_up_searches)
 
 
+@pytest.mark.parametrize("concept", COMPARABLE_MECHANISM_SCENARIOS)
+def test_live_e2e_finds_comparable_mechanism_candidates(api: MolegApi, concept: str):
+    identities = api.find_comparable_mechanisms(concept, display=3)
+
+    assert 1 <= len(identities) <= 3
+    assert all(identity.basis == "effective" for identity in identities)
+    assert all(identity.raw_keys.get("comparative_discovery") is True for identity in identities)
+    assert all(identity.raw_keys.get("concept") == concept for identity in identities)
+    assert any(identity.raw_keys.get("source_articles") for identity in identities)
+
+
 @pytest.mark.parametrize("query", BUNDLE_QUESTION_SCENARIOS)
 def test_live_e2e_loads_question_context_bundle(api: MolegApi, query: str):
     bundle = api.load_legal_context_bundle(query, mode="question", budget="minimal")
@@ -307,6 +328,20 @@ def test_live_e2e_loads_statute_review_bundle(api: MolegApi, description: str, l
     assert bundle.loaded.articles
     assert bundle.loaded.articles[0].article.startswith(base_article_label(article))
     assert bundle.loaded.articles[0].text.strip()
+    assert any(gap.recommended_interface == "websearch" for gap in bundle.gaps)
+
+
+@pytest.mark.parametrize("description, law_names", INSTITUTIONAL_SYSTEM_SCENARIOS)
+def test_live_e2e_loads_institutional_system_bundle(api: MolegApi, description: str, law_names: list[str]):
+    identities = [exact_loadable_law_identity(api, law_name) for law_name in law_names]
+    bundle = api.load_institutional_system(identities, budget="minimal")
+
+    assert bundle.request.mode == "institutional_system"
+    assert bundle.request.statute_ids == law_names
+    assert len(bundle.loaded.laws) == len(law_names)
+    assert bundle.loaded.law_structures
+    assert len(bundle.loaded.delegations) == len(law_names)
+    assert bundle.candidates.administrative_rules or bundle.candidates.annex_forms or bundle.deferred
     assert any(gap.recommended_interface == "websearch" for gap in bundle.gaps)
 
 
@@ -347,6 +382,24 @@ def exact_law_identity(api: MolegApi, law_name: str):
             return hit.identity
     names = [hit.identity.name for hit in hits[:5]]
     pytest.fail(f"No exact live law identity for {law_name}; candidates={names}")
+
+
+def exact_loadable_law_identity(api: MolegApi, law_name: str):
+    hits = api.search_laws(law_name, display=20)
+    no_result_reasons = []
+    for hit in hits:
+        if hit.identity.name != law_name:
+            continue
+        try:
+            api.get_law(hit.identity)
+            return hit.identity
+        except NoResultError as exc:
+            no_result_reasons.append(str(exc))
+    names = [hit.identity.name for hit in hits[:5]]
+    pytest.fail(
+        f"No exact loadable live law identity for {law_name}; "
+        f"candidates={names}; no_results={no_result_reasons[:3]}"
+    )
 
 
 def first_hit_or_skip(hits, label: str):

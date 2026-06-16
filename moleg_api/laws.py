@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import re
 from typing import Any
 
 from .errors import AmbiguousLawError, MolegApiError, NoResultError, ParseFailureError, UnsupportedFormatError
@@ -11,19 +12,27 @@ from .models import (
     AdministrativeRuleIdentity,
     AdministrativeRuleText,
     Ambiguity,
+    AnnexFormSource,
     AnnexFormHit,
     AnnexFormIdentity,
     AnnexFormText,
+    AnnexSearchScope,
+    AnnexType,
     ArticleText,
     Basis,
+    BundleBudget,
+    BundleMode,
     BundleRequest,
     CandidateContext,
+    CaseCourt,
     ContextGap,
     DeferredLookup,
     DelegationGraph,
     FollowUpSearch,
+    HistoryEvent,
     InterpretationHit,
     InterpretationIdentity,
+    InterpretationSearchSource,
     InterpretationText,
     JudicialDecisionHit,
     JudicialDecisionIdentity,
@@ -38,10 +47,13 @@ from .models import (
     LawHit,
     LawHistory,
     LawIdentity,
+    LawStructure,
     LawText,
+    StructuredTableData,
 )
 from .normalization import (
     compact_date,
+    compact_promulgation_number,
     extract_administrative_rule_articles,
     extract_articles,
     format_article_jo,
@@ -55,6 +67,7 @@ from .normalization import (
     normalize_interpretation_text,
     normalize_judicial_decision_identity,
     normalize_judicial_decision_text,
+    normalize_law_structure,
     normalize_law_identity,
     normalize_related_article_candidate,
     normalize_related_law_candidate,
@@ -112,6 +125,60 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
     },
 }
 
+BUNDLE_EAGER_DETAIL_LIMITS: dict[str, dict[str, int]] = {
+    "minimal": {
+        "interpretations": 0,
+        "cases": 0,
+        "constitutional_decisions": 0,
+    },
+    "standard": {
+        "interpretations": 1,
+        "cases": 1,
+        "constitutional_decisions": 1,
+    },
+    "broad": {
+        "interpretations": 2,
+        "cases": 2,
+        "constitutional_decisions": 2,
+    },
+}
+
+BUNDLE_EAGER_TEXT_CHAR_LIMITS = {
+    "minimal": 0,
+    "standard": 30_000,
+    "broad": 80_000,
+}
+
+BUNDLE_LEGAL_MEANING_KEYWORDS = (
+    "의미",
+    "뜻",
+    "해석",
+    "법령해석",
+    "어떻게 보아야",
+)
+
+BUNDLE_APPLICATION_KEYWORDS = (
+    "적용",
+    "요건",
+    "조건",
+    "판례",
+    "사례",
+    "분쟁",
+    "책임",
+)
+
+BUNDLE_CONSTITUTIONAL_KEYWORDS = (
+    "위헌",
+    "헌법",
+    "기본권",
+    "평등",
+    "과잉금지원칙",
+    "비례",
+    "표현의 자유",
+    "적법",
+    "정당성",
+)
+
 ANNEX_FORM_TARGETS = {
     "law": "licbyl",
     "administrative_rule": "admbyl",
@@ -151,6 +218,14 @@ ANNEX_TYPE_CODES = {
     },
 }
 
+BASIS_VALUES = ("effective", "promulgated")
+ANNEX_SOURCE_VALUES = ("law", "administrative_rule")
+ANNEX_SEARCH_SCOPE_VALUES = ("title", "source", "body")
+INTERPRETATION_SOURCE_VALUES = ("moleg", "ministry", "all", "all_ministries")
+COURT_VALUES = ("all", "supreme", "lower")
+BUNDLE_MODE_VALUES = ("question", "promulgated_bill", "statute_review")
+BUNDLE_BUDGET_VALUES = ("minimal", "standard", "broad")
+
 
 @dataclass(frozen=True)
 class InterpretationSourceSpec:
@@ -158,6 +233,15 @@ class InterpretationSourceSpec:
     target: str
     ministry: str | None = None
     can_get: bool = True
+
+
+@dataclass(frozen=True)
+class InstitutionalStatuteResolution:
+    identifier: str
+    identity: LawIdentity | None
+    candidates: list[LawIdentity]
+    error_kind: str | None = None
+    message: str | None = None
 
 
 OFFICIAL_INTERPRETATION_SOURCE = InterpretationSourceSpec(
@@ -210,7 +294,31 @@ MINISTRY_INTERPRETATION_SOURCES: dict[str, InterpretationSourceSpec] = {
 
 
 class MolegApi:
-    """Task-level MOLEG-API facade for legislative-expert callers."""
+    """Task-level MOLEG-API facade for legislative-expert callers.
+
+    MOLEG source targets, identifier quirks, article-number formatting, and
+    authority labels stay inside this module. Callers choose legal tasks.
+
+    Method selection:
+    - Start with `search_laws` for free-text statute candidates; use
+      `resolve_promulgated_law` only when congress-db provides promulgation
+      bridge fields such as `prom_law_nm`, `prom_no`, and `promulgation_dt`.
+    - Use `get_law` for statute text and `get_article` for one precise
+      article. Prefer effective basis for current-force questions.
+    - Use `trace_law_history` for amendment chronology and
+      `compare_law_versions` for the MOLEG before/after text surface; current
+      arbitrary two-date comparison is not modeled here.
+    - Use `find_delegated_rules`, `search_administrative_rules`, and
+      annex/form loaders when statute text may omit delegated criteria,
+      notices, attached tables, thresholds, amounts, or forms.
+    - Use `search_interpretations` for MOLEG/ministry interpretations,
+      `search_cases` for ordinary judicial decisions, and
+      `search_constitutional_decisions` for Constitutional Court decisions;
+      these are separate authority types, not flags on one search.
+    - Use `expand_legal_query` for search planning and
+      `load_legal_context_bundle` for a staged first pass over a broad
+      question. Both return source-loading context, not legal conclusions.
+    """
 
     def __init__(self, source: MolegSource | None = None) -> None:
         self.source = source or LawGoKrClient()
@@ -225,6 +333,17 @@ class MolegApi:
         ministry: str | None = None,
         display: int = 20,
     ) -> list[LawHit]:
+        """Search law.go.kr for statute identity candidates.
+
+        Use when: the skill has a law name, keyword, or expanded search term
+        and needs candidate current or promulgated statute identities.
+        Returns: a list of `LawHit` values carrying normalized `LawIdentity`
+        objects plus the source row; an empty list means no source rows.
+        Raises: source adapter errors or parse errors if a returned row cannot
+        be normalized; no-result is represented as an empty list.
+        Related: use `resolve_promulgated_law` for congress-db bridge fields
+        and `expand_legal_query` when the query itself needs planning.
+        """
         target = target_for(basis, "list")
         params: dict[str, Any] = {"query": query, "display": display}
         if as_of:
@@ -247,6 +366,17 @@ class MolegApi:
         prom_no: str | None = None,
         promulgation_dt: str | None = None,
     ) -> LawIdentity:
+        """Resolve a congress-db promulgation bridge to one law identity.
+
+        Use when: a National Assembly bill row has reached the promulgation
+        side and provides bridge fields such as law name, promulgation number,
+        or promulgation date.
+        Returns: one normalized `LawIdentity` on the promulgated basis.
+        Raises: `NoResultError` when required bridge fields are missing or no
+        source row matches; `AmbiguousLawError` when several identities remain.
+        Related: `search_laws(basis="promulgated")` is free-text discovery;
+        this method is the stricter bridge resolver for enacted bill facts.
+        """
         if not prom_law_nm and not prom_no:
             raise NoResultError("prom_law_nm or prom_no is required to resolve a promulgated law")
 
@@ -261,7 +391,11 @@ class MolegApi:
         identities = dedupe_identities([hit.identity for hit in filtered])
         if len(identities) > 1:
             names = ", ".join(identity.name for identity in identities[:5])
-            raise AmbiguousLawError(f"Promulgation bridge matched multiple laws: {names}")
+            raise AmbiguousLawError(
+                f"Promulgation bridge matched multiple laws: {names}",
+                kind="promulgation_bridge",
+                candidates=identities,
+            )
         return identities[0]
 
     def get_law(
@@ -273,16 +407,31 @@ class MolegApi:
         articles: list[str | int] | None = None,
         include_metadata: bool = True,
     ) -> LawText:
+        """Load normalized statute text for one law identity.
+
+        Use when: the skill already has a plausible statute identity and needs
+        the effective or promulgated text behind it. Pass a `LawIdentity` or
+        `LawHit` when possible; a bare string should be a source identifier.
+        Returns: `LawText` with a normalized identity and extracted articles,
+        optionally preserving raw metadata for audit.
+        Raises: `NoResultError` for unusable identifiers and source/parse
+        errors when law.go.kr cannot provide normalizable statute text.
+        Related: use `get_article` for precise article lookup and
+        `search_laws` first when the identity is still uncertain.
+        """
+        if articles is not None and not articles:
+            raise NoResultError("articles must contain at least one article when provided")
+
         identity_hint = identity_from_identifier(identifier, basis=basis)
         target = target_for(basis, "detail")
         params = law_text_identity_params(identity_hint, as_of=as_of, basis=basis)
-        if articles:
-            params["JO"] = format_article_jo(articles[0])
 
         payload = self.source.service(target, params)
         raw_law = unwrap_service_payload(payload, target)
         identity = normalize_law_identity(raw_law, basis=basis)
         law_articles = extract_articles(raw_law, identity)
+        if articles is not None:
+            law_articles = select_requested_articles(law_articles, articles)
         return LawText(identity=identity, articles=law_articles, raw=raw_law if include_metadata else {})
 
     def get_article(
@@ -293,6 +442,17 @@ class MolegApi:
         as_of: str | None = None,
         basis: Basis = "effective",
     ) -> ArticleText:
+        """Load one article by human article notation.
+
+        Use when: the skill needs a specific provision such as `제10조의2`
+        without formatting MOLEG's six-digit `JO` value itself.
+        Returns: `ArticleText` with the article label, title, text, effective
+        date when available, and normalized source identity.
+        Raises: `NoResultError` when the article text is absent, plus source or
+        parse errors for invalid source payloads.
+        Related: use `get_law` for whole-statute context and
+        `trace_law_history(article=...)` for article-level history events.
+        """
         identity = identity_from_identifier(law_identifier, basis=basis)
         target = target_for(basis, "article")
         params = identity_params(identity, as_of=as_of, basis=basis)
@@ -316,8 +476,21 @@ class MolegApi:
         *,
         date_range: tuple[str, str] | None = None,
         article: str | int | None = None,
+        promulgation_bridge: dict[tuple[Any, Any, Any], Any] | None = None,
     ) -> LawHistory:
+        """Load amendment-history events for a statute or article.
+
+        Use when: the skill needs chronology, amendment reasons, promulgation
+        numbers, or effective dates rather than the current text itself.
+        Returns: `LawHistory` with normalized `HistoryEvent` records; full-law
+        history uses the HTML-only `lsHistory` list parser.
+        Raises: `NoResultError` when no matching events exist; parse/source
+        errors surface when the source shape is unusable.
+        Related: use `compare_law_versions` for before/after text rows and
+        `resolve_promulgated_law` before history when starting from a bill.
+        """
         identity = identity_from_identifier(law_identifier, basis="effective")
+        bill_id_map = normalize_history_bill_id_map(promulgation_bridge)
         if article is not None:
             params = identity_params(identity, as_of=None, basis="effective")
             params["JO"] = format_article_jo(article)
@@ -331,10 +504,39 @@ class MolegApi:
         else:
             payload = self._search_full_law_history(identity)
 
-        events = normalize_history_events(payload, identity)
+        events = normalize_history_events(payload, identity, bill_id_map=bill_id_map)
+        if article is not None:
+            events = self._populate_article_history_text(identity, article, events)
         if not events:
             raise NoResultError("No law history events found")
         return LawHistory(identity=identity, events=events, raw=payload)
+
+    def _populate_article_history_text(
+        self,
+        identity: LawIdentity,
+        article: str | int,
+        events: list[HistoryEvent],
+    ) -> list[HistoryEvent]:
+        article_texts_by_lookup: dict[tuple[str, str], str | None] = {}
+        populated: list[HistoryEvent] = []
+        for event in events:
+            if event.article_text:
+                populated.append(event)
+                continue
+            as_of = event.effective_date or event.changed_date
+            if not as_of:
+                populated.append(event)
+                continue
+            event_article = article_label_for_filter(article)
+            lookup_key = (str(event_article), as_of)
+            if lookup_key not in article_texts_by_lookup:
+                try:
+                    article_snapshot = self.get_article(identity, event_article, as_of=as_of)
+                    article_texts_by_lookup[lookup_key] = article_snapshot.text
+                except MolegApiError:
+                    article_texts_by_lookup[lookup_key] = None
+            populated.append(replace(event, article_text=article_texts_by_lookup[lookup_key]))
+        return populated
 
     def _search_full_law_history(self, identity: LawIdentity) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
@@ -381,6 +583,26 @@ class MolegApi:
         after: str | None = None,
         article: str | int | None = None,
     ) -> LawDiff:
+        """Load MOLEG before/after text rows for one statute.
+
+        Use when: the skill needs the source `oldAndNew` comparison surface for
+        a candidate law or article. The current implementation rejects arbitrary
+        before/after dates because the source does not support that window.
+        Returns: `LawDiff` with before and after identities when the source
+        exposes them and normalized changed article text.
+        Raises: `UnsupportedFormatError` for arbitrary date-window arguments;
+        `NoResultError` when the source returns no comparable changes, plus
+        source/parse errors for unusable payloads.
+        Related: use `trace_law_history` to choose dates or amendment events;
+        use `get_law`/`get_article` for current text.
+        """
+        if before is not None or after is not None:
+            raise UnsupportedFormatError(
+                "Arbitrary two-date comparison is not supported by law.go.kr oldAndNew; "
+                "call compare_law_versions() without before/after to load the source-supplied "
+                "before/after pair."
+            )
+
         identity = identity_from_identifier(law_identifier, basis="effective")
         params = identity_params(identity, as_of=None, basis="effective")
         payload = self.source.service("oldAndNew", params)
@@ -395,7 +617,7 @@ class MolegApi:
             before_identity=before_identity,
             after_identity=after_identity,
             changes=changes,
-            raw={**raw_diff, "requested_before": before, "requested_after": after},
+            raw=raw_diff,
         )
 
     def find_delegated_rules(
@@ -404,6 +626,17 @@ class MolegApi:
         *,
         article: str | int | None = None,
     ) -> DelegationGraph:
+        """Find delegated lower-rule context for a statute.
+
+        Use when: statute text may delegate details to enforcement decrees,
+        enforcement rules, notices, or administrative rules.
+        Returns: a `DelegationGraph` rooted at the law identity with normalized
+        delegated-rule rows, optionally filtered by source article.
+        Raises: `NoResultError` when no delegated rows remain after filtering,
+        plus source/parse errors for unusable source data.
+        Related: use `search_administrative_rules` and
+        `get_administrative_rule` to search or load the lower rules themselves.
+        """
         identity = identity_from_identifier(law_identifier, basis="effective")
         params = identity_params(identity, as_of=None, basis="effective")
         payload = self.source.service("lsDelegated", params)
@@ -417,6 +650,34 @@ class MolegApi:
             raise NoResultError("No delegated rules found")
         return DelegationGraph(identity=root_identity, rules=rules, raw=raw_delegation)
 
+    def get_law_structure(
+        self,
+        law_identifier: LawIdentity | LawHit | str,
+        *,
+        depth: int = 0,
+    ) -> LawStructure:
+        """Load the MOLEG `lsStmd` structural hierarchy for one law.
+
+        Use when: the skill needs the broader 법률 -> 시행령 / 시행규칙 /
+        행정규칙 hierarchy around a statute, not article-level delegation text.
+        Returns: `LawStructure` with normalized law and administrative-rule
+        nodes, preserving nested children up to the requested depth.
+        Raises: `UnsupportedFormatError` for negative depth, `NoResultError`
+        for an empty hierarchy, and parse/source errors for unusable payloads.
+        Related: use `find_delegated_rules` for article-level delegation
+        relationships; `lsStmd` does not provide source-article links.
+        """
+        if depth < 0:
+            raise UnsupportedFormatError("Law structure depth must be 0 or greater")
+        identity = identity_from_identifier(law_identifier, basis="effective")
+        params = identity_params(identity, as_of=None, basis="effective")
+        payload = self.source.service("lsStmd", params)
+        raw_structure = unwrap_service_payload(payload, "lsStmd")
+        structure = normalize_law_structure(raw_structure, max_depth=depth)
+        if not structure.instruments:
+            raise NoResultError("No law structure instruments found")
+        return structure
+
     def search_administrative_rules(
         self,
         query: str,
@@ -427,6 +688,16 @@ class MolegApi:
         include_history: bool = False,
         display: int = 20,
     ) -> list[AdministrativeRuleHit]:
+        """Search notices, directives, established rules, and other admin rules.
+
+        Use when: delegated or practical execution criteria may live outside
+        statute text, especially in ministry-level administrative rules.
+        Returns: a list of `AdministrativeRuleHit` values with normalized
+        serial ID, rule ID, issuing/effective dates, ministry, and status.
+        Raises: source adapter or parse errors; no-result is an empty list.
+        Related: use `find_delegated_rules` from a known statute and
+        `get_administrative_rule` to load a selected rule body.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -452,12 +723,23 @@ class MolegApi:
         self,
         query: str,
         *,
-        source: str = "law",
-        search_scope: str = "source",
-        annex_type: str | None = None,
+        source: AnnexFormSource = "law",
+        search_scope: AnnexSearchScope = "source",
+        annex_type: AnnexType | None = None,
         ministry: str | None = None,
         display: int = 20,
     ) -> list[AnnexFormHit]:
+        """Search statute or administrative-rule annex/form candidates.
+
+        Use when: operative content may be in 별표ㆍ서식 material such as
+        tables, thresholds, criteria, amounts, or required forms.
+        Returns: a list of `AnnexFormHit` values with source law/rule identity,
+        annex title/number/type, dates, ministry, and file/detail links.
+        Raises: `UnsupportedFormatError` for unsupported source, scope, or
+        annex type values; source/parse errors may also propagate.
+        Related: call `get_annex_form_body` for a selected candidate before
+        treating attached material as inspected.
+        """
         source_type = annex_source_type(source)
         target = annex_target_for(source_type)
         params: dict[str, Any] = {
@@ -487,10 +769,22 @@ class MolegApi:
         self,
         identifier: AnnexFormIdentity | AnnexFormHit | str,
         *,
-        source: str = "law",
+        source: AnnexFormSource = "law",
         title: str | None = None,
         include_metadata: bool = True,
+        attempt_structuring: bool = True,
     ) -> AnnexFormText:
+        """Load text for one selected law or administrative-rule annex/form.
+
+        Use when: an annex/form candidate may carry operative criteria and the
+        skill needs the body text before citing or reasoning from it.
+        Returns: `AnnexFormText` with text/plain content, source identity,
+        extraction method, confidence, and optional metadata.
+        Raises: `NoResultError` when the identity lacks a source ID or returns
+        empty text; `UnsupportedFormatError` for unsupported source targets.
+        Related: call `search_annex_forms` first; direct HWP/PDF parsing is
+        outside this interface.
+        """
         identity = annex_form_identity_from_identifier(identifier, source=source, title=title)
         if not identity.annex_id:
             raise NoResultError("Annex/form identity has no source ID")
@@ -511,12 +805,18 @@ class MolegApi:
         )
         if not text.strip():
             raise NoResultError("No annex/form body text returned")
+        structured_data = (
+            structure_annex_form_text(text, identity)
+            if attempt_structuring and annex_form_is_table_like(identity)
+            else None
+        )
         return AnnexFormText(
             identity=identity,
             text=text,
             file_type="text/plain",
             extraction_method=endpoint,
             extraction_confidence="high",
+            structured_data=structured_data,
             raw={
                 "endpoint": endpoint,
                 "source_target": identity.source_target,
@@ -533,6 +833,17 @@ class MolegApi:
         articles: list[str | int] | None = None,
         include_metadata: bool = True,
     ) -> AdministrativeRuleText:
+        """Load one administrative-rule body by identity, ID, or exact name.
+
+        Use when: the skill selected a notice, directive, established rule, or
+        similar administrative rule and needs inspectable text.
+        Returns: `AdministrativeRuleText` with normalized identity, full joined
+        text, structured articles when available, and optional raw metadata.
+        Raises: `NoResultError` when the identity cannot locate text or article
+        filtering removes all rows; source/parse errors may also propagate.
+        Related: use `search_administrative_rules` for discovery and
+        `find_delegated_rules` when starting from a statute.
+        """
         identity_hint = administrative_rule_identity_from_identifier(identifier)
         params = administrative_rule_identity_params(identity_hint)
         payload = self.source.service("admrul", params)
@@ -559,12 +870,26 @@ class MolegApi:
         self,
         query: str,
         *,
-        source: str = "moleg",
+        source: InterpretationSearchSource = "moleg",
         ministry: str | None = None,
         search_body: bool = False,
         interpreted_on: str | None = None,
         display: int = 20,
     ) -> list[InterpretationHit]:
+        """Search MOLEG and ministry first-instance legal interpretations.
+
+        Use when: the skill needs official or ministry interpretation context
+        about how a statute is applied, distinct from court decisions. Use
+        `source="all"` for MOLEG plus one specified ministry; use
+        `source="all_ministries"` only for deep institutional analysis that
+        justifies registry-wide fan-out.
+        Returns: `InterpretationHit` rows with normalized source authority
+        labels, ministry where relevant, case number, title, and date.
+        Raises: `NoResultError` when ministry search lacks a ministry;
+        `UnsupportedFormatError` for unsupported source/ministry values.
+        Related: use `search_cases` for ordinary judicial decisions and
+        `search_constitutional_decisions` for Constitutional Court decisions.
+        """
         specs = interpretation_sources_for(source, ministry)
         hits: list[InterpretationHit] = []
         for spec in specs:
@@ -594,10 +919,21 @@ class MolegApi:
         self,
         identifier: InterpretationIdentity | InterpretationHit | str,
         *,
-        source: str | None = None,
+        source: InterpretationSearchSource | None = None,
         ministry: str | None = None,
         include_metadata: bool = True,
     ) -> InterpretationText:
+        """Load one MOLEG or ministry interpretation detail.
+
+        Use when: a selected interpretation needs question, answer, reason, and
+        related-law text before the skill cites or reasons from it.
+        Returns: `InterpretationText` with preserved source authority labels,
+        agencies, case number, interpretation date, and optional raw metadata.
+        Raises: `NoResultError` for missing source IDs and
+        `UnsupportedFormatError` for sources without cataloged detail support.
+        Related: call `search_interpretations` first; use judicial loaders for
+        cases or constitutional decisions, not this method.
+        """
         spec = interpretation_source_for_identifier(identifier, source=source, ministry=ministry)
         if not spec.can_get:
             raise UnsupportedFormatError(
@@ -620,6 +956,7 @@ class MolegApi:
                 answer=text.answer,
                 reason=text.reason,
                 related_laws=text.related_laws,
+                referenced_articles=text.referenced_articles,
                 text=text.text,
                 raw={},
             )
@@ -629,13 +966,24 @@ class MolegApi:
         self,
         query: str,
         *,
-        court: str = "all",
+        court: CaseCourt = "all",
         court_name: str | None = None,
         search_body: bool = False,
         decided_on: str | None = None,
         case_number: str | None = None,
         display: int = 20,
     ) -> list[JudicialDecisionHit]:
+        """Search ordinary court cases through the MOLEG case source.
+
+        Use when: the skill needs Supreme Court or lower-court precedent,
+        holdings, or judicial limits for a statute or issue.
+        Returns: `JudicialDecisionHit` rows labeled as `case` with decision ID,
+        title, court, case number, decision date, and summary metadata.
+        Raises: `UnsupportedFormatError` for unsupported court filters; source
+        or parse errors may also propagate. Empty search results return [].
+        Related: use `get_case` for detail and
+        `search_constitutional_decisions` for Constitutional Court authority.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -670,6 +1018,17 @@ class MolegApi:
         *,
         include_metadata: bool = True,
     ) -> JudicialDecisionText:
+        """Load one ordinary court case detail.
+
+        Use when: a selected case must be inspected for holdings, summary, full
+        text, referenced statutes, or referenced cases.
+        Returns: `JudicialDecisionText` labeled as `case`, optionally without
+        raw metadata when the caller is budgeting context.
+        Raises: `NoResultError` for missing/non-numeric source IDs and
+        `UnsupportedFormatError` if a non-case identity is passed here.
+        Related: call `search_cases` first; use constitutional loaders for
+        `detc` Constitutional Court decisions.
+        """
         identity_hint = judicial_decision_identity_from_identifier(
             identifier,
             source_type="case",
@@ -693,6 +1052,8 @@ class MolegApi:
             referenced_statutes=text.referenced_statutes,
             reviewed_statutes=text.reviewed_statutes,
             referenced_cases=text.referenced_cases,
+            referenced_articles=text.referenced_articles,
+            reviewed_articles=text.reviewed_articles,
             text=text.text,
             raw={},
         )
@@ -706,6 +1067,17 @@ class MolegApi:
         case_number: str | None = None,
         display: int = 20,
     ) -> list[JudicialDecisionHit]:
+        """Search Constitutional Court decisions.
+
+        Use when: the skill needs constitutional-risk context, reviewed
+        statutes, holdings, or constitutional reasoning distinct from ordinary
+        court precedent.
+        Returns: `JudicialDecisionHit` rows labeled as `constitutional` with
+        decision ID, case number, decision date, title, and summary metadata.
+        Raises: source adapter or parse errors; no-result is an empty list.
+        Related: use `get_constitutional_decision` for detail and
+        `search_cases` for ordinary Supreme Court/lower-court cases.
+        """
         params: dict[str, Any] = {
             "query": query,
             "display": display,
@@ -735,6 +1107,17 @@ class MolegApi:
         *,
         include_metadata: bool = True,
     ) -> JudicialDecisionText:
+        """Load one Constitutional Court decision detail.
+
+        Use when: a selected constitutional decision needs holdings, summary,
+        full text, reviewed statutes, or referenced authority.
+        Returns: `JudicialDecisionText` labeled as `constitutional`, optionally
+        without raw metadata for context budgeting.
+        Raises: `NoResultError` for missing/non-numeric source IDs and
+        `UnsupportedFormatError` if an ordinary case identity is passed here.
+        Related: call `search_constitutional_decisions` first; use `get_case`
+        for ordinary judicial decisions.
+        """
         identity_hint = judicial_decision_identity_from_identifier(
             identifier,
             source_type="constitutional",
@@ -758,6 +1141,8 @@ class MolegApi:
             referenced_statutes=text.referenced_statutes,
             reviewed_statutes=text.reviewed_statutes,
             referenced_cases=text.referenced_cases,
+            referenced_articles=text.referenced_articles,
+            reviewed_articles=text.reviewed_articles,
             text=text.text,
             raw={},
         )
@@ -769,6 +1154,18 @@ class MolegApi:
         display: int = 5,
         include_websearch_hint: bool = True,
     ) -> LegalQueryExpansion:
+        """Build legal search-planning context for a broad query.
+
+        Use when: the user's wording may need legal terms, everyday terms,
+        related articles/laws, AI-search hints, or WebSearch handoff guidance
+        before loading primary source text.
+        Returns: `LegalQueryExpansion` with candidate laws, terms, related
+        articles/laws, follow-up search recommendations, and empty-source notes.
+        Raises: `NoResultError` for blank queries; source or parse errors may
+        propagate from the planning sources.
+        Related: this is not legal authority. Use returned follow-ups with
+        `get_law`, `get_article`, interpretation, case, or annex loaders.
+        """
         if not query.strip():
             raise NoResultError("query is required for legal query expansion")
 
@@ -851,6 +1248,50 @@ class MolegApi:
             raw=raw,
         )
 
+    def find_comparable_mechanisms(
+        self,
+        concept: str,
+        *,
+        display: int = 5,
+    ) -> list[LawIdentity]:
+        """Find source-backed law candidates with similar legal mechanisms.
+
+        Use when: the skill is doing legislative design or comparative 제도
+        planning for a concept such as 과징금, 인허가, authorization, or 신고제.
+        Returns: bounded `LawIdentity` candidates with source endpoints and
+        article anchors preserved in `raw_keys` for later selective loading.
+        Raises: `NoResultError` for blank concepts or when no comparable source
+        candidates are found; source/parse errors may also propagate.
+        Related: use `expand_legal_query` for broader search planning and
+        `get_law`/`get_article` before citing or concluding mechanisms match.
+        """
+        concept = concept.strip()
+        if not concept:
+            raise NoResultError("concept is required for comparable mechanism discovery")
+
+        ai_search_payload = self.source.search(
+            "aiSearch",
+            {"query": concept, "display": display, "search": 0},
+        )
+        ai_related_payload = self.source.search(
+            "aiRltLs",
+            {"query": concept, "search": 0},
+        )
+        term_article_payload = self.source.service("lstrmRltJo", {"query": concept})
+
+        candidates = comparable_mechanism_identities(
+            concept,
+            [
+                *laws_from_rows(unwrap_target_rows(ai_search_payload, "aiSearch"), source_target="aiSearch"),
+                *laws_from_rows(unwrap_target_rows(ai_related_payload, "aiRltLs"), source_target="aiRltLs"),
+                *laws_from_rows(unwrap_target_rows(term_article_payload, "lstrmRltJo"), source_target="lstrmRltJo"),
+            ],
+            display=display,
+        )
+        if not candidates:
+            raise NoResultError(f"No comparable mechanisms found for concept: {concept}")
+        return candidates
+
     def _search_rows(
         self,
         target: str,
@@ -865,6 +1306,288 @@ class MolegApi:
             empty_sources.append(target)
         return rows
 
+    def load_institutional_system(
+        self,
+        statute_identifiers: list[str | LawIdentity | LawHit],
+        *,
+        articles: list[str | int] | None = None,
+        budget: BundleBudget = "standard",
+    ) -> LegalContextBundle:
+        """Load one explicit multi-statute institutional system.
+
+        Use when: the skill has already selected the statute set for a 제도 and
+        needs one staged source bundle across those statutes.
+        Returns: `LegalContextBundle` with `request.mode="institutional_system"`,
+        `request.statute_ids`, loaded law/article text, law structures,
+        delegation graphs, candidates, deferred lookups, ambiguities, and gaps.
+        Raises: `NoResultError` for an empty statute set and budget validation
+        errors from the normal bundle limits; per-statute failures are recorded
+        in the returned bundle instead of aborting the whole load.
+        Related: use `search_laws` or `expand_legal_query` before this method
+        when the statute set itself is uncertain.
+        """
+        if not statute_identifiers:
+            raise NoResultError("statute_identifiers is required for institutional-system bundles")
+
+        limits = bundle_limits(budget)
+        request = BundleRequest(
+            query=None,
+            mode="institutional_system",
+            budget=budget,
+            articles=list(articles or []),
+            statute_ids=[statute_identifier_label(identifier) for identifier in statute_identifiers],
+        )
+        source_notes: list[str] = [
+            "Institutional-system bundle is staged source context, not a legal conclusion."
+        ]
+        ambiguities: list[Ambiguity] = []
+        gaps: list[ContextGap] = []
+        deferred: list[DeferredLookup] = []
+        loaded_laws: list[LawText] = []
+        loaded_articles: list[ArticleText] = []
+        loaded_delegations: list[DelegationGraph] = []
+        law_structures: list[LawStructure] = []
+        law_candidates: list[LawIdentity] = []
+        administrative_candidates: list[AdministrativeRuleHit] = []
+        annex_form_candidates: list[AnnexFormHit] = []
+        interpretation_candidates: list[InterpretationHit] = []
+        case_candidates: list[JudicialDecisionHit] = []
+        constitutional_candidates: list[JudicialDecisionHit] = []
+
+        for statute_identifier in statute_identifiers:
+            resolution = self._resolve_institutional_statute(
+                statute_identifier,
+                display=max(2, limits["law_candidates"]),
+            )
+            law_candidates.extend(resolution.candidates)
+            if resolution.identity is None:
+                if resolution.error_kind == "ambiguous":
+                    ambiguities.append(
+                        Ambiguity(
+                            kind="statute_identity",
+                            message=resolution.message
+                            or f"Statute identifier is ambiguous: {resolution.identifier}",
+                            candidates=resolution.candidates,
+                        )
+                    )
+                else:
+                    source_notes.append(
+                        resolution.message or f"Statute '{resolution.identifier}' was not found"
+                    )
+                gaps.append(
+                    ContextGap(
+                        kind="manual_review_required",
+                        reason="A statute identifier could not be resolved to one MOLEG law identity.",
+                        query=resolution.identifier,
+                        recommended_interface="search_laws",
+                    )
+                )
+                deferred.append(
+                    DeferredLookup(
+                        interface="search_laws",
+                        query=resolution.identifier,
+                        reason="Resolve the statute identity before loading this part of the institutional system.",
+                        source_type="law",
+                    )
+                )
+                continue
+
+            identity = resolution.identity
+            if articles:
+                for article in articles[: limits["articles"]]:
+                    try:
+                        loaded_articles.append(self.get_article(identity, article))
+                    except MolegApiError as exc:
+                        source_notes.append(f"Article load skipped for {identity.name} {article}: {exc}")
+            else:
+                try:
+                    law_text = self.get_law(identity)
+                    loaded_laws.append(law_text)
+                    identity = law_text.identity
+                    law_candidates.append(identity)
+                except MolegApiError as exc:
+                    source_notes.append(f"Law load skipped for {identity.name}: {exc}")
+
+            try:
+                law_structures.append(self.get_law_structure(identity, depth=1))
+            except MolegApiError as exc:
+                source_notes.append(f"Law-structure lookup skipped for {identity.name}: {exc}")
+
+            try:
+                graph = self.find_delegated_rules(identity)
+                loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
+            except NoResultError:
+                loaded_delegations.append(DelegationGraph(identity=identity, rules=[], raw={}))
+            except MolegApiError as exc:
+                source_notes.append(f"Delegation lookup skipped for {identity.name}: {exc}")
+
+            administrative_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_administrative_rules(
+                        identity.name,
+                        display=limits["administrative_rules"],
+                    ),
+                    source_notes,
+                    f"Administrative-rule search for {identity.name}",
+                )
+            )
+            interpretation_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_interpretations(
+                        identity.name,
+                        display=limits["interpretations"],
+                    ),
+                    source_notes,
+                    f"Interpretation search for {identity.name}",
+                )
+            )
+            case_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_cases(
+                        identity.name,
+                        display=limits["cases"],
+                    ),
+                    source_notes,
+                    f"Case search for {identity.name}",
+                )
+            )
+            constitutional_candidates.extend(
+                safe_list(
+                    lambda identity=identity: self.search_constitutional_decisions(
+                        identity.name,
+                        display=limits["constitutional_decisions"],
+                    ),
+                    source_notes,
+                    f"Constitutional decision search for {identity.name}",
+                )
+            )
+
+            annex_form_limit = limits["annex_forms"]
+            law_annex_limit = (annex_form_limit + 1) // 2
+            admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
+            annex_form_candidates.extend(
+                [
+                    *safe_list(
+                        lambda identity=identity: self.search_annex_forms(
+                            identity.name,
+                            source="law",
+                            search_scope="source",
+                            display=law_annex_limit,
+                        ),
+                        source_notes,
+                        f"Law annex/form search for {identity.name}",
+                    ),
+                    *safe_list(
+                        lambda identity=identity: self.search_annex_forms(
+                            identity.name,
+                            source="administrative_rule",
+                            search_scope="source",
+                            display=admin_annex_limit,
+                        ),
+                        source_notes,
+                        f"Administrative-rule annex/form search for {identity.name}",
+                    ),
+                ]
+            )
+            gaps.append(
+                ContextGap(
+                    kind="websearch_required",
+                    reason="Use WebSearch for latest social facts, statistics, policy announcements, news, or non-MOLEG background.",
+                    query=identity.name,
+                    recommended_interface="websearch",
+                )
+            )
+
+        deferred.extend(
+            deferred_from_candidates(administrative_candidates, "get_administrative_rule", "administrative_rule")
+        )
+        deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
+        deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
+        deferred.extend(
+            deferred_from_candidates(
+                constitutional_candidates,
+                "get_constitutional_decision",
+                "constitutional",
+            )
+        )
+
+        return LegalContextBundle(
+            request=request,
+            loaded=LoadedContext(
+                laws=loaded_laws,
+                articles=loaded_articles,
+                delegations=loaded_delegations,
+                law_structures=law_structures,
+            ),
+            candidates=CandidateContext(
+                laws=dedupe_identities(law_candidates),
+                administrative_rules=administrative_candidates,
+                annex_forms=annex_form_candidates,
+                interpretations=interpretation_candidates,
+                cases=case_candidates,
+                constitutional_decisions=constitutional_candidates,
+            ),
+            deferred=deferred,
+            ambiguities=ambiguities,
+            gaps=gaps,
+            source_notes=source_notes,
+        )
+
+    def _resolve_institutional_statute(
+        self,
+        identifier: str | LawIdentity | LawHit,
+        *,
+        display: int,
+    ) -> InstitutionalStatuteResolution:
+        label = statute_identifier_label(identifier)
+        if isinstance(identifier, LawHit):
+            return InstitutionalStatuteResolution(label, identifier.identity, [identifier.identity])
+        if isinstance(identifier, LawIdentity):
+            return InstitutionalStatuteResolution(label, identifier, [identifier])
+        text = label.strip()
+        if not text:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                [],
+                error_kind="no_result",
+                message="Blank statute identifier cannot be resolved",
+            )
+        if text.isdigit():
+            identity = LawIdentity(law_id=text, name=text, basis="effective")
+            return InstitutionalStatuteResolution(label, identity, [identity])
+
+        hits = self.search_laws(text, display=display)
+        identities = dedupe_identities([hit.identity for hit in hits])
+        if not identities:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                [],
+                error_kind="no_result",
+                message=f"Statute '{text}' was not found",
+            )
+        exact = [identity for identity in identities if identity.name == text]
+        if len(exact) == 1:
+            return InstitutionalStatuteResolution(label, exact[0], identities)
+        if len(exact) > 1:
+            return InstitutionalStatuteResolution(
+                label,
+                None,
+                exact,
+                error_kind="ambiguous",
+                message=f"Statute identifier '{text}' matched multiple exact law identities",
+            )
+        if len(identities) == 1:
+            return InstitutionalStatuteResolution(label, identities[0], identities)
+        return InstitutionalStatuteResolution(
+            label,
+            None,
+            identities,
+            error_kind="ambiguous",
+            message=f"Statute identifier '{text}' matched multiple law identities",
+        )
+
     def load_legal_context_bundle(
         self,
         query: str | None = None,
@@ -872,9 +1595,24 @@ class MolegApi:
         promulgation_bridge: dict[str, Any] | None = None,
         law_identifier: LawIdentity | LawHit | str | None = None,
         articles: list[str | int] | None = None,
-        mode: str = "question",
-        budget: str = "standard",
+        mode: BundleMode = "question",
+        budget: BundleBudget = "standard",
     ) -> LegalContextBundle:
+        """Load a staged legal context bundle for Claude inspection.
+
+        Use when: the question is broad, under-specified, or begins from a
+        statute/bill anchor and the skill needs one bounded first pass over
+        likely MOLEG sources.
+        Returns: `LegalContextBundle` with loaded primary law/article/delegation
+        context, bounded candidates, deferred lookups, ambiguities, gaps, and
+        source notes.
+        Raises: `NoResultError` for missing required mode inputs and
+        `UnsupportedFormatError` for unsupported mode or budget values; many
+        source failures are recorded as `source_notes` instead of aborting.
+        Related: the bundle loads sources, not conclusions. Use explicit
+        loaders for selected candidates and WebSearch for non-MOLEG facts.
+        """
+        validate_choice("mode", mode, BUNDLE_MODE_VALUES)
         limits = bundle_limits(budget)
         request = BundleRequest(
             query=query,
@@ -894,12 +1632,9 @@ class MolegApi:
         loaded_laws: list[LawText] = []
         loaded_articles: list[ArticleText] = []
         loaded_delegations: list[DelegationGraph] = []
-        admin_texts: list[AdministrativeRuleText] = []
-        interpretation_texts: list[InterpretationText] = []
-        case_texts: list[JudicialDecisionText] = []
-        constitutional_texts: list[JudicialDecisionText] = []
-        histories: list[LawHistory] = []
-        diffs: list[LawDiff] = []
+        loaded_interpretations: list[InterpretationText] = []
+        loaded_cases: list[JudicialDecisionText] = []
+        loaded_constitutional_decisions: list[JudicialDecisionText] = []
         query_expansion: LegalQueryExpansion | None = None
         law_candidates: list[LawIdentity] = []
         administrative_candidates: list[AdministrativeRuleHit] = []
@@ -907,6 +1642,7 @@ class MolegApi:
         interpretation_candidates: list[InterpretationHit] = []
         case_candidates: list[JudicialDecisionHit] = []
         constitutional_candidates: list[JudicialDecisionHit] = []
+        loaded_detail_keys: set[tuple[str | None, str]] = set()
 
         primary_identity: LawIdentity | None = None
         search_query = query
@@ -932,7 +1668,13 @@ class MolegApi:
                 law_candidates = [primary_identity]
                 search_query = primary_identity.name
             except AmbiguousLawError as exc:
-                ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
+                ambiguities.append(
+                    Ambiguity(
+                        kind=exc.kind or "promulgation_bridge",
+                        message=str(exc),
+                        candidates=exc.candidates,
+                    )
+                )
                 gaps.append(
                     ContextGap(
                         kind="manual_review_required",
@@ -1097,11 +1839,90 @@ class MolegApi:
                 ),
             ][:annex_form_limit]
 
-        deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
-        deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
+        eager_detail_limits = bundle_eager_detail_limits(search_query, mode=mode, budget=budget)
+        eager_text_budget = BUNDLE_EAGER_TEXT_CHAR_LIMITS[budget]
+        eager_text_used = 0
+        if any(eager_detail_limits.values()):
+            source_notes.append(
+                "Eager detail loading triggered for "
+                + ", ".join(key for key, value in eager_detail_limits.items() if value)
+                + "."
+            )
+
+        for candidate in ranked_candidates(
+            interpretation_candidates,
+            search_query,
+            limit=eager_detail_limits["interpretations"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_interpretation(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager interpretation detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager interpretation detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_interpretations.append(text)
+            loaded_detail_keys.add(key)
+
+        for candidate in ranked_candidates(
+            case_candidates,
+            search_query,
+            limit=eager_detail_limits["cases"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_case(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager case detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager case detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_cases.append(text)
+            loaded_detail_keys.add(key)
+
+        for candidate in ranked_candidates(
+            constitutional_candidates,
+            search_query,
+            limit=eager_detail_limits["constitutional_decisions"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_constitutional_decision(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager constitutional detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager constitutional detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_constitutional_decisions.append(text)
+            loaded_detail_keys.add(key)
+
         deferred.extend(
             deferred_from_candidates(
-                constitutional_candidates,
+                unloaded_candidates(interpretation_candidates, loaded_detail_keys),
+                "get_interpretation",
+                "interpretation",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(case_candidates, loaded_detail_keys),
+                "get_case",
+                "case",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(constitutional_candidates, loaded_detail_keys),
                 "get_constitutional_decision",
                 "constitutional",
             )
@@ -1123,12 +1944,9 @@ class MolegApi:
                 laws=loaded_laws,
                 articles=loaded_articles,
                 delegations=loaded_delegations,
-                administrative_rules=admin_texts,
-                interpretations=interpretation_texts,
-                cases=case_texts,
-                constitutional_decisions=constitutional_texts,
-                histories=histories,
-                diffs=diffs,
+                interpretations=loaded_interpretations,
+                cases=loaded_cases,
+                constitutional_decisions=loaded_constitutional_decisions,
             ),
             candidates=CandidateContext(
                 query_expansion=query_expansion,
@@ -1160,39 +1978,164 @@ class MolegApi:
         return rows
 
 
+def validate_choice(
+    param: str,
+    value: str,
+    valid_values: tuple[str, ...],
+    *,
+    context: str | None = None,
+) -> None:
+    if value in valid_values:
+        return
+    label = f"{param} for {context}" if context else param
+    valid = ", ".join(repr(item) for item in valid_values)
+    raise UnsupportedFormatError(f"Invalid {label}: {value!r}. Valid values: {valid}.")
+
+
 def target_for(basis: Basis, kind: str) -> str:
+    validate_choice("basis", basis, BASIS_VALUES)
     return TARGETS[basis][kind]
 
 
 def annex_source_type(source: str) -> str:
-    if source in ("law", "statute"):
+    validate_choice("source", source, ANNEX_SOURCE_VALUES)
+    if source == "law":
         return "law"
-    if source in ("administrative_rule", "admin_rule"):
+    if source == "administrative_rule":
         return "administrative_rule"
-    raise UnsupportedFormatError(f"Unsupported annex/form source: {source}")
+    raise AssertionError("validated annex/form source should be reachable")
 
 
 def annex_target_for(source_type: str) -> str:
-    try:
-        return ANNEX_FORM_TARGETS[source_type]
-    except KeyError as exc:
-        raise UnsupportedFormatError(f"Unsupported annex/form source: {source_type}") from exc
+    validate_choice("source", source_type, ANNEX_SOURCE_VALUES)
+    return ANNEX_FORM_TARGETS[source_type]
 
 
 def annex_search_scope(search_scope: str) -> int:
-    try:
-        return ANNEX_SEARCH_SCOPES[search_scope]
-    except KeyError as exc:
-        raise UnsupportedFormatError(f"Unsupported annex/form search scope: {search_scope}") from exc
+    validate_choice("search_scope", search_scope, ANNEX_SEARCH_SCOPE_VALUES)
+    return ANNEX_SEARCH_SCOPES[search_scope]
 
 
 def annex_type_code(source_type: str, annex_type: str) -> str:
-    try:
-        return ANNEX_TYPE_CODES[source_type][annex_type]
-    except KeyError as exc:
-        raise UnsupportedFormatError(
-            f"Unsupported annex/form type for {source_type}: {annex_type}"
-        ) from exc
+    valid_values = tuple(ANNEX_TYPE_CODES[annex_source_type(source_type)])
+    validate_choice("annex_type", annex_type, valid_values, context=source_type)
+    return ANNEX_TYPE_CODES[source_type][annex_type]
+
+
+def annex_form_is_table_like(identity: AnnexFormIdentity) -> bool:
+    signals = " ".join(
+        value
+        for value in (identity.annex_type, identity.annex_number, identity.title)
+        if value
+    )
+    if any(token in signals for token in ("서식", "별지")):
+        return False
+    return any(token in signals for token in ("별표", "기준표", "표", "기준", "부과기준"))
+
+
+def structure_annex_form_text(text: str, identity: AnnexFormIdentity) -> StructuredTableData:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    pipe_table = parse_pipe_table(lines, identity)
+    if pipe_table:
+        return pipe_table
+    spaced_table = parse_spaced_table(lines, identity)
+    if spaced_table:
+        return spaced_table
+    return low_confidence_table(identity)
+
+
+def parse_pipe_table(lines: list[str], identity: AnnexFormIdentity) -> StructuredTableData | None:
+    table_rows: list[list[str]] = []
+    for line in lines:
+        if "|" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if is_markdown_separator(cells):
+            continue
+        if len(cells) >= 2 and all(cells):
+            table_rows.append(cells)
+    return structured_table_from_rows(table_rows, identity)
+
+
+def parse_spaced_table(lines: list[str], identity: AnnexFormIdentity) -> StructuredTableData | None:
+    table_rows: list[list[str]] = []
+    expected_columns: int | None = None
+    for line in lines:
+        cells = [cell.strip() for cell in re.split(r"\s{2,}", line.strip()) if cell.strip()]
+        if len(cells) < 2:
+            if table_rows:
+                break
+            continue
+        if expected_columns is None:
+            expected_columns = len(cells)
+        if len(cells) != expected_columns:
+            break
+        table_rows.append(cells)
+    return structured_table_from_rows(table_rows, identity)
+
+
+def structured_table_from_rows(
+    table_rows: list[list[str]],
+    identity: AnnexFormIdentity,
+) -> StructuredTableData | None:
+    if len(table_rows) < 2:
+        return None
+    headers = table_rows[0]
+    body_rows = table_rows[1:]
+    if not body_rows or any(len(row) != len(headers) for row in body_rows):
+        return None
+    keys = normalized_table_keys(headers)
+    rows = [dict(zip(keys, row, strict=True)) for row in body_rows]
+    return StructuredTableData(
+        title=identity.title,
+        headers=headers,
+        rows=rows,
+        units=table_units(rows),
+        parsing_confidence="high",
+        notes=[],
+    )
+
+
+def normalized_table_keys(headers: list[str]) -> list[str]:
+    keys: list[str] = []
+    seen: dict[str, int] = {}
+    for index, header in enumerate(headers, start=1):
+        key = re.sub(r"\s+", "_", header.strip().lower())
+        key = re.sub(r"[^\w가-힣]+", "_", key).strip("_")
+        if not key:
+            key = f"column_{index}"
+        count = seen.get(key, 0)
+        seen[key] = count + 1
+        keys.append(key if count == 0 else f"{key}_{count + 1}")
+    return keys
+
+
+def table_units(rows: list[dict[str, str]]) -> list[str]:
+    units: list[str] = []
+    seen: set[str] = set()
+    unit_pattern = re.compile(r"\d+(?:\.\d+)?\s*(만원|천원|억원|원|%|퍼센트|명|개|건|일|개월|년)")
+    for row in rows:
+        for value in row.values():
+            for match in unit_pattern.findall(value):
+                if match not in seen:
+                    seen.add(match)
+                    units.append(match)
+    return units
+
+
+def is_markdown_separator(cells: list[str]) -> bool:
+    return all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+
+def low_confidence_table(identity: AnnexFormIdentity) -> StructuredTableData:
+    return StructuredTableData(
+        title=identity.title,
+        headers=[],
+        rows=[],
+        units=[],
+        parsing_confidence="low",
+        notes=["plain text retained; table structure was irregular or ambiguous"],
+    )
 
 
 def annex_form_identity_from_identifier(
@@ -1219,7 +2162,16 @@ def identity_from_identifier(identifier: LawIdentity | LawHit | str, *, basis: B
         return identifier.identity
     if isinstance(identifier, LawIdentity):
         return identifier
-    return LawIdentity(law_id=str(identifier), name=str(identifier), basis=basis)
+    text = str(identifier).strip()
+    if not text:
+        raise NoResultError("Law identifier is required")
+    if not text.isdigit():
+        raise NoResultError(
+            f"Identifier {text!r} looks like a law name, not a law ID. "
+            f"Call `search_laws({text!r})` to find the law ID, then pass the "
+            "result or its `law_id` to this method."
+        )
+    return LawIdentity(law_id=text, name=text, basis=basis)
 
 
 def identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -> dict[str, Any]:
@@ -1250,6 +2202,46 @@ def law_text_identity_params(identity: LawIdentity, *, as_of: str | None, basis:
     if basis == "effective" and as_of:
         params["efYd"] = compact_date(as_of)
     return params
+
+
+def select_requested_articles(
+    available_articles: list[ArticleText],
+    requested_articles: list[str | int],
+) -> list[ArticleText]:
+    articles_by_jo: dict[str, list[ArticleText]] = {}
+    for article in available_articles:
+        try:
+            jo = format_article_jo(article.article)
+        except ParseFailureError:
+            continue
+        articles_by_jo.setdefault(jo, []).append(article)
+
+    selected: list[ArticleText] = []
+    missing: list[str] = []
+    for requested in requested_articles:
+        jo = format_article_jo(requested)
+        matches = articles_by_jo.get(jo)
+        if not matches:
+            missing.append(str(requested))
+            continue
+        selected.append(preferred_article_match(matches))
+
+    if missing:
+        raise NoResultError(f"No law article text found for: {', '.join(missing)}")
+    return selected
+
+
+def preferred_article_match(matches: list[ArticleText]) -> ArticleText:
+    for article in matches:
+        if str(article.raw.get("조문여부") or "").strip() == "조문":
+            return article
+    for article in matches:
+        if article.title:
+            return article
+    for article in matches:
+        if article.text.strip().startswith(article.article):
+            return article
+    return matches[0]
 
 
 def matches_bridge(
@@ -1361,15 +2353,21 @@ def article_label_for_filter(article: str | int) -> str:
 
 
 def interpretation_sources_for(source: str, ministry: str | None) -> list[InterpretationSourceSpec]:
+    validate_choice("source", source, INTERPRETATION_SOURCE_VALUES)
     if source == "moleg":
         return [OFFICIAL_INTERPRETATION_SOURCE]
     if source == "ministry":
         return [ministry_interpretation_source(ministry)]
     if source == "all":
+        if not ministry:
+            raise NoResultError(
+                "ministry is required for source='all'; use source='moleg' or source='all_ministries'"
+            )
         specs = [OFFICIAL_INTERPRETATION_SOURCE]
-        if ministry:
-            specs.append(ministry_interpretation_source(ministry))
+        specs.append(ministry_interpretation_source(ministry))
         return specs
+    if source == "all_ministries":
+        return [OFFICIAL_INTERPRETATION_SOURCE, *MINISTRY_INTERPRETATION_SOURCES.values()]
     raise UnsupportedFormatError(f"Unsupported interpretation source: {source}")
 
 
@@ -1433,13 +2431,14 @@ def interpretation_identity_params(identity: InterpretationIdentity) -> dict[str
 
 
 def court_filter_code(court: str) -> str | None:
+    validate_choice("court", court, COURT_VALUES)
     if court == "all":
         return None
     if court == "supreme":
         return "400201"
     if court == "lower":
         return "400202"
-    raise UnsupportedFormatError(f"Unsupported court filter: {court}")
+    raise AssertionError("validated court filter should be reachable")
 
 
 def judicial_decision_identity_from_identifier(
@@ -1549,6 +2548,95 @@ def compact_laws(laws: list[LegalLawCandidate]) -> list[LegalLawCandidate]:
     return compacted
 
 
+def comparable_mechanism_identities(
+    concept: str,
+    laws: list[LegalLawCandidate],
+    *,
+    display: int,
+) -> list[LawIdentity]:
+    identities: dict[str, LawIdentity] = {}
+    endpoints: dict[str, list[str]] = {}
+    articles: dict[str, list[dict[str, str | None]]] = {}
+
+    for law in laws:
+        if law.source_type != "law":
+            continue
+        key = law.name
+        if key not in identities:
+            identities[key] = LawIdentity(
+                law_id=law.law_id,
+                name=law.name,
+                basis="effective",
+                mst=law.mst,
+                promulgation_date=law.promulgation_date,
+                effective_date=law.effective_date,
+                promulgation_number=law.promulgation_number,
+                law_type=law.law_type,
+                ministry=law.ministry,
+                raw_keys={
+                    "comparative_discovery": True,
+                    "concept": concept,
+                    "source_type": law.source_type,
+                },
+            )
+            endpoints[key] = []
+            articles[key] = []
+        elif not identities[key].law_id and law.law_id:
+            current = identities[key]
+            identities[key] = LawIdentity(
+                law_id=law.law_id,
+                name=current.name,
+                basis=current.basis,
+                mst=law.mst or current.mst,
+                lid=current.lid,
+                promulgation_date=law.promulgation_date or current.promulgation_date,
+                effective_date=law.effective_date or current.effective_date,
+                promulgation_number=law.promulgation_number or current.promulgation_number,
+                law_type=law.law_type or current.law_type,
+                ministry=law.ministry or current.ministry,
+                raw_keys=current.raw_keys,
+            )
+        if law.source_target and law.source_target not in endpoints[key]:
+            endpoints[key].append(law.source_target)
+        if law.article:
+            anchor = {
+                "article": law.article,
+                "title": law.article_title,
+                "source_target": law.source_target,
+            }
+            if not any(
+                item["article"] == anchor["article"] and item["title"] == anchor["title"]
+                for item in articles[key]
+            ):
+                articles[key].append(anchor)
+
+    results: list[LawIdentity] = []
+    for key, identity in identities.items():
+        raw_keys = {
+            **identity.raw_keys,
+            "discovery_endpoints": endpoints[key],
+            "source_articles": articles[key],
+        }
+        results.append(
+            LawIdentity(
+                law_id=identity.law_id,
+                name=identity.name,
+                basis=identity.basis,
+                mst=identity.mst,
+                lid=identity.lid,
+                promulgation_date=identity.promulgation_date,
+                effective_date=identity.effective_date,
+                promulgation_number=identity.promulgation_number,
+                law_type=identity.law_type,
+                ministry=identity.ministry,
+                raw_keys=raw_keys,
+            )
+        )
+        if len(results) >= display:
+            break
+    return results
+
+
 def build_follow_up_searches(
     query: str,
     *,
@@ -1638,17 +2726,91 @@ def build_follow_up_searches(
     return searches
 
 
-def bundle_limits(budget: str) -> dict[str, int]:
+def bundle_limits(budget: BundleBudget) -> dict[str, int]:
+    validate_choice("budget", budget, BUNDLE_BUDGET_VALUES)
+    return BUNDLE_BUDGETS[budget]
+
+
+def bundle_eager_detail_limits(
+    query: str | None,
+    *,
+    mode: BundleMode,
+    budget: BundleBudget,
+) -> dict[str, int]:
     try:
-        return BUNDLE_BUDGETS[budget]
+        budget_limits = BUNDLE_EAGER_DETAIL_LIMITS[budget]
     except KeyError as exc:
         raise UnsupportedFormatError(f"Unsupported legal context bundle budget: {budget}") from exc
+    limits = {key: 0 for key in budget_limits}
+    intents = bundle_query_intents(query, mode=mode)
+    if "legal_meaning" in intents:
+        limits["interpretations"] = budget_limits["interpretations"]
+        limits["cases"] = budget_limits["cases"]
+        limits["constitutional_decisions"] = budget_limits["constitutional_decisions"]
+    if "application" in intents:
+        limits["interpretations"] = max(limits["interpretations"], budget_limits["interpretations"])
+        limits["cases"] = max(limits["cases"], budget_limits["cases"])
+    if "constitutional" in intents:
+        limits["constitutional_decisions"] = max(
+            limits["constitutional_decisions"],
+            budget_limits["constitutional_decisions"],
+        )
+    return limits
+
+
+def bundle_query_intents(query: str | None, *, mode: BundleMode) -> set[str]:
+    if mode not in ("question", "statute_review"):
+        return set()
+    text = str(query or "")
+    intents: set[str] = set()
+    if any(keyword in text for keyword in BUNDLE_LEGAL_MEANING_KEYWORDS):
+        intents.add("legal_meaning")
+    if any(keyword in text for keyword in BUNDLE_APPLICATION_KEYWORDS):
+        intents.add("application")
+    if any(keyword in text for keyword in BUNDLE_CONSTITUTIONAL_KEYWORDS):
+        intents.add("constitutional")
+    return intents
 
 
 def string_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def statute_identifier_label(identifier: str | LawIdentity | LawHit) -> str:
+    if isinstance(identifier, LawHit):
+        return identifier.identity.name
+    if isinstance(identifier, LawIdentity):
+        return identifier.name
+    return str(identifier)
+
+
+def normalize_history_bill_id_map(
+    promulgation_bridge: dict[tuple[Any, Any, Any], Any] | None,
+) -> dict[tuple[str, str, str], str] | None:
+    if not promulgation_bridge:
+        return None
+    bill_id_map: dict[tuple[str, str, str], str] = {}
+    for key, bill_id in promulgation_bridge.items():
+        if not isinstance(key, tuple) or len(key) != 3:
+            raise UnsupportedFormatError(
+                "promulgation_bridge keys must be (prom_law_nm, prom_no, promulgation_dt)"
+            )
+        law_name, prom_no, promulgation_dt = key
+        normalized_law_name = string_value(law_name)
+        normalized_prom_no = compact_promulgation_number(prom_no)
+        normalized_dt = compact_date(promulgation_dt)
+        normalized_bill_id = string_value(bill_id)
+        if (
+            not normalized_law_name
+            or not normalized_prom_no
+            or not normalized_dt
+            or not normalized_bill_id
+        ):
+            continue
+        bill_id_map[(normalized_law_name, normalized_prom_no, normalized_dt)] = normalized_bill_id
+    return bill_id_map or None
 
 
 def safe_list(fn: Any, source_notes: list[str], label: str) -> list[Any]:
@@ -1690,3 +2852,52 @@ def deferred_from_candidates(
             )
         )
     return deferred
+
+
+def ranked_candidates(candidates: list[Any], query: str | None, *, limit: int) -> list[Any]:
+    if limit <= 0:
+        return []
+    terms = significant_query_terms(query)
+    scored = [
+        (candidate_rank_score(candidate, terms), index, candidate)
+        for index, candidate in enumerate(candidates)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [candidate for _, _, candidate in scored[:limit]]
+
+
+def significant_query_terms(query: str | None) -> list[str]:
+    text = str(query or "")
+    return [term for term in text.split() if len(term) >= 2]
+
+
+def candidate_rank_score(candidate: Any, terms: list[str]) -> int:
+    identity = getattr(candidate, "identity", None)
+    haystack = " ".join(
+        str(value or "")
+        for value in (
+            getattr(identity, "title", None),
+            getattr(identity, "case_number", None),
+            getattr(identity, "source_type", None),
+            getattr(identity, "ministry", None),
+        )
+    )
+    return sum(1 for term in terms if term in haystack)
+
+
+def unloaded_candidates(candidates: list[Any], loaded_keys: set[tuple[str | None, str]]) -> list[Any]:
+    return [candidate for candidate in candidates if candidate_identity_key(candidate) not in loaded_keys]
+
+
+def candidate_identity_key(candidate: Any) -> tuple[str | None, str]:
+    identity = getattr(candidate, "identity", None)
+    source_target = getattr(identity, "source_target", None)
+    source_id = (
+        getattr(identity, "interpretation_id", None)
+        or getattr(identity, "decision_id", None)
+        or getattr(identity, "serial_id", None)
+        or getattr(identity, "law_id", None)
+        or getattr(identity, "title", None)
+        or getattr(identity, "name", None)
+    )
+    return (source_target, str(source_id or ""))

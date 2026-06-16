@@ -2,13 +2,45 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — No synthetic constitutional doctrine filter
+
+The `detc` catalog and live detail response expose Constitutional Court doctrines only inside prose fields such as `판시사항`, `결정요지`, and `전문`, not as a structured source field. MOLEG-API will not add `search_constitutional_decisions(doctrine=...)` or infer doctrine labels from free text; the skill should use body keyword search plus detail loading until law.go.kr exposes a source-backed doctrine/category field.
+
+## 2026-06-17 — Comparable mechanisms use AI search as discovery, not synthesis
+
+Catalog and live checks show `aiSearch` returns source law/article rows for mechanism terms such as 과징금, while `aiRltLs` and `lstrmRltJo` can supplement related-law and term-article anchors. MOLEG-API therefore exposes `find_comparable_mechanisms()` as bounded planning candidates with endpoint/article provenance in `raw_keys`, not as ranked 제도 classification or citable legal authority.
+
+## 2026-06-17 — Administrative-rule back-references require explicit source metadata
+
+The `admrul` catalog/live samples do not expose a stable standard back-reference field, while some administrative-rule prose can mention legal bases inside body/change-reason text. Decision: MOLEG-API exposes `source_law_id`, `source_law_name`, `source_article`, and `source_article_title` only from explicit delegation/authorization metadata fields, including explicitly named basis fields such as `위임근거`, and never by body parsing or reverse lookup; `None` means unknown in the source payload, not proof that no delegation exists.
+
+## 2026-06-17 — Institutional-system loading composes explicit statutes, not inferred 제도 reasoning
+
+The multi-statute 제도 helper could either infer which statutes form an institution or compose a statute set the skill already selected. MOLEG-API chooses the latter: `load_institutional_system()` loads explicit statute identities, law structures, delegations, and bounded candidates/deferred lookups, while relationship reasoning, primary-statute judgment, and full legal-authority detail loading remain in the skill or later eager-loading slices.
+
+## 2026-06-17 — lsStmd is a hierarchy source, not article delegation
+
+Live `lsStmd` JSON exposes a nested law hierarchy (`법률` → `시행령` / `시행규칙` / `행정규칙`) but no `조문` or article-level delegation keys. MOLEG-API therefore exposes `get_law_structure()` as a structural hierarchy loader and keeps article-level delegation on `find_delegated_rules()` / `lsDelegated`, rather than inventing `source_article` links the source does not provide.
+
+## 2026-06-17 — Interpretation `all` fails closed without a ministry
+
+`search_interpretations(source="all")` used to mean "MOLEG plus one specified ministry", but without `ministry` it silently returned only MOLEG results, which is dangerous under-coverage for legal analysis. Decision: keep `source="all"` as MOLEG plus exactly one ministry and require `ministry`; add `source="all_ministries"` for explicit MOLEG plus all ministry fan-out despite the higher call cost.
+
+## 2026-06-16 — compare_law_versions rejects arbitrary date windows
+
+The law.go.kr `oldAndNew` detail surface exposes a source-supplied before/after pair, not arbitrary caller-selected `before`/`after` dates. MOLEG-API keeps `compare_law_versions()` for that source-supplied pair and rejects date-window arguments with `UnsupportedFormatError`, rather than pretending to compare dates it cannot actually honor.
+
+## 2026-06-16 — Detail loaders reject bare law-name strings
+
+Detail loaders still accept numeric law ID strings for compatibility, but non-numeric bare strings are treated as unresolved law names and rejected with guidance to call `search_laws()` first. This was chosen over auto-resolving names inside detail loaders because implicit search would hide ambiguity, rate-limit, and progressive-loading behavior behind methods that are supposed to load already-resolved law identities.
+
 ## 2026-06-16 — Full pre-skill gate, de-risked by a tracer-bullet fake skill
 
 Returning to MOLEG-API after the legislative-expert skill integrates it is expensive (repo freeze/handoff plus skill↔API coupling — an API change then forces a skill change), so the API must clear a full gate before stage 2 begins. Decision: do not start skill creation until MOLEG-API passes a full gate (Tier 0–2 plus all justified Tier 3); and because the real skill is too costly to use as the feedback loop, pull consumer feedback forward with a throwaway "fake skill" tracer-bullet E2E across the seven review scenarios to reveal the correct shape of the design-led interfaces (#62/#64/#65…) before building them. Sequence: low-regret first (Tier 0–2, #59/#60/#61) → tracer-bullet → design-led Tier 3 → final gate.
 
 ## 2026-06-16 — Analysis-readiness is hybrid: structuring in MOLEG-API, synthesis in the skill
 
-The consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loads sources well but leaves all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
+At diagnosis time, the consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loaded sources well but left all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
 
 ## 2026-06-16 — Bundle LoadedContext made honest now; eager conditional loading deferred
 

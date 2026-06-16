@@ -1,5 +1,9 @@
 """MOLEG-API error model."""
 
+from __future__ import annotations
+
+from typing import Any
+
 
 class MolegApiError(Exception):
     """Base error for MOLEG-API public-interface failures."""
@@ -11,6 +15,18 @@ class NoResultError(MolegApiError):
 
 class AmbiguousLawError(MolegApiError):
     """The request matched multiple plausible law identities."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str | None = None,
+        candidates: list[Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+        self.candidates = list(candidates or [])
 
 
 class UnsupportedFormatError(MolegApiError):

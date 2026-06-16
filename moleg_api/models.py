@@ -2,11 +2,147 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Literal
 
 
 Basis = Literal["effective", "promulgated"]
+AnnexFormSource = Literal["law", "administrative_rule"]
+AnnexSearchScope = Literal["title", "source", "body"]
+AnnexType = Literal[
+    "annex",
+    "별표",
+    "form",
+    "서식",
+    "attached_form",
+    "별지",
+    "separate",
+    "별도",
+    "appendix",
+    "부록",
+]
+InterpretationSearchSource = Literal["moleg", "ministry", "all", "all_ministries"]
+CaseCourt = Literal["all", "supreme", "lower"]
+BundleMode = Literal["question", "promulgated_bill", "statute_review"]
+BundleRequestMode = Literal["question", "promulgated_bill", "statute_review", "institutional_system"]
+BundleBudget = Literal["minimal", "standard", "broad"]
+
+
+def _model_to_dict(self: Any, *, include_raw: bool = False) -> dict[str, Any]:
+    return _serialize_dataclass(self, include_raw=include_raw)
+
+
+def _model_to_json_string(self: Any, *, include_raw: bool = False) -> str:
+    return json.dumps(
+        self.to_dict(include_raw=include_raw),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _serialize_dataclass(value: Any, *, include_raw: bool) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for item in fields(value):
+        if item.name == "raw" and not include_raw:
+            continue
+        data[item.name] = _serialize_value(getattr(value, item.name), include_raw=include_raw)
+    return data
+
+
+def _serialize_value(value: Any, *, include_raw: bool) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return _serialize_dataclass(value, include_raw=include_raw)
+    if isinstance(value, list):
+        return [_serialize_value(item, include_raw=include_raw) for item in value]
+    if isinstance(value, tuple):
+        return [_serialize_value(item, include_raw=include_raw) for item in value]
+    if isinstance(value, set):
+        serialized_items = [_serialize_value(item, include_raw=include_raw) for item in value]
+        return sorted(serialized_items, key=_json_sort_key)
+    if isinstance(value, dict):
+        return _serialize_dict(value, include_raw=include_raw)
+    return value
+
+
+def _json_sort_key(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _serialize_dict(value: dict[Any, Any], *, include_raw: bool) -> dict[str, Any]:
+    entries: list[dict[str, Any]] = []
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for key, item in value.items():
+        serialized_key = _serialize_key(key)
+        entry = {
+            "key": key,
+            "item": item,
+            "serialized_key": serialized_key,
+            "disambiguated_key": _serialize_disambiguated_key(key),
+            "output_key": serialized_key,
+        }
+        entries.append(entry)
+        groups.setdefault(serialized_key, []).append(entry)
+
+    for group in groups.values():
+        if len(group) > 1:
+            for entry in group:
+                entry["output_key"] = entry["disambiguated_key"]
+
+    while True:
+        output_groups: dict[str, list[dict[str, Any]]] = {}
+        for entry in entries:
+            output_groups.setdefault(entry["output_key"], []).append(entry)
+        conflicting_entries = [
+            entry
+            for group in output_groups.values()
+            if len(group) > 1
+            for entry in group
+        ]
+        promoted = False
+        for entry in conflicting_entries:
+            if entry["output_key"] != entry["disambiguated_key"]:
+                entry["output_key"] = entry["disambiguated_key"]
+                promoted = True
+        if not promoted:
+            break
+
+    data: dict[str, Any] = {}
+    for entry in sorted(entries, key=_serialized_entry_sort_key):
+        output_key = _dedupe_key(entry["output_key"], data)
+        data[output_key] = _serialize_value(entry["item"], include_raw=include_raw)
+    return data
+
+
+def _serialize_key(key: Any) -> str:
+    if isinstance(key, str):
+        return key
+    return str(key)
+
+
+def _serialize_disambiguated_key(key: Any) -> str:
+    return f"{type(key).__name__}:{key!r}"
+
+
+def _serialized_entry_sort_key(entry: dict[str, Any]) -> tuple[str, str]:
+    key = entry["key"]
+    return (entry["output_key"], f"{type(key).__module__}.{type(key).__qualname__}:{key!r}")
+
+
+def _dedupe_key(key: str, data: dict[str, Any]) -> str:
+    if key not in data:
+        return key
+    counter = 2
+    while f"{key}#{counter}" in data:
+        counter += 1
+    return f"{key}#{counter}"
+
+
+def _install_serialization_methods() -> None:
+    for value in list(globals().values()):
+        if isinstance(value, type) and value.__module__ == __name__ and is_dataclass(value):
+            setattr(value, "to_dict", _model_to_dict)
+            setattr(value, "to_json_string", _model_to_json_string)
 
 
 @dataclass(frozen=True)
@@ -62,10 +198,13 @@ class HistoryEvent:
     identity: LawIdentity
     changed_date: str | None = None
     effective_date: str | None = None
+    promulgation_law_name: str | None = None
     promulgation_date: str | None = None
     promulgation_number: str | None = None
+    bill_id: str | None = None
     revision_type: str | None = None
     article: str | None = None
+    article_text: str | None = None
     reason: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -126,6 +265,38 @@ class DelegationGraph:
 
 
 @dataclass(frozen=True)
+class LawStructureNode:
+    """One law-structure node from the MOLEG structural hierarchy."""
+
+    name: str
+    source_type: str
+    instrument_type: str
+    law_id: str | None = None
+    mst: str | None = None
+    serial_id: str | None = None
+    rule_id: str | None = None
+    law_type: str | None = None
+    effective_date: str | None = None
+    promulgation_date: str | None = None
+    promulgation_number: str | None = None
+    issuing_date: str | None = None
+    issuing_number: str | None = None
+    ministry: str | None = None
+    detail_link: str | None = None
+    children: list[LawStructureNode] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LawStructure:
+    """Normalized law hierarchy from the MOLEG law-structure view."""
+
+    identity: LawIdentity
+    instruments: list[LawStructureNode]
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AdministrativeRuleIdentity:
     """Normalized administrative-rule identity."""
 
@@ -140,6 +311,10 @@ class AdministrativeRuleIdentity:
     ministry_code: str | None = None
     current_status: str | None = None
     revision_type: str | None = None
+    source_law_id: str | None = None
+    source_law_name: str | None = None
+    source_article: str | None = None
+    source_article_title: str | None = None
     raw_keys: dict[str, Any] = field(default_factory=dict)
 
 
@@ -160,6 +335,10 @@ class AdministrativeRuleArticleText:
     text: str
     title: str | None = None
     effective_date: str | None = None
+    source_law_id: str | None = None
+    source_law_name: str | None = None
+    source_article: str | None = None
+    source_article_title: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -209,6 +388,18 @@ class AnnexFormHit:
 
 
 @dataclass(frozen=True)
+class StructuredTableData:
+    """Best-effort structured rows extracted from a text-export annex/form body."""
+
+    title: str | None
+    headers: list[str]
+    rows: list[dict[str, str]]
+    units: list[str] = field(default_factory=list)
+    parsing_confidence: str = "low"
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class AnnexFormText:
     """Extracted annex/form body text."""
 
@@ -217,6 +408,7 @@ class AnnexFormText:
     file_type: str
     extraction_method: str
     extraction_confidence: str
+    structured_data: StructuredTableData | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -248,6 +440,15 @@ class InterpretationHit:
 
 
 @dataclass(frozen=True)
+class ArticleReference:
+    """Structured reference to a statute article parsed from source text."""
+
+    law_name: str
+    article: str
+    law_id: str | None = None
+
+
+@dataclass(frozen=True)
 class InterpretationText:
     """Normalized legal-interpretation full text."""
 
@@ -256,6 +457,7 @@ class InterpretationText:
     answer: str | None = None
     reason: str | None = None
     related_laws: str | None = None
+    referenced_articles: list[ArticleReference] = field(default_factory=list)
     text: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -297,6 +499,8 @@ class JudicialDecisionText:
     referenced_statutes: str | None = None
     reviewed_statutes: str | None = None
     referenced_cases: str | None = None
+    referenced_articles: list[ArticleReference] = field(default_factory=list)
+    reviewed_articles: list[ArticleReference] = field(default_factory=list)
     text: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -336,11 +540,17 @@ class LegalLawCandidate:
 
     name: str
     law_id: str | None = None
+    mst: str | None = None
     source_type: str = "law"
     source_target: str | None = None
     relation: str | None = None
     article: str | None = None
     article_title: str | None = None
+    promulgation_date: str | None = None
+    effective_date: str | None = None
+    promulgation_number: str | None = None
+    law_type: str | None = None
+    ministry: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -375,9 +585,10 @@ class BundleRequest:
     """Request metadata for a legal context bundle."""
 
     query: str | None
-    mode: str
-    budget: str
+    mode: BundleRequestMode
+    budget: BundleBudget
     articles: list[str | int] = field(default_factory=list)
+    statute_ids: list[str] = field(default_factory=list)
     promulgation_bridge: dict[str, Any] = field(default_factory=dict)
     law_identifier: Any = None
 
@@ -389,12 +600,10 @@ class LoadedContext:
     laws: list[LawText] = field(default_factory=list)
     articles: list[ArticleText] = field(default_factory=list)
     delegations: list[DelegationGraph] = field(default_factory=list)
-    administrative_rules: list[AdministrativeRuleText] = field(default_factory=list)
+    law_structures: list[LawStructure] = field(default_factory=list)
     interpretations: list[InterpretationText] = field(default_factory=list)
     cases: list[JudicialDecisionText] = field(default_factory=list)
     constitutional_decisions: list[JudicialDecisionText] = field(default_factory=list)
-    histories: list[LawHistory] = field(default_factory=list)
-    diffs: list[LawDiff] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -451,3 +660,6 @@ class LegalContextBundle:
     ambiguities: list[Ambiguity] = field(default_factory=list)
     gaps: list[ContextGap] = field(default_factory=list)
     source_notes: list[str] = field(default_factory=list)
+
+
+_install_serialization_methods()

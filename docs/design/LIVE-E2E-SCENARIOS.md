@@ -4,6 +4,8 @@ This document records the live scenario gate for MOLEG-API as used by a future l
 
 The executable gate is `tests/test_live_e2e_scenarios.py`.
 
+The companion deterministic consumer-shape gate is `scripts/fake_skill_tracer_bullet.py`, documented in `docs/design/FAKE-SKILL-TRACER-BULLET.md`. Use the live e2e gate for source reachability and the fake-skill gate for public-interface orchestration across the seven consumer-readiness archetypes.
+
 ## Scope
 
 The gate exercises:
@@ -18,10 +20,12 @@ The gate exercises:
 - Court case search and detail loading.
 - Constitutional Court detail loading through a stable live decision ID.
 - Legal query expansion as planning context, including WebSearch handoff gaps.
+- Comparable legal mechanism discovery for legislative-design planning.
 - Legal context bundles for broad questions and specific statute review.
+- Institutional-system bundles for explicit multi-statute 제도 loading.
 - Real `congress-db` promulgation bridge rows resolved through MOLEG identity lookup.
 
-The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
+The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, law-structure presence, comparable-mechanism provenance, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
 
 ## Scenario Groups
 
@@ -38,13 +42,15 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Cases | 3 | `search_cases()` -> `get_case()` |
 | Constitutional decisions | 1 | `get_constitutional_decision()` |
 | Query planning | 5 | `expand_legal_query()` |
+| Comparable mechanisms | 1 | `find_comparable_mechanisms()` |
 | Question bundles | 4 | `load_legal_context_bundle(mode="question")` |
 | Statute-review bundles | 2 | `load_legal_context_bundle(mode="statute_review")` |
+| Institutional-system bundles | 1 | `load_institutional_system()` |
 | congress-db bridge | 1 credential-dependent | `bill_final_outcomes` -> `resolve_promulgated_law()` |
 
 ## Current Evidence
 
-Last run on 2026-06-15:
+Last run on 2026-06-17:
 
 ```bash
 .venv/bin/python -m pytest tests/test_live_e2e_scenarios.py -q
@@ -53,13 +59,15 @@ Last run on 2026-06-15:
 Result:
 
 ```text
-43 passed in 195.25s (0:03:15)
+44 passed, 1 skipped in 140.12s (0:02:20)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
-The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from ministry `dapaCgmExpc` results when `source="all"`.
+The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from the specified ministry `dapaCgmExpc` results when `source="all"`.
 The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
 The annex/form body scenario searches 식품위생법 law annexes, selects the 과태료 별표 candidate, and verifies non-empty text from `lsBylTextDownLoad.do`.
+The institutional-system scenario uses exact loadable statute identities for 자동차관리법 and 자동차관리법 시행령 because live law-name search can surface future effective rows before detail lookup is available.
+The comparable-mechanism scenario searches 과징금 and verifies bounded `LawIdentity` candidates with source article provenance.
 
 ## Operating Notes
 
