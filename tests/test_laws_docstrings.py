@@ -34,6 +34,31 @@ CORE_METHODS = [
 ]
 
 
+def _format_prd_default(value):
+    if isinstance(value, str):
+        return f'"{value}"'
+    return repr(value)
+
+
+def _format_prd_signature(method):
+    params = []
+    keyword_marker_added = False
+    for param in inspect.signature(method).parameters.values():
+        if param.name == "self":
+            continue
+        if (
+            param.kind is inspect.Parameter.KEYWORD_ONLY
+            and not keyword_marker_added
+        ):
+            params.append("*")
+            keyword_marker_added = True
+        rendered = param.name
+        if param.default is not inspect.Parameter.empty:
+            rendered = f"{rendered}={_format_prd_default(param.default)}"
+        params.append(rendered)
+    return f"{method.__name__}({', '.join(params)})"
+
+
 def test_moleg_api_class_docstring_contains_method_selection_tree():
     doc = inspect.getdoc(MolegApi)
 
@@ -90,6 +115,26 @@ def test_prd_public_interface_list_matches_public_methods():
     assert "search_body=False" in section
     assert "include_history=False" in section
     assert "include_websearch_hint=True" in section
+
+
+def test_prd_public_interface_signatures_match_public_methods():
+    prd = Path("docs/design/PRD.md").read_text(encoding="utf-8")
+    section = prd.split("## Public Interface", 1)[1].split("## Testing Decisions", 1)[0]
+    documented_signatures = {
+        signature.split("(", 1)[0]: signature
+        for signature in re.findall(
+            r"^- `([a-zA-Z_][a-zA-Z0-9_]*\([^`]+\))`",
+            section,
+            re.MULTILINE,
+        )
+    }
+    public_signatures = {
+        name: _format_prd_signature(member)
+        for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
+        if not name.startswith("_")
+    }
+
+    assert documented_signatures == public_signatures
 
 
 def test_skill_integration_interface_list_matches_public_methods():
