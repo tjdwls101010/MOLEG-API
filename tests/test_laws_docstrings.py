@@ -89,3 +89,27 @@ def test_prd_public_interface_list_matches_public_methods():
     assert "search_body=False" in section
     assert "include_history=False" in section
     assert "include_websearch_hint=True" in section
+
+
+def test_skill_integration_interface_list_matches_public_methods():
+    skill_integration = Path("docs/SKILL-INTEGRATION.md").read_text(encoding="utf-8")
+    section = skill_integration.split("## Expected Public Interfaces", 1)[1].split(
+        "## Answering Discipline",
+        1,
+    )[0]
+    documented_methods = {
+        match.group(1)
+        for match in re.finditer(
+            r"^- `MolegApi\.([a-zA-Z_][a-zA-Z0-9_]*)\(\)`",
+            section,
+            re.MULTILINE,
+        )
+    }
+    public_methods = {
+        name
+        for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
+        if not name.startswith("_")
+    }
+
+    assert documented_methods == public_methods
+    assert "These interfaces are implemented as the skill-facing contract" in section

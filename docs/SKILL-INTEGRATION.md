@@ -93,7 +93,7 @@ The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `Mol
 
 ## Expected Public Interfaces
 
-These names may change as implementation settles, but the future skill should expect task-level functions rather than raw MOLEG targets:
+These interfaces are implemented as the skill-facing contract. The future skill should expect task-level functions rather than raw MOLEG targets:
 
 - `MolegApi.search_laws()`
 - `MolegApi.resolve_promulgated_law()`
