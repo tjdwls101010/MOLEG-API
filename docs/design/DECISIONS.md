@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — lsStmd is a hierarchy source, not article delegation
+
+Live `lsStmd` JSON exposes a nested law hierarchy (`법률` → `시행령` / `시행규칙` / `행정규칙`) but no `조문` or article-level delegation keys. MOLEG-API therefore exposes `get_law_structure()` as a structural hierarchy loader and keeps article-level delegation on `find_delegated_rules()` / `lsDelegated`, rather than inventing `source_article` links the source does not provide.
+
 ## 2026-06-17 — Interpretation `all` fails closed without a ministry
 
 `search_interpretations(source="all")` used to mean "MOLEG plus one specified ministry", but without `ministry` it silently returned only MOLEG results, which is dangerous under-coverage for legal analysis. Decision: keep `source="all"` as MOLEG plus exactly one ministry and require `ministry`; add `source="all_ministries"` for explicit MOLEG plus all ministry fan-out despite the higher call cost.

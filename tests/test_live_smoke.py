@@ -73,10 +73,13 @@ def test_live_delegation_and_context_bundle_smoke():
 
     hit = exact_law_hit_or_skip(api, "자동차관리법", "자동차관리법")
     graph = api.find_delegated_rules(hit.identity)
+    structure = api.get_law_structure(hit.identity)
     bundle = api.load_legal_context_bundle("자동차 방치", budget="minimal")
 
     assert graph.identity.name
     assert graph.rules
+    assert structure.identity.name == hit.identity.name
+    assert structure.instruments
     assert bundle.request.mode == "question"
     assert bundle.candidates.query_expansion is not None
     assert any(gap.recommended_interface == "websearch" for gap in bundle.gaps)

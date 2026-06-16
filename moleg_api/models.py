@@ -196,6 +196,38 @@ class DelegationGraph:
 
 
 @dataclass(frozen=True)
+class LawStructureNode:
+    """One law-structure node from the MOLEG structural hierarchy."""
+
+    name: str
+    source_type: str
+    instrument_type: str
+    law_id: str | None = None
+    mst: str | None = None
+    serial_id: str | None = None
+    rule_id: str | None = None
+    law_type: str | None = None
+    effective_date: str | None = None
+    promulgation_date: str | None = None
+    promulgation_number: str | None = None
+    issuing_date: str | None = None
+    issuing_number: str | None = None
+    ministry: str | None = None
+    detail_link: str | None = None
+    children: list[LawStructureNode] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LawStructure:
+    """Normalized law hierarchy from the MOLEG law-structure view."""
+
+    identity: LawIdentity
+    instruments: list[LawStructureNode]
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AdministrativeRuleIdentity:
     """Normalized administrative-rule identity."""
 

@@ -73,6 +73,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - `trace_law_history(law_identifier, *, date_range=None, article=None)`
 - `compare_law_versions(law_identifier, *, article=None)`
 - `find_delegated_rules(law_identifier, *, article=None)`
+- `get_law_structure(law_identifier, *, depth=0)`
 - `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
 - `get_administrative_rule(identifier, *, articles=None)`
 - `search_annex_forms(query, *, source="law", search_scope="source", annex_type=None, ministry=None)`
@@ -105,6 +106,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.trace_law_history()` supports JSON-reachable article/date-range change history and full law-level history through the HTML-only `lsHistory` list table. If the live HTML shape changes, parsing fails explicitly instead of returning partial or misleading history.
 - `MolegApi.compare_law_versions()` normalizes the source-supplied `oldAndNew` before/after article text behind a public comparison interface and rejects unsupported arbitrary date-window arguments.
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
+- `MolegApi.get_law_structure()` loads the `lsStmd` law-structure hierarchy as normalized law and administrative-rule nodes, preserving nested 법률→시행령→시행규칙→행정규칙 relationships while leaving article-level delegation to `find_delegated_rules()`.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
 - `MolegApi.search_annex_forms()` searches law and administrative-rule annex/form candidates through `licbyl` and `admbyl`, preserving related source identity, annex name/number/type, ministry/date metadata, and file/detail links while hiding source target and numeric code choices.

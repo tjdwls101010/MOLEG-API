@@ -54,6 +54,8 @@ from .models import (
     LawHit,
     LawHistory,
     LawIdentity,
+    LawStructure,
+    LawStructureNode,
     LawText,
 )
 from .source import LawGoKrClient
@@ -103,6 +105,8 @@ __all__ = [
     "LawHit",
     "LawHistory",
     "LawIdentity",
+    "LawStructure",
+    "LawStructureNode",
     "LawText",
     "MolegApi",
     "MolegApiError",
