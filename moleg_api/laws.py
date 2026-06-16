@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from .errors import AmbiguousLawError, MolegApiError, NoResultError, ParseFailureError, UnsupportedFormatError
@@ -47,6 +48,7 @@ from .models import (
     LawIdentity,
     LawStructure,
     LawText,
+    StructuredTableData,
 )
 from .normalization import (
     compact_date,
@@ -737,6 +739,7 @@ class MolegApi:
         source: AnnexFormSource = "law",
         title: str | None = None,
         include_metadata: bool = True,
+        attempt_structuring: bool = True,
     ) -> AnnexFormText:
         """Load text for one selected law or administrative-rule annex/form.
 
@@ -769,12 +772,18 @@ class MolegApi:
         )
         if not text.strip():
             raise NoResultError("No annex/form body text returned")
+        structured_data = (
+            structure_annex_form_text(text, identity)
+            if attempt_structuring and annex_form_is_table_like(identity)
+            else None
+        )
         return AnnexFormText(
             identity=identity,
             text=text,
             file_type="text/plain",
             extraction_method=endpoint,
             extraction_confidence="high",
+            structured_data=structured_data,
             raw={
                 "endpoint": endpoint,
                 "source_target": identity.source_target,
@@ -1934,6 +1943,122 @@ def annex_type_code(source_type: str, annex_type: str) -> str:
     valid_values = tuple(ANNEX_TYPE_CODES[annex_source_type(source_type)])
     validate_choice("annex_type", annex_type, valid_values, context=source_type)
     return ANNEX_TYPE_CODES[source_type][annex_type]
+
+
+def annex_form_is_table_like(identity: AnnexFormIdentity) -> bool:
+    signals = " ".join(
+        value
+        for value in (identity.annex_type, identity.annex_number, identity.title)
+        if value
+    )
+    if any(token in signals for token in ("서식", "별지")):
+        return False
+    return any(token in signals for token in ("별표", "기준표", "표", "기준", "부과기준"))
+
+
+def structure_annex_form_text(text: str, identity: AnnexFormIdentity) -> StructuredTableData:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    pipe_table = parse_pipe_table(lines, identity)
+    if pipe_table:
+        return pipe_table
+    spaced_table = parse_spaced_table(lines, identity)
+    if spaced_table:
+        return spaced_table
+    return low_confidence_table(identity)
+
+
+def parse_pipe_table(lines: list[str], identity: AnnexFormIdentity) -> StructuredTableData | None:
+    table_rows: list[list[str]] = []
+    for line in lines:
+        if "|" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if is_markdown_separator(cells):
+            continue
+        if len(cells) >= 2 and all(cells):
+            table_rows.append(cells)
+    return structured_table_from_rows(table_rows, identity)
+
+
+def parse_spaced_table(lines: list[str], identity: AnnexFormIdentity) -> StructuredTableData | None:
+    table_rows: list[list[str]] = []
+    expected_columns: int | None = None
+    for line in lines:
+        cells = [cell.strip() for cell in re.split(r"\s{2,}", line.strip()) if cell.strip()]
+        if len(cells) < 2:
+            if table_rows:
+                break
+            continue
+        if expected_columns is None:
+            expected_columns = len(cells)
+        if len(cells) != expected_columns:
+            break
+        table_rows.append(cells)
+    return structured_table_from_rows(table_rows, identity)
+
+
+def structured_table_from_rows(
+    table_rows: list[list[str]],
+    identity: AnnexFormIdentity,
+) -> StructuredTableData | None:
+    if len(table_rows) < 2:
+        return None
+    headers = table_rows[0]
+    body_rows = table_rows[1:]
+    if not body_rows or any(len(row) != len(headers) for row in body_rows):
+        return None
+    keys = normalized_table_keys(headers)
+    rows = [dict(zip(keys, row, strict=True)) for row in body_rows]
+    return StructuredTableData(
+        title=identity.title,
+        headers=headers,
+        rows=rows,
+        units=table_units(rows),
+        parsing_confidence="high",
+        notes=[],
+    )
+
+
+def normalized_table_keys(headers: list[str]) -> list[str]:
+    keys: list[str] = []
+    seen: dict[str, int] = {}
+    for index, header in enumerate(headers, start=1):
+        key = re.sub(r"\s+", "_", header.strip().lower())
+        key = re.sub(r"[^\w가-힣]+", "_", key).strip("_")
+        if not key:
+            key = f"column_{index}"
+        count = seen.get(key, 0)
+        seen[key] = count + 1
+        keys.append(key if count == 0 else f"{key}_{count + 1}")
+    return keys
+
+
+def table_units(rows: list[dict[str, str]]) -> list[str]:
+    units: list[str] = []
+    seen: set[str] = set()
+    unit_pattern = re.compile(r"\d+(?:\.\d+)?\s*(만원|천원|억원|원|%|퍼센트|명|개|건|일|개월|년)")
+    for row in rows:
+        for value in row.values():
+            for match in unit_pattern.findall(value):
+                if match not in seen:
+                    seen.add(match)
+                    units.append(match)
+    return units
+
+
+def is_markdown_separator(cells: list[str]) -> bool:
+    return all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+
+def low_confidence_table(identity: AnnexFormIdentity) -> StructuredTableData:
+    return StructuredTableData(
+        title=identity.title,
+        headers=[],
+        rows=[],
+        units=[],
+        parsing_confidence="low",
+        notes=["plain text retained; table structure was irregular or ambiguous"],
+    )
 
 
 def annex_form_identity_from_identifier(

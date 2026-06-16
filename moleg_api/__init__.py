@@ -57,6 +57,7 @@ from .models import (
     LawStructure,
     LawStructureNode,
     LawText,
+    StructuredTableData,
 )
 from .source import LawGoKrClient
 
@@ -115,5 +116,6 @@ __all__ = [
     "RateLimitError",
     "RetryExhaustedError",
     "SourceApiError",
+    "StructuredTableData",
     "UnsupportedFormatError",
 ]

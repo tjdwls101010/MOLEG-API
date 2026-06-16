@@ -3,7 +3,7 @@ import pytest
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
 from moleg_api.errors import ParseFailureError, UnsupportedFormatError
 from moleg_api.laws import MINISTRY_INTERPRETATION_SOURCES
-from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity
+from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity, StructuredTableData
 from moleg_api.normalization import format_article_jo
 
 
@@ -1091,6 +1091,115 @@ def test_get_annex_form_body_loads_law_text_export_from_candidate():
             "mode": "0",
         },
     )
+
+
+def test_get_annex_form_body_structures_clear_pipe_table_annex():
+    source = FakeSource(
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 식품위생법 시행령 [별표 2]",
+                    "과태료의 부과기준",
+                    "| 위반행위 | 1차 위반 | 2차 위반 |",
+                    "| 영업정지 명령 위반 | 50만원 | 100만원 |",
+                    "| 보고의무 위반 | 10만원 | 20만원 |",
+                ]
+            )
+        ]
+    )
+    identity = AnnexFormIdentity(
+        annex_id="17677511",
+        title="과태료의 부과기준(제67조 관련)",
+        source_type="law",
+        source_target="licbyl",
+        related_name="식품위생법 시행령",
+        annex_type="별표",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity)
+
+    assert body.structured_data == StructuredTableData(
+        title="과태료의 부과기준(제67조 관련)",
+        headers=["위반행위", "1차 위반", "2차 위반"],
+        rows=[
+            {"위반행위": "영업정지 명령 위반", "1차_위반": "50만원", "2차_위반": "100만원"},
+            {"위반행위": "보고의무 위반", "1차_위반": "10만원", "2차_위반": "20만원"},
+        ],
+        units=["만원"],
+        parsing_confidence="high",
+        notes=[],
+    )
+
+
+def test_get_annex_form_body_can_skip_structuring_even_for_table_annex():
+    source = FakeSource(
+        text_payloads=[
+            "\n".join(
+                [
+                    "구분  금액",
+                    "1차  10만원",
+                    "2차  20만원",
+                ]
+            )
+        ]
+    )
+    identity = AnnexFormIdentity(
+        annex_id="17677511",
+        title="과태료의 부과기준",
+        source_type="law",
+        source_target="licbyl",
+        annex_type="별표",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity, attempt_structuring=False)
+
+    assert body.structured_data is None
+
+
+def test_get_annex_form_body_skips_structuring_for_forms():
+    source = FakeSource(text_payloads=["[별지 제10호서식]\n성명: __________\n주소: __________"])
+    identity = AnnexFormIdentity(
+        annex_id="2584743",
+        title="신청서",
+        source_type="administrative_rule",
+        source_target="admbyl",
+        annex_type="서식",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity)
+
+    assert body.structured_data is None
+
+
+def test_get_annex_form_body_returns_low_confidence_for_irregular_table_annex():
+    source = FakeSource(
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 시행령 [별표 1]",
+                    "구분 금액 비고",
+                    "가. 첫 번째 항목",
+                    "- 10만원, 다만 사정이 있으면 감경",
+                    "나. 두 번째 항목 20만원",
+                ]
+            )
+        ]
+    )
+    identity = AnnexFormIdentity(
+        annex_id="17677511",
+        title="과태료의 부과기준",
+        source_type="law",
+        source_target="licbyl",
+        annex_type="별표",
+    )
+
+    body = MolegApi(source).get_annex_form_body(identity)
+
+    assert body.structured_data is not None
+    assert body.structured_data.parsing_confidence == "low"
+    assert body.structured_data.rows == []
+    assert "plain text retained" in body.structured_data.notes[0]
+    assert "첫 번째 항목" in body.text
 
 
 def test_get_annex_form_body_loads_administrative_rule_text_export():
