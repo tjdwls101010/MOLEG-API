@@ -195,6 +195,26 @@ def test_installation_docs_use_pyproject_package_name():
     assert f"python -m pip install dist/{wheel_name}-*.whl --no-deps" in installation
 
 
+def test_markdown_local_links_point_to_existing_files():
+    markdown_files = [Path("README.md"), *Path("docs").rglob("*.md")]
+    missing_links = []
+
+    for markdown_file in markdown_files:
+        text = markdown_file.read_text(encoding="utf-8")
+        for target in re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", text):
+            path_part = target.split("#", 1)[0]
+            if (
+                not path_part
+                or "://" in path_part
+                or path_part.startswith(("mailto:", "#"))
+            ):
+                continue
+            if not (markdown_file.parent / path_part).exists():
+                missing_links.append(f"{markdown_file}: {target}")
+
+    assert missing_links == []
+
+
 def test_skill_author_cookbook_import_examples_are_package_root_exports():
     cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
     imported_names = {
