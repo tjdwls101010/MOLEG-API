@@ -10,7 +10,7 @@ After the human release step publishes the package, install it in the skill runt
 pip install moleg-api
 ```
 
-Before PyPI publication, use the repository checkout, a built wheel, or the vendored fallback below. The integration gate verifies wheel build and repo-external import; it does not prove that the package name is already available on PyPI.
+Before PyPI publication, use the repository checkout, a built wheel, or the vendored fallback below. The integration gate verifies wheel build, repo-external import, package-root exports, `py.typed`, and installed-wheel serialization behavior; it does not prove that the package name is already available on PyPI.
 
 ```bash
 # From a checked-out MOLEG-API repository
