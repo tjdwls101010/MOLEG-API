@@ -11,6 +11,7 @@ CORE_METHODS = [
     "trace_law_history",
     "compare_law_versions",
     "find_delegated_rules",
+    "get_law_structure",
     "search_administrative_rules",
     "search_annex_forms",
     "get_annex_form_body",
@@ -22,6 +23,8 @@ CORE_METHODS = [
     "search_constitutional_decisions",
     "get_constitutional_decision",
     "expand_legal_query",
+    "find_comparable_mechanisms",
+    "load_institutional_system",
     "load_legal_context_bundle",
 ]
 

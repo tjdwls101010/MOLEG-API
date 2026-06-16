@@ -1,6 +1,7 @@
 import json
 from dataclasses import is_dataclass
 
+import moleg_api
 import moleg_api.models as models
 from moleg_api import (
     Ambiguity,
@@ -15,6 +16,19 @@ from moleg_api import (
     LegalContextBundle,
     LoadedContext,
 )
+
+
+def test_public_model_types_are_exported_from_package_root():
+    public_model_names = {
+        name
+        for name in vars(models)
+        if name[:1].isupper() and name not in {"Any", "Literal"}
+    }
+
+    assert "Basis" in public_model_names
+    missing_exports = sorted(name for name in public_model_names if name not in moleg_api.__all__)
+
+    assert missing_exports == []
 
 
 def test_all_public_dataclasses_have_serialization_methods():
