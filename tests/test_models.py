@@ -235,7 +235,7 @@ def test_to_dict_serializes_follow_up_filter_values_deterministically():
             ("law", "identity"): identity,
             "articles": {"제3조", "제1조", "제2조"},
             "mixed_keys": {1: "one", None: "none", "two": 2},
-            "colliding_keys": {"1": "string-one", 1: "int-one"},
+            "colliding_keys": {"1": "string-one", 1: "int-one", "int:1": "literal-tag"},
         },
     )
 
@@ -251,6 +251,7 @@ def test_to_dict_serializes_follow_up_filter_values_deterministically():
     assert data["filters"]["colliding_keys"] == {
         "int:1": "int-one",
         "str:'1'": "string-one",
+        "str:'int:1'": "literal-tag",
     }
     assert json_text == lookup.to_json_string()
 
