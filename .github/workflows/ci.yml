@@ -86,7 +86,7 @@ jobs:
           from pathlib import Path
 
           import moleg_api
-          from moleg_api import Basis, LawIdentity, MolegApi
+          from moleg_api import Basis, DeferredLookup, LawIdentity, MolegApi
 
           package_file = Path(moleg_api.__file__).resolve()
           install_target = Path(os.environ["INSTALL_TARGET"]).resolve()
@@ -100,6 +100,22 @@ jobs:
           assert data["law_id"] == "001234"
           assert data["name"] == "테스트법"
           assert "raw" not in data
+          lookup = DeferredLookup(
+              interface="get_law",
+              query="테스트법",
+              reason="Load selected context",
+              filters={
+                  "articles": {"제3조", "제1조", "제2조"},
+                  "collision": {"1": "string-one", 1: "int-one", "int:1": "literal-tag"},
+              },
+          )
+          lookup_data = lookup.to_dict()
+          assert lookup_data["filters"]["articles"] == ["제1조", "제2조", "제3조"]
+          assert lookup_data["filters"]["collision"] == {
+              "int:1": "int-one",
+              "str:'1'": "string-one",
+              "str:'int:1'": "literal-tag",
+          }
           assert Basis
           assert MolegApi
           PY
