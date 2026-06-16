@@ -61,10 +61,7 @@ def _serialize_value(value: Any, *, include_raw: bool) -> Any:
         serialized_items = [_serialize_value(item, include_raw=include_raw) for item in value]
         return sorted(serialized_items, key=_json_sort_key)
     if isinstance(value, dict):
-        return {
-            _serialize_key(key): _serialize_value(item, include_raw=include_raw)
-            for key, item in value.items()
-        }
+        return _serialize_dict(value, include_raw=include_raw)
     return value
 
 
@@ -72,10 +69,44 @@ def _json_sort_key(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
+def _serialize_dict(value: dict[Any, Any], *, include_raw: bool) -> dict[str, Any]:
+    groups: dict[str, list[tuple[Any, Any]]] = {}
+    for key, item in value.items():
+        groups.setdefault(_serialize_key(key), []).append((key, item))
+
+    data: dict[str, Any] = {}
+    for serialized_key, entries in groups.items():
+        if len(entries) == 1:
+            key, item = entries[0]
+            output_key = serialized_key
+            if output_key in data:
+                output_key = _dedupe_key(_serialize_disambiguated_key(key), data)
+            data[output_key] = _serialize_value(item, include_raw=include_raw)
+            continue
+
+        for key, item in entries:
+            output_key = _dedupe_key(_serialize_disambiguated_key(key), data)
+            data[output_key] = _serialize_value(item, include_raw=include_raw)
+    return data
+
+
 def _serialize_key(key: Any) -> str:
     if isinstance(key, str):
         return key
     return str(key)
+
+
+def _serialize_disambiguated_key(key: Any) -> str:
+    return f"{type(key).__name__}:{key!r}"
+
+
+def _dedupe_key(key: str, data: dict[str, Any]) -> str:
+    if key not in data:
+        return key
+    counter = 2
+    while f"{key}#{counter}" in data:
+        counter += 1
+    return f"{key}#{counter}"
 
 
 def _install_serialization_methods() -> None:
