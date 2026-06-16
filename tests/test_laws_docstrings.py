@@ -223,6 +223,66 @@ def test_skill_author_cookbook_python_examples_are_syntax_valid():
         ast.parse(block, filename=f"docs/SKILL-AUTHOR-COOKBOOK.md python block {index}")
 
 
+def test_skill_author_cookbook_api_calls_match_public_signatures():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    python_blocks = re.findall(r"```python\n(.*?)\n```", cookbook, re.DOTALL)
+    public_signatures = {
+        name: inspect.signature(member)
+        for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
+        if not name.startswith("_")
+    }
+    checked_calls = []
+
+    assert python_blocks
+    for block_index, block in enumerate(python_blocks, start=1):
+        tree = ast.parse(
+            block,
+            filename=f"docs/SKILL-AUTHOR-COOKBOOK.md python block {block_index}",
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if not isinstance(node.func.value, ast.Name) or node.func.value.id != "api":
+                continue
+
+            method_name = node.func.attr
+            assert method_name in public_signatures, method_name
+            signature = public_signatures[method_name]
+            params = [
+                param
+                for param in signature.parameters.values()
+                if param.name != "self"
+            ]
+            positional_slots = [
+                param
+                for param in params
+                if param.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            keyword_names = {
+                param.name
+                for param in params
+                if param.kind
+                in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            }
+
+            checked_calls.append((block_index, method_name))
+            assert len(node.args) <= len(positional_slots), method_name
+            for keyword in node.keywords:
+                assert keyword.arg is not None, method_name
+                assert keyword.arg in keyword_names, method_name
+
+    assert checked_calls
+
+
 def test_skill_author_cookbook_vendored_fallback_lists_package_files():
     cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
     section = cookbook.split("## Vendored Fallback", 1)[1].split(
