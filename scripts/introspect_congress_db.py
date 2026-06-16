@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -234,7 +234,7 @@ def introspect(
         if column.column_name in {"prom_law_nm", "prom_no", "promulgation_dt"}
     ]
     return {
-        "generated_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "connection_identity": identity,
         "included_schemas": list(included_schemas),
         "schemas": schemas,
