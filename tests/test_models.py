@@ -1,5 +1,7 @@
 import json
+import re
 from dataclasses import is_dataclass
+from pathlib import Path
 from typing import get_args, get_type_hints
 
 import moleg_api
@@ -36,6 +38,20 @@ def test_package_root_all_names_are_bound():
     missing_names = sorted(name for name in moleg_api.__all__ if not hasattr(moleg_api, name))
 
     assert missing_names == []
+
+
+def test_pyproject_dev_extra_covers_requirements_dev():
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+    requirements = {
+        line.strip()
+        for line in Path("requirements-dev.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    dev_section = re.search(r"^dev = \[(.*?)^\]", pyproject, re.MULTILINE | re.DOTALL)
+
+    assert dev_section is not None
+    dev_dependencies = set(re.findall(r'"([^"]+)"', dev_section.group(1)))
+    assert requirements <= dev_dependencies
 
 
 def test_bundle_request_mode_covers_returned_bundle_modes_without_widening_call_mode():
