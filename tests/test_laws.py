@@ -202,6 +202,32 @@ def test_get_law_prefers_mst_for_effective_detail_when_available():
     assert source.calls[0] == ("service", "eflaw", {"MST": "283767"})
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda api: api.get_law("개인정보 보호법"),
+        lambda api: api.get_article("개인정보 보호법", "제1조"),
+        lambda api: api.trace_law_history("개인정보 보호법"),
+        lambda api: api.compare_law_versions("개인정보 보호법"),
+        lambda api: api.find_delegated_rules("개인정보 보호법"),
+        lambda api: api.load_legal_context_bundle(
+            law_identifier="개인정보 보호법",
+            mode="statute_review",
+        ),
+    ],
+)
+def test_law_detail_methods_reject_bare_law_name_strings(call):
+    source = FakeSource()
+
+    with pytest.raises(NoResultError) as exc_info:
+        call(MolegApi(source))
+
+    message = str(exc_info.value)
+    assert "개인정보 보호법" in message
+    assert "search_laws" in message
+    assert source.calls == []
+
+
 def test_get_article_formats_human_article_notation_and_returns_text():
     identity = LawIdentity(
         law_id="014152",

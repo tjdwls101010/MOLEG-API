@@ -1219,7 +1219,16 @@ def identity_from_identifier(identifier: LawIdentity | LawHit | str, *, basis: B
         return identifier.identity
     if isinstance(identifier, LawIdentity):
         return identifier
-    return LawIdentity(law_id=str(identifier), name=str(identifier), basis=basis)
+    text = str(identifier).strip()
+    if not text:
+        raise NoResultError("Law identifier is required")
+    if not text.isdigit():
+        raise NoResultError(
+            f"Identifier {text!r} looks like a law name, not a law ID. "
+            f"Call `search_laws({text!r})` to find the law ID, then pass the "
+            "result or its `law_id` to this method."
+        )
+    return LawIdentity(law_id=text, name=text, basis=basis)
 
 
 def identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -> dict[str, Any]:
