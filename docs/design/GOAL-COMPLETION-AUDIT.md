@@ -1,6 +1,7 @@
 # Goal Completion Audit
 
-Audited on 2026-06-15 against `.Seongjin/goal.md`.
+Initial core audited on 2026-06-15 against `.Seongjin/goal.md`.
+Consumer-readiness gate status updated on 2026-06-17 against umbrella issue #49.
 
 ## Verdict
 
@@ -8,14 +9,16 @@ The MOLEG-API layer is implemented for the initial core goal in `.Seongjin/goal.
 
 No known blocker remains for the initial core progressive-loading contract. This is not a claim that every possible legislative-expert use case is perfect; residual risks are tracked in `docs/design/COMPLETION-RISK-AUDIT.md`.
 
+The 2026-06-16 consumer-readiness roadmap is implemented on the integration gate branch `codex/49-consumer-readiness-integration-gate` and opened as draft PR #89. That gate proves the #50-#68 slice stack integrates and passes deterministic plus live MOLEG checks, but it is not yet a merged release or final stage-2 skill handoff. The open review work is the PR/issue review gate, not an unimplemented code blocker discovered by this audit.
+
 Current environment evidence:
 
-- law.go.kr live smoke passed with a local `MOLEG_OC`: `MOLEG_OC=... .venv/bin/python -m pytest tests/test_live_smoke.py -q` -> `8 passed, 1 skipped`.
-- Legislative live e2e passed with local credentials: `.venv/bin/python -m pytest tests/test_live_e2e_scenarios.py -q` -> `43 passed`.
+- law.go.kr live smoke passed with a local `MOLEG_OC`: `python3 -m pytest tests/test_live_smoke.py -q` -> `8 passed, 1 skipped`.
+- Legislative live e2e passed with local credentials: `python3 -m pytest tests/test_live_e2e_scenarios.py -q` -> `44 passed, 1 skipped`.
 - Fresh congress-db read-only introspection passed with local `.env.local` `CONGRESS_DB_READONLY_URL`: `.venv/bin/python scripts/introspect_congress_db.py`.
 - Fresh congress-db evidence shows `current_user: congress_ro`, `session_user: congress_ro`, and `transaction_read_only: on`.
-- Last deterministic command excluding live tests: `python3 -m pytest -q -m 'not live'` -> `59 passed, 52 deselected`.
-- Last full command in this branch: `python3 -m pytest -q` -> `109 passed, 2 skipped`.
+- Last deterministic command excluding live tests: `python3 -m pytest -q -m 'not live'` -> `107 passed, 54 deselected`.
+- Integration hygiene: `rg -n "<<<<<<<|=======|>>>>>>>" .` -> no conflict markers; `python3 -m compileall moleg_api` -> passed; `git diff --check` -> passed.
 
 ## Requirement Audit
 
@@ -70,4 +73,6 @@ Expected behavior:
 
 ## Remaining Work
 
-None for the initial core completion criteria. Demand-gated extensions such as direct HWP/PDF annex/form parsing remain documented out of scope until repeated skill scenarios justify them.
+None for the initial core completion criteria.
+
+For the consumer-readiness roadmap, draft PR #89 is the current integration gate for #50-#68. The remaining work is review/merge sequencing and any issues discovered by that review or by the planned pre-skill tracer-bullet gate. Demand-gated extensions such as direct HWP/PDF annex/form parsing remain documented out of scope until repeated skill scenarios justify them.
