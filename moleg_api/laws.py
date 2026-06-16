@@ -1215,6 +1215,50 @@ class MolegApi:
             raw=raw,
         )
 
+    def find_comparable_mechanisms(
+        self,
+        concept: str,
+        *,
+        display: int = 5,
+    ) -> list[LawIdentity]:
+        """Find source-backed law candidates with similar legal mechanisms.
+
+        Use when: the skill is doing legislative design or comparative 제도
+        planning for a concept such as 과징금, 인허가, authorization, or 신고제.
+        Returns: bounded `LawIdentity` candidates with source endpoints and
+        article anchors preserved in `raw_keys` for later selective loading.
+        Raises: `NoResultError` for blank concepts or when no comparable source
+        candidates are found; source/parse errors may also propagate.
+        Related: use `expand_legal_query` for broader search planning and
+        `get_law`/`get_article` before citing or concluding mechanisms match.
+        """
+        concept = concept.strip()
+        if not concept:
+            raise NoResultError("concept is required for comparable mechanism discovery")
+
+        ai_search_payload = self.source.search(
+            "aiSearch",
+            {"query": concept, "display": display, "search": 0},
+        )
+        ai_related_payload = self.source.search(
+            "aiRltLs",
+            {"query": concept, "search": 0},
+        )
+        term_article_payload = self.source.service("lstrmRltJo", {"query": concept})
+
+        candidates = comparable_mechanism_identities(
+            concept,
+            [
+                *laws_from_rows(unwrap_target_rows(ai_search_payload, "aiSearch"), source_target="aiSearch"),
+                *laws_from_rows(unwrap_target_rows(ai_related_payload, "aiRltLs"), source_target="aiRltLs"),
+                *laws_from_rows(unwrap_target_rows(term_article_payload, "lstrmRltJo"), source_target="lstrmRltJo"),
+            ],
+            display=display,
+        )
+        if not candidates:
+            raise NoResultError(f"No comparable mechanisms found for concept: {concept}")
+        return candidates
+
     def _search_rows(
         self,
         target: str,
@@ -2469,6 +2513,95 @@ def compact_laws(laws: list[LegalLawCandidate]) -> list[LegalLawCandidate]:
         seen.add(key)
         compacted.append(law)
     return compacted
+
+
+def comparable_mechanism_identities(
+    concept: str,
+    laws: list[LegalLawCandidate],
+    *,
+    display: int,
+) -> list[LawIdentity]:
+    identities: dict[str, LawIdentity] = {}
+    endpoints: dict[str, list[str]] = {}
+    articles: dict[str, list[dict[str, str | None]]] = {}
+
+    for law in laws:
+        if law.source_type != "law":
+            continue
+        key = law.name
+        if key not in identities:
+            identities[key] = LawIdentity(
+                law_id=law.law_id,
+                name=law.name,
+                basis="effective",
+                mst=law.mst,
+                promulgation_date=law.promulgation_date,
+                effective_date=law.effective_date,
+                promulgation_number=law.promulgation_number,
+                law_type=law.law_type,
+                ministry=law.ministry,
+                raw_keys={
+                    "comparative_discovery": True,
+                    "concept": concept,
+                    "source_type": law.source_type,
+                },
+            )
+            endpoints[key] = []
+            articles[key] = []
+        elif not identities[key].law_id and law.law_id:
+            current = identities[key]
+            identities[key] = LawIdentity(
+                law_id=law.law_id,
+                name=current.name,
+                basis=current.basis,
+                mst=law.mst or current.mst,
+                lid=current.lid,
+                promulgation_date=law.promulgation_date or current.promulgation_date,
+                effective_date=law.effective_date or current.effective_date,
+                promulgation_number=law.promulgation_number or current.promulgation_number,
+                law_type=law.law_type or current.law_type,
+                ministry=law.ministry or current.ministry,
+                raw_keys=current.raw_keys,
+            )
+        if law.source_target and law.source_target not in endpoints[key]:
+            endpoints[key].append(law.source_target)
+        if law.article:
+            anchor = {
+                "article": law.article,
+                "title": law.article_title,
+                "source_target": law.source_target,
+            }
+            if not any(
+                item["article"] == anchor["article"] and item["title"] == anchor["title"]
+                for item in articles[key]
+            ):
+                articles[key].append(anchor)
+
+    results: list[LawIdentity] = []
+    for key, identity in identities.items():
+        raw_keys = {
+            **identity.raw_keys,
+            "discovery_endpoints": endpoints[key],
+            "source_articles": articles[key],
+        }
+        results.append(
+            LawIdentity(
+                law_id=identity.law_id,
+                name=identity.name,
+                basis=identity.basis,
+                mst=identity.mst,
+                lid=identity.lid,
+                promulgation_date=identity.promulgation_date,
+                effective_date=identity.effective_date,
+                promulgation_number=identity.promulgation_number,
+                law_type=identity.law_type,
+                ministry=identity.ministry,
+                raw_keys=raw_keys,
+            )
+        )
+        if len(results) >= display:
+            break
+    return results
 
 
 def build_follow_up_searches(

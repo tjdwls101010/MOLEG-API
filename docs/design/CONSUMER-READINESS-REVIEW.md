@@ -53,7 +53,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.4 Multi-statute 제도 *loading* helper (P1; implemented in #62 as explicit-statute composition).** `load_institutional_system()` assembles a statute set Claude already selected, loading statute text/articles, `lsStmd` structures, and delegations while preserving secondary sources as candidates/deferred lookups. It deliberately does not infer which statutes belong to a 제도 or synthesize the legal relationship.
 - **T3.5 Bundle eager conditional full-text loading (P2).** #63 implements the deferred half of T2.3 for interpretation/case/Constitutional Court detail: selectively load top-N high-confidence detail when the question warrants it, while leaving unselected candidates deferred. History detail remains separate because `trace_law_history()` has different date/article semantics.
 - **T3.6 Annex/form structured table parsing (P2).** #64 adds optional, confidence-flagged `StructuredTableData` for clear table-like text-export annexes while preserving plain text and avoiding direct HWP/PDF parsing.
-- **T3.7 Similar-제도 / mechanism catalog for comparative design (P2; HITL).** "Find statutes with similar sanction/permit/authorization structures" — directly serves 법안 설계.
+- **T3.7 Similar-제도 / mechanism discovery for comparative design (P2; implemented as source discovery in #65).** "Find statutes with similar sanction/permit/authorization structures" directly serves 법안 설계. The implemented interface returns bounded source-labeled law/article candidates for Claude to inspect; ranked 제도 taxonomy and legal-design synthesis remain in the skill's reasoning, not MOLEG-API.
 - **T3.8 Per-article text version history (P2).** `trace_law_history` returns events, not the article *text* at each point; reconstructing textual evolution is manual.
 - **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** `HistoryEvent.reason` is free text; link each amendment to the enacting bill for legislative-intent analysis.
 - **T3.10 Doctrine-indexed constitutional search (P3; conditional on source fields).** No filter for 과잉금지원칙/평등원칙; free-text keyword only.
@@ -86,12 +86,12 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T3.4 multi-statute 제도 loader | #62 | HITL-shaped explicit-statute composition |
 | T3.5 bundle eager conditional loading | #63 | AFK (blocked by #57) |
 | T3.6 annex/form structured table parsing | #64 | HITL implementation + review |
-| T3.7 similar-제도 / mechanism discovery | #65 | HITL |
+| T3.7 similar-제도 / mechanism discovery | #65 | HITL-shaped source discovery |
 | T3.8 per-article text version history | #66 | AFK |
 | T3.9 `HistoryEvent` → congress-db `bill_id` | #67 | AFK |
 | T3.10 doctrine-indexed constitutional search | #68 | HITL |
 
-Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader.
+Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader, and #65 is implemented as bounded source discovery rather than a ranked mechanism taxonomy.
 
 ## Gate strategy & implementation sequence
 
@@ -99,7 +99,7 @@ Moving to stage 2 (the legislative-expert skill) is a costly one-way step: once 
 
 1. **Low-regret first.** Implement Tier 0–2 (#50–#58) and the cheap structuring/normalization (#59 keystone, #60, #61). Land #50 (serialization + PyPI) early so later validation consumes the package the way the skill will.
 2. **Tracer-bullet E2E.** A throwaway script that plays Claude+skill across the seven review scenario archetypes against the improved API — surfacing the exact shape the design-led interfaces need, plus any residual blocker, while fixes are still cheap.
-3. **Design-led Tier 3, informed by the tracer bullet.** Build #63 (eager bundle loading), #64 (annex tables), #65 (similar-제도), #66, #67, and #68 in the shape the tracer bullet revealed — not blind. #62 is already narrowed to explicit-statute staged composition, with relationship inference left to the skill.
+3. **Design-led Tier 3, informed by the tracer bullet.** Build #63 (eager bundle loading), #64 (annex tables), #66, #67, and #68 in the shape the tracer bullet revealed — not blind. #62 is already narrowed to explicit-statute staged composition, and #65 is narrowed to source-labeled comparable-mechanism discovery, with relationship inference, taxonomy, and synthesis left to the skill.
 4. **Final gate → stage 2.** Only after the gate does skill creation begin in a fresh session.
 
 This sequence resolves the tension between "return is expensive" (argues for full coverage now) and "building design-led interfaces blind risks rework" (argues for waiting on the consumer): the tracer bullet is the cheap consumer-proxy that lets full coverage be built right the first time.

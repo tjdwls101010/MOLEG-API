@@ -148,6 +148,7 @@ ADMINISTRATIVE_RULE_SOURCE_KEYS = (
     *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS,
     *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS,
 )
+AI_ROW_KEYS = ("법령조문", "법령별표서식", "행정규칙조문", "행정규칙별표서식")
 
 
 def ensure_list(value: Any) -> list[Any]:
@@ -865,6 +866,7 @@ def normalize_related_law_candidate(
     return LegalLawCandidate(
         name=str(name),
         law_id=string_or_none(first_value(row, "관련법령ID", "법령ID", "행정규칙ID")),
+        mst=string_or_none(first_value(row, "MST", "법령일련번호", "lsi_seq")),
         source_type=source_type,
         source_target=source_target,
         relation=string_or_none(first_value(row, "법령간관계", "제개정구분명", "행정규칙 종류명")),
@@ -873,6 +875,11 @@ def normalize_related_law_candidate(
             first_value(row, "조문가지번호", "조가지번호"),
         ),
         article_title=string_or_none(first_value(row, "조문제목")),
+        promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
+        effective_date=string_or_none(compact_date(first_value(row, "시행일자"))),
+        promulgation_number=string_or_none(first_value(row, "공포번호")),
+        law_type=string_or_none(first_value(row, "법령종류명", "법령구분명")),
+        ministry=string_or_none(first_value(row, "소관부처명", "소관부처")),
         raw=row,
     )
 
@@ -930,6 +937,10 @@ def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> li
 
 
 def unwrap_target_rows(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
+    if target in ("aiSearch", "aiRltLs"):
+        rows = collect_rows(payload, *AI_ROW_KEYS)
+        if rows or isinstance(payload.get(target), dict):
+            return rows
     rows = payload.get(target)
     if rows is not None:
         return [row for row in ensure_list(rows) if isinstance(row, dict)]

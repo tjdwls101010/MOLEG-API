@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — Comparable mechanisms use AI search as discovery, not synthesis
+
+Catalog and live checks show `aiSearch` returns source law/article rows for mechanism terms such as 과징금, while `aiRltLs` and `lstrmRltJo` can supplement related-law and term-article anchors. MOLEG-API therefore exposes `find_comparable_mechanisms()` as bounded planning candidates with endpoint/article provenance in `raw_keys`, not as ranked 제도 classification or citable legal authority.
+
 ## 2026-06-17 — Administrative-rule back-references require explicit source metadata
 
 The `admrul` catalog/live samples do not expose a stable standard back-reference field, while some administrative-rule prose can mention legal bases inside body/change-reason text. Decision: MOLEG-API exposes `source_law_id`, `source_law_name`, `source_article`, and `source_article_title` only from explicit delegation/authorization metadata fields, including explicitly named basis fields such as `위임근거`, and never by body parsing or reverse lookup; `None` means unknown in the source payload, not proof that no delegation exists.

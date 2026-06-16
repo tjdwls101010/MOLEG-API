@@ -471,11 +471,17 @@ class LegalLawCandidate:
 
     name: str
     law_id: str | None = None
+    mst: str | None = None
     source_type: str = "law"
     source_target: str | None = None
     relation: str | None = None
     article: str | None = None
     article_title: str | None = None
+    promulgation_date: str | None = None
+    effective_date: str | None = None
+    promulgation_number: str | None = None
+    law_type: str | None = None
+    ministry: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 

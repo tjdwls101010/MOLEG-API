@@ -73,6 +73,10 @@ QUERY_EXPANSION_SCENARIOS = [
     "중대재해 사업주 의무",
 ]
 
+COMPARABLE_MECHANISM_SCENARIOS = [
+    "과징금",
+]
+
 BUNDLE_QUESTION_SCENARIOS = [
     "자동차 방치",
     "탄소중립 기본계획",
@@ -112,6 +116,7 @@ def test_live_e2e_matrix_covers_dozens_of_legislative_scenarios():
         + 1  # Ministry first-instance interpretation search/detail/source labels.
         + len(CASE_SCENARIOS)
         + len(QUERY_EXPANSION_SCENARIOS)
+        + len(COMPARABLE_MECHANISM_SCENARIOS)
         + len(BUNDLE_QUESTION_SCENARIOS)
         + len(BUNDLE_STATUTE_SCENARIOS)
         + len(INSTITUTIONAL_SYSTEM_SCENARIOS)
@@ -283,6 +288,17 @@ def test_live_e2e_expands_queries_as_planning_context(api: MolegApi, query: str)
     assert expansion.follow_up_searches
     assert any(search.interface == "websearch" for search in expansion.follow_up_searches)
     assert any(search.interface != "websearch" for search in expansion.follow_up_searches)
+
+
+@pytest.mark.parametrize("concept", COMPARABLE_MECHANISM_SCENARIOS)
+def test_live_e2e_finds_comparable_mechanism_candidates(api: MolegApi, concept: str):
+    identities = api.find_comparable_mechanisms(concept, display=3)
+
+    assert 1 <= len(identities) <= 3
+    assert all(identity.basis == "effective" for identity in identities)
+    assert all(identity.raw_keys.get("comparative_discovery") is True for identity in identities)
+    assert all(identity.raw_keys.get("concept") == concept for identity in identities)
+    assert any(identity.raw_keys.get("source_articles") for identity in identities)
 
 
 @pytest.mark.parametrize("query", BUNDLE_QUESTION_SCENARIOS)

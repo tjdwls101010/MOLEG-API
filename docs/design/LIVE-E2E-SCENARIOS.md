@@ -18,11 +18,12 @@ The gate exercises:
 - Court case search and detail loading.
 - Constitutional Court detail loading through a stable live decision ID.
 - Legal query expansion as planning context, including WebSearch handoff gaps.
+- Comparable legal mechanism discovery for legislative-design planning.
 - Legal context bundles for broad questions and specific statute review.
 - Institutional-system bundles for explicit multi-statute 제도 loading.
 - Real `congress-db` promulgation bridge rows resolved through MOLEG identity lookup.
 
-The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, law-structure presence, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
+The assertions deliberately avoid exact legal text. Live legal text changes over time, and brittle text snapshots would turn useful source drift into false failures. The gate asserts stable contracts instead: normalized identity, basis/source labels, non-empty loaded text, article-label preservation, law-structure presence, comparable-mechanism provenance, deferred lookup structure, WebSearch gaps, and read-only congress bridge compatibility.
 
 ## Scenario Groups
 
@@ -39,6 +40,7 @@ The assertions deliberately avoid exact legal text. Live legal text changes over
 | Cases | 3 | `search_cases()` -> `get_case()` |
 | Constitutional decisions | 1 | `get_constitutional_decision()` |
 | Query planning | 5 | `expand_legal_query()` |
+| Comparable mechanisms | 1 | `find_comparable_mechanisms()` |
 | Question bundles | 4 | `load_legal_context_bundle(mode="question")` |
 | Statute-review bundles | 2 | `load_legal_context_bundle(mode="statute_review")` |
 | Institutional-system bundles | 1 | `load_institutional_system()` |
@@ -55,7 +57,7 @@ Last run on 2026-06-17:
 Result:
 
 ```text
-43 passed, 1 skipped in 132.70s (0:02:12)
+43 passed, 1 skipped in 128.34s (0:02:08)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
@@ -63,6 +65,7 @@ The ministry interpretation scenario uses a stable 방위사업청 search/detail
 The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
 The annex/form body scenario searches 식품위생법 law annexes, selects the 과태료 별표 candidate, and verifies non-empty text from `lsBylTextDownLoad.do`.
 The institutional-system scenario uses exact loadable statute identities for 자동차관리법 and 자동차관리법 시행령 because live law-name search can surface future effective rows before detail lookup is available.
+The comparable-mechanism scenario searches 과징금 and verifies bounded `LawIdentity` candidates with source article provenance.
 
 ## Operating Notes
 
