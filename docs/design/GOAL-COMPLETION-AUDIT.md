@@ -9,7 +9,7 @@ The MOLEG-API layer is implemented for the initial core goal in `.Seongjin/goal.
 
 No known blocker remains for the initial core progressive-loading contract. This is not a claim that every possible legislative-expert use case is perfect; residual risks are tracked in `docs/design/COMPLETION-RISK-AUDIT.md`.
 
-The 2026-06-16 consumer-readiness roadmap is implemented on the integration gate branch `codex/49-consumer-readiness-integration-gate` and opened as PR #89. That gate proves the #50-#68 slice stack integrates and passes deterministic plus live MOLEG checks, but it is not yet a merged release or final stage-2 skill handoff. The open review work is the PR/issue review gate, not an unimplemented code blocker discovered by this audit.
+The 2026-06-16 consumer-readiness roadmap is implemented on the integration gate branch `codex/49-consumer-readiness-integration-gate` and opened as PR #89. That gate proves the #50-#68 slice stack integrates and passes deterministic CI/package checks; separate local credential-backed evidence proves representative live MOLEG checks. It is not yet a merged release or final stage-2 skill handoff. The open review work is the PR/issue review gate, not an unimplemented code blocker discovered by this audit.
 
 Current environment evidence:
 
