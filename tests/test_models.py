@@ -32,6 +32,12 @@ def test_public_model_types_are_exported_from_package_root():
     assert missing_exports == []
 
 
+def test_package_root_all_names_are_bound():
+    missing_names = sorted(name for name in moleg_api.__all__ if not hasattr(moleg_api, name))
+
+    assert missing_names == []
+
+
 def test_bundle_request_mode_covers_returned_bundle_modes_without_widening_call_mode():
     assert set(get_args(models.BundleMode)) == {
         "question",
