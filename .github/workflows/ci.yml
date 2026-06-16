@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Compile package
+        run: python -m compileall moleg_api
+
+      - name: Check patch hygiene
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+      - name: Run deterministic tests
+        run: python -m pytest -q -m "not live"
+
+  package:
+    name: Package install gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel . --no-deps -w dist
+
+      - name: Verify repo-external import
+        run: |
+          target="$(mktemp -d)"
+          python -m pip install dist/*.whl --no-deps --target "$target"
+          cd /tmp
+          PYTHONPATH="$target" python - <<'PY'
+          from moleg_api import Basis, LawIdentity, MolegApi
+
+          identity = LawIdentity(law_id="001234", name="테스트법", basis="effective")
+          data = identity.to_dict()
+
+          assert data["law_id"] == "001234"
+          assert data["name"] == "테스트법"
+          assert "raw" not in data
+          assert Basis
+          assert MolegApi
+          PY
