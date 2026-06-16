@@ -836,6 +836,59 @@ def test_search_annex_forms_rejects_unsupported_source():
         MolegApi(source).search_annex_forms("자동차", source="ordinance")
 
 
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        (
+            lambda api: api.search_laws("자동차", basis="current"),
+            "Invalid basis: 'current'",
+        ),
+        (
+            lambda api: api.search_annex_forms("자동차", source="treaty"),
+            "Invalid source: 'treaty'",
+        ),
+        (
+            lambda api: api.search_annex_forms("자동차", search_scope="full_text"),
+            "Invalid search_scope: 'full_text'",
+        ),
+        (
+            lambda api: api.search_annex_forms("자동차", source="law", annex_type="ordinance"),
+            "Invalid annex_type for law: 'ordinance'",
+        ),
+        (
+            lambda api: api.search_interpretations("자동차", source="judicial"),
+            "Invalid source: 'judicial'",
+        ),
+        (
+            lambda api: api.get_interpretation("330471", source="judicial"),
+            "Invalid source: 'judicial'",
+        ),
+        (
+            lambda api: api.search_cases("자동차", court="constitutional"),
+            "Invalid court: 'constitutional'",
+        ),
+        (
+            lambda api: api.load_legal_context_bundle("자동차", mode="search_and_load"),
+            "Invalid mode: 'search_and_load'",
+        ),
+        (
+            lambda api: api.load_legal_context_bundle("자동차", budget="exhaustive"),
+            "Invalid budget: 'exhaustive'",
+        ),
+    ],
+)
+def test_fixed_vocabulary_params_raise_actionable_validation_errors(call, expected):
+    source = FakeSource()
+
+    with pytest.raises(UnsupportedFormatError) as exc_info:
+        call(MolegApi(source))
+
+    message = str(exc_info.value)
+    assert expected in message
+    assert "Valid values:" in message
+    assert source.calls == []
+
+
 def test_get_annex_form_body_loads_law_text_export_from_candidate():
     source = FakeSource(text_payloads=["■ 식품위생법 시행령 [별표 2]\n과태료의 부과기준"])
     identity = AnnexFormIdentity(

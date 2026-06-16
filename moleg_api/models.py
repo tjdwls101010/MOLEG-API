@@ -8,6 +8,24 @@ from typing import Any, Literal
 
 
 Basis = Literal["effective", "promulgated"]
+AnnexFormSource = Literal["law", "administrative_rule"]
+AnnexSearchScope = Literal["title", "source", "body"]
+AnnexType = Literal[
+    "annex",
+    "별표",
+    "form",
+    "서식",
+    "attached_form",
+    "별지",
+    "separate",
+    "별도",
+    "appendix",
+    "부록",
+]
+InterpretationSearchSource = Literal["moleg", "ministry", "all"]
+CaseCourt = Literal["all", "supreme", "lower"]
+BundleMode = Literal["question", "promulgated_bill", "statute_review"]
+BundleBudget = Literal["minimal", "standard", "broad"]
 
 
 def _model_to_dict(self: Any, *, include_raw: bool = False) -> dict[str, Any]:
