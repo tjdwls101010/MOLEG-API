@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — No synthetic constitutional doctrine filter
+
+The `detc` catalog and live detail response expose Constitutional Court doctrines only inside prose fields such as `판시사항`, `결정요지`, and `전문`, not as a structured source field. MOLEG-API will not add `search_constitutional_decisions(doctrine=...)` or infer doctrine labels from free text; the skill should use body keyword search plus detail loading until law.go.kr exposes a source-backed doctrine/category field.
+
 ## 2026-06-17 — Comparable mechanisms use AI search as discovery, not synthesis
 
 Catalog and live checks show `aiSearch` returns source law/article rows for mechanism terms such as 과징금, while `aiRltLs` and `lstrmRltJo` can supplement related-law and term-article anchors. MOLEG-API therefore exposes `find_comparable_mechanisms()` as bounded planning candidates with endpoint/article provenance in `raw_keys`, not as ranked 제도 classification or citable legal authority.

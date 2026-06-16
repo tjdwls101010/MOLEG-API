@@ -56,7 +56,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.7 Similar-제도 / mechanism discovery for comparative design (P2; implemented as source discovery in #65).** "Find statutes with similar sanction/permit/authorization structures" directly serves 법안 설계. The implemented interface returns bounded source-labeled law/article candidates for Claude to inspect; ranked 제도 taxonomy and legal-design synthesis remain in the skill's reasoning, not MOLEG-API.
 - **T3.8 Per-article text version history (P2).** #66 adds `HistoryEvent.article_text` for article-scoped `trace_law_history(article=...)` calls, populated from source text when present or by bounded post-change article snapshot lookups. Full-law history remains metadata-only.
 - **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** #67 adds `HistoryEvent` bridge keys (`promulgation_law_name`, normalized `promulgation_number`, `promulgation_date`) and optional caller-supplied `bill_id` population, without making MOLEG-API query `congress-db`.
-- **T3.10 Doctrine-indexed constitutional search (P3; conditional on source fields).** No filter for 과잉금지원칙/평등원칙; free-text keyword only.
+- **T3.10 Doctrine-indexed constitutional search (P3; refuted by source discovery).** #68 found that law.go.kr `detc` exposes doctrines only in prose fields, not as structured source labels. Keep constitutional doctrine discovery as free-text search plus detail loading; do not add a fake doctrine filter.
 
 ## What was refuted (do not act on these)
 
@@ -64,6 +64,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - Statistics / social context / crawled enforcement data are **by-design WebSearch boundaries**, not MOLEG-API gaps.
 - `find_delegated_rules`↔`search_administrative_rules` identity mapping is present enough to refute the "no mapping" claim.
 - `search_laws` returning an empty list (not raising) on no match is intended.
+- Doctrine-indexed Constitutional Court search is **not source-backed** in `detc`; the catalog exposes only free-text/detail prose fields for doctrine terms.
 
 ## Issue roadmap
 
@@ -89,7 +90,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T3.7 similar-제도 / mechanism discovery | #65 | HITL-shaped source discovery |
 | T3.8 per-article text version history | #66 | AFK |
 | T3.9 `HistoryEvent` → congress-db `bill_id` | #67 | AFK |
-| T3.10 doctrine-indexed constitutional search | #68 | HITL |
+| T3.10 doctrine-indexed constitutional search | #68 | HITL discovery; not feasible unless law.go.kr adds a source field |
 
 Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader, and #65 is implemented as bounded source discovery rather than a ranked mechanism taxonomy.
 

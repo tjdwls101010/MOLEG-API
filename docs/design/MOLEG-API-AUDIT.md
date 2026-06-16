@@ -246,6 +246,8 @@ Implementation note: the law and administrative-rule annex/form list endpoints (
 | core | judicial-constitutional | `detcInfoGuide` | 헌재결정례 본문 조회 | 헌재결정례 / 본문 | detail | `detc` | JSON, XML, HTML | OC, target, type, ID | Cases and Constitutional Court decisions identify judicial meaning and constitutional risk. |
 | core | judicial-constitutional | `detcListGuide` | 헌재결정례 목록 조회 | 헌재결정례 / 본문 | list | `detc` | JSON, XML, HTML | OC, target, type | Cases and Constitutional Court decisions identify judicial meaning and constitutional risk. |
 
+`detc` doctrine discovery (#68): the catalog exposes free-text query/body search and prose fields (`판시사항`, `결정요지`, `전문`) but no structured doctrine/category/principle field. Do not add a source-backed doctrine filter unless a future catalog revision changes this; see `DETC-DOCTRINE-DISCOVERY.md`.
+
 ## Parameter Notes For First Slice
 
 | Guide | Required Params | Optional Params To Hide Behind Interface |
