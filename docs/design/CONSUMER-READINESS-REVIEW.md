@@ -55,7 +55,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.6 Annex/form structured table parsing (P2).** #64 adds optional, confidence-flagged `StructuredTableData` for clear table-like text-export annexes while preserving plain text and avoiding direct HWP/PDF parsing.
 - **T3.7 Similar-제도 / mechanism discovery for comparative design (P2; implemented as source discovery in #65).** "Find statutes with similar sanction/permit/authorization structures" directly serves 법안 설계. The implemented interface returns bounded source-labeled law/article candidates for Claude to inspect; ranked 제도 taxonomy and legal-design synthesis remain in the skill's reasoning, not MOLEG-API.
 - **T3.8 Per-article text version history (P2).** #66 adds `HistoryEvent.article_text` for article-scoped `trace_law_history(article=...)` calls, populated from source text when present or by bounded post-change article snapshot lookups. Full-law history remains metadata-only.
-- **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** `HistoryEvent.reason` is free text; link each amendment to the enacting bill for legislative-intent analysis.
+- **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** #67 adds `HistoryEvent` bridge keys (`promulgation_law_name`, normalized `promulgation_number`, `promulgation_date`) and optional caller-supplied `bill_id` population, without making MOLEG-API query `congress-db`.
 - **T3.10 Doctrine-indexed constitutional search (P3; conditional on source fields).** No filter for 과잉금지원칙/평등원칙; free-text keyword only.
 
 ## What was refuted (do not act on these)

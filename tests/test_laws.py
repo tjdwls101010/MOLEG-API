@@ -439,7 +439,8 @@ def test_trace_law_history_uses_article_change_history_json_surface():
                             "변경사유": "일부개정",
                             "조문변경일": "20250101",
                             "조문시행일": "20250401",
-                            "공포번호": "20001",
+                            "공포일자": "20250101",
+                            "공포번호": "제 20001호",
                         }
                     ]
                 }
@@ -456,12 +457,20 @@ def test_trace_law_history_uses_article_change_history_json_surface():
         ]
     )
 
-    history = MolegApi(source).trace_law_history(identity, article="제5조")
+    history = MolegApi(source).trace_law_history(
+        identity,
+        article="제5조",
+        promulgation_bridge={("건축법", "제20001호", "2025-01-01"): "BILL-20001"},
+    )
 
     assert history.events[0].identity.name == "건축법"
     assert history.events[0].article == "제5조"
     assert history.events[0].changed_date == "20250101"
     assert history.events[0].effective_date == "20250401"
+    assert history.events[0].promulgation_law_name == "건축법"
+    assert history.events[0].promulgation_date == "20250101"
+    assert history.events[0].promulgation_number == "20001"
+    assert history.events[0].bill_id == "BILL-20001"
     assert history.events[0].article_text == "제5조(적용의 완화) 허가권자는 건축기준을 완화하여 적용할 수 있다."
     assert history.events[0].reason == "일부개정"
     assert source.calls[0] == (
@@ -541,6 +550,10 @@ def test_trace_law_history_keeps_article_text_none_when_snapshot_lookup_fails():
     history = MolegApi(source).trace_law_history(identity, article="제5조")
 
     assert history.events[0].article_text is None
+    assert history.events[0].promulgation_law_name == "건축법"
+    assert history.events[0].promulgation_date is None
+    assert history.events[0].promulgation_number is None
+    assert history.events[0].bill_id is None
     assert source.calls[1] == (
         "service",
         "eflawjosub",
@@ -592,17 +605,24 @@ def test_trace_law_history_parses_full_law_history_html_surface():
         ]
     )
 
-    history = MolegApi(source).trace_law_history(identity)
+    history = MolegApi(source).trace_law_history(
+        identity,
+        promulgation_bridge={("건축법", "제21065호", "2025-10-01"): "BILL-21065"},
+    )
 
     assert len(history.events) == 2
     assert history.events[0].identity.name == "건축법"
     assert history.events[0].identity.mst == "276925"
     assert history.events[0].revision_type == "타법개정"
     assert history.events[0].changed_date == "20251001"
+    assert history.events[0].promulgation_law_name == "건축법"
     assert history.events[0].promulgation_date == "20251001"
+    assert history.events[0].promulgation_number == "21065"
+    assert history.events[0].bill_id == "BILL-21065"
     assert history.events[0].effective_date == "20251001"
     assert history.events[0].article_text is None
     assert history.events[1].identity.mst == "273437"
+    assert history.events[1].bill_id is None
     assert history.raw["source_target"] == "lsHistory"
     assert source.calls[0] == (
         "search_html",
@@ -632,6 +652,19 @@ def test_trace_law_history_raises_parse_failure_for_changed_html_shape():
 
     with pytest.raises(ParseFailureError):
         MolegApi(source).trace_law_history(identity)
+
+
+def test_trace_law_history_rejects_malformed_bill_bridge_map_before_source_call():
+    identity = LawIdentity(law_id="001823", name="건축법", basis="effective")
+    source = FakeSource()
+
+    with pytest.raises(UnsupportedFormatError):
+        MolegApi(source).trace_law_history(
+            identity,
+            promulgation_bridge={"건축법": "BILL-21065"},
+        )
+
+    assert source.calls == []
 
 
 def test_compare_law_versions_normalizes_old_and_new_articles():
