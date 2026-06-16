@@ -1,5 +1,6 @@
 import json
 from dataclasses import is_dataclass
+from typing import get_args
 
 import moleg_api
 import moleg_api.models as models
@@ -29,6 +30,20 @@ def test_public_model_types_are_exported_from_package_root():
     missing_exports = sorted(name for name in public_model_names if name not in moleg_api.__all__)
 
     assert missing_exports == []
+
+
+def test_bundle_request_mode_covers_returned_bundle_modes_without_widening_call_mode():
+    assert set(get_args(models.BundleMode)) == {
+        "question",
+        "promulgated_bill",
+        "statute_review",
+    }
+    assert set(get_args(models.BundleRequestMode)) == {
+        "question",
+        "promulgated_bill",
+        "statute_review",
+        "institutional_system",
+    }
 
 
 def test_all_public_dataclasses_have_serialization_methods():

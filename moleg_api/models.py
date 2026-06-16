@@ -25,6 +25,7 @@ AnnexType = Literal[
 InterpretationSearchSource = Literal["moleg", "ministry", "all", "all_ministries"]
 CaseCourt = Literal["all", "supreme", "lower"]
 BundleMode = Literal["question", "promulgated_bill", "statute_review"]
+BundleRequestMode = Literal["question", "promulgated_bill", "statute_review", "institutional_system"]
 BundleBudget = Literal["minimal", "standard", "broad"]
 
 
@@ -519,7 +520,7 @@ class BundleRequest:
     """Request metadata for a legal context bundle."""
 
     query: str | None
-    mode: str
+    mode: BundleRequestMode
     budget: str
     articles: list[str | int] = field(default_factory=list)
     statute_ids: list[str] = field(default_factory=list)
