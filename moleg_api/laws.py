@@ -857,6 +857,17 @@ class MolegApi:
         *,
         display: int = 5,
     ) -> list[LawIdentity]:
+        """Find source-backed law candidates with similar legal mechanisms.
+
+        Use when: the skill is doing legislative design or comparative 제도
+        planning for a concept such as 과징금, 인허가, authorization, or 신고제.
+        Returns: bounded `LawIdentity` candidates with source endpoints and
+        article anchors preserved in `raw_keys` for later selective loading.
+        Raises: `NoResultError` for blank concepts or when no comparable source
+        candidates are found; source/parse errors may also propagate.
+        Related: use `expand_legal_query` for broader search planning and
+        `get_law`/`get_article` before citing or concluding mechanisms match.
+        """
         concept = concept.strip()
         if not concept:
             raise NoResultError("concept is required for comparable mechanism discovery")
