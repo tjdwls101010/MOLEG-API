@@ -3,7 +3,7 @@ import inspect
 from moleg_api.laws import MolegApi
 
 
-PUBLIC_METHODS = [
+CORE_METHODS = [
     "search_laws",
     "resolve_promulgated_law",
     "get_law",
@@ -49,8 +49,8 @@ def test_all_public_methods_have_skill_author_contract_docstrings():
         if not name.startswith("_")
     ]
 
-    assert public_names == sorted(PUBLIC_METHODS)
-    for method_name in PUBLIC_METHODS:
+    assert set(CORE_METHODS).issubset(public_names)
+    for method_name in public_names:
         doc = inspect.getdoc(getattr(MolegApi, method_name))
         assert doc is not None, method_name
         for required_section in ["Use when:", "Returns:", "Raises:", "Related:"]:
