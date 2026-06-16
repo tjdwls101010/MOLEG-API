@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-16 — Detail loaders reject bare law-name strings
+
+Detail loaders still accept numeric law ID strings for compatibility, but non-numeric bare strings are treated as unresolved law names and rejected with guidance to call `search_laws()` first. This was chosen over auto-resolving names inside detail loaders because implicit search would hide ambiguity, rate-limit, and progressive-loading behavior behind methods that are supposed to load already-resolved law identities.
+
 ## 2026-06-16 — Full pre-skill gate, de-risked by a tracer-bullet fake skill
 
 Returning to MOLEG-API after the legislative-expert skill integrates it is expensive (repo freeze/handoff plus skill↔API coupling — an API change then forces a skill change), so the API must clear a full gate before stage 2 begins. Decision: do not start skill creation until MOLEG-API passes a full gate (Tier 0–2 plus all justified Tier 3); and because the real skill is too costly to use as the feedback loop, pull consumer feedback forward with a throwaway "fake skill" tracer-bullet E2E across the seven review scenarios to reveal the correct shape of the design-led interfaces (#62/#64/#65…) before building them. Sequence: low-regret first (Tier 0–2, #59/#60/#61) → tracer-bullet → design-led Tier 3 → final gate.
