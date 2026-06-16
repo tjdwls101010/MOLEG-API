@@ -425,6 +425,17 @@ class MolegApi:
         *,
         depth: int = 0,
     ) -> LawStructure:
+        """Load the MOLEG `lsStmd` structural hierarchy for one law.
+
+        Use when: the skill needs the broader 법률 -> 시행령 / 시행규칙 /
+        행정규칙 hierarchy around a statute, not article-level delegation text.
+        Returns: `LawStructure` with normalized law and administrative-rule
+        nodes, preserving nested children up to the requested depth.
+        Raises: `UnsupportedFormatError` for negative depth, `NoResultError`
+        for an empty hierarchy, and parse/source errors for unusable payloads.
+        Related: use `find_delegated_rules` for article-level delegation
+        relationships; `lsStmd` does not provide source-article links.
+        """
         if depth < 0:
             raise UnsupportedFormatError("Law structure depth must be 0 or greater")
         identity = identity_from_identifier(law_identifier, basis="effective")
