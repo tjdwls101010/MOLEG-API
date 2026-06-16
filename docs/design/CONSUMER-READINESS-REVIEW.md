@@ -8,6 +8,8 @@ It is the durable record behind the 2026-06-16 improvement issues. The completio
 
 This document preserves the 2026-06-16 diagnosis that created issues #50-#68. The consumer-readiness roadmap from that diagnosis is implemented on integration PR #89, with #90 adding the fake-skill tracer-bullet gate and #91 adding visible deterministic GitHub Actions CI. Until #89 is reviewed and merged, treat the findings below as the historical problem statement plus per-item resolution notes, not as a claim that the current integration branch still has the original 2/5 readiness.
 
+Post-integration status: PR #89 implements the #50-#68 roadmap and adds the two gate slices #90/#91. The remaining work for this roadmap is review/merge sequencing and any new issue discovered during that review, not re-implementation of the findings below.
+
 ## Method
 
 Two adversarial multi-agent review rounds against the actual code (`moleg_api/*.py`) and docs:
@@ -15,11 +17,13 @@ Two adversarial multi-agent review rounds against the actual code (`moleg_api/*.
 1. **Ergonomics round** — 8 diverse lenses (invocation seam, interface depth/deletion-test, scenario coverage, error/ambiguity model, return-shape/context-budget, naming/selection, docs-drift, skill-author readiness) → each finding adversarially verified against the code → completeness critic. 48 findings survived verification (1 P0, 11 P1, 27 P2, 9 P3); 6 were refuted.
 2. **Analytical-sufficiency round** — 7 real 제도-analysis scenarios (sanction design, delegated-criteria tracing, statute evolution, congress-bill→current-law, constitutional-risk scan, multi-law concept assembly, comparative design for new legislation) walked through the real API → every claimed capability gap adversarially verified (3 refuted) → cross-scenario synthesis. 51 verified gaps (17 P1, 28 P2, 6 P3). Per-scenario insight-readiness: **2/5, 2/5, 2/5, 2/5, 3/5, 3/5, 2/5**.
 
-## Verdict
+## Diagnosis Verdict
 
-**As a loader of single-statute legal materials: strong, production-grade.** Law-identity normalization, article-notation handling (`제10조의2` → six-digit `JO`, [normalization.py:887](../../moleg_api/normalization.py:887)), date-basis multiplicity, delegated-rule `source_article` linking, HTML-only `lsHistory` fallback, and authority-label separation (MOLEG interpretation / ministry interpretation / case / constitutional decision) are genuinely deep. 15 of 19 methods pass the deletion test as real abstractions.
+This verdict is the pre-roadmap diagnosis that justified #50-#68. It should not be read as the current state of the integration branch after PR #89.
 
-**As an analysis-ready, multi-source, institution-level context provider: not yet (2/5).** Loaded text is *not structured for analysis* — the linking that turns loaded sources into an analyzable institutional picture (which interpretation/case concerns which article; how a 제도 spans multiple statutes; how a delegation chain recurses to a 고시 별표) is left entirely to Claude as manual orchestration. **This weak axis is exactly where the project's stated purpose — 제도 분석 and 법안 설계 — lives.**
+**At diagnosis time, as a loader of single-statute legal materials: strong, production-grade.** Law-identity normalization, article-notation handling (`제10조의2` → six-digit `JO`, [normalization.py:887](../../moleg_api/normalization.py:887)), date-basis multiplicity, delegated-rule `source_article` linking, HTML-only `lsHistory` fallback, and authority-label separation (MOLEG interpretation / ministry interpretation / case / constitutional decision) were genuinely deep. 15 of 19 methods passed the deletion test as real abstractions.
+
+**At diagnosis time, as an analysis-ready, multi-source, institution-level context provider: not yet (2/5).** Loaded text was *not structured for analysis* — the linking that turns loaded sources into an analyzable institutional picture (which interpretation/case concerns which article; how a 제도 spans multiple statutes; how a delegation chain recurses to a 고시 별표) was left entirely to Claude as manual orchestration. This weak axis is exactly what PR #89 targets through structured article references, law-structure loading, administrative-rule back-references, institutional-system loading, conditional detail loading, annex table structuring, comparable-mechanism discovery, article history, and congress bridge keys.
 
 The single most consequential finding recurred in **all 7** analytical scenarios: interpretation/case/constitutional results used to carry statute references only as free-text strings, forcing Claude to read 15–20 full texts to find the 3–4 that bear on the article in question. Resolved by #59: detail models now preserve those free-text fields and add structured `referenced_articles` / `reviewed_articles` when article references are unambiguous.
 
@@ -37,15 +41,15 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ### Tier 1 — Correctness / contract (wrong answers, silent failure)
 
-- **T1.1 `get_law(articles=[...])` silently uses only `articles[0]` (P1).** [laws.py](../../moleg_api/laws.py) sets `params["JO"]` from the first article only; the returned `LawText` then contains *all* articles. Highest cross-lens consensus (flagged 7×). Claude requesting a subset gets the whole law and wastes context.
-- **T1.2 `AmbiguousLawError` flattens candidates into a message string (P1).** [laws.py](../../moleg_api/laws.py) joins names into text; no machine-readable `candidates`. The bundle, by contrast, returns structured `Ambiguity` objects — two incompatible paradigms the skill must both handle. Decision: enrich exceptions with structured `candidates`/`kind`.
-- **T1.3 `identity_from_identifier(str)` aliases one string as both `law_id` and `name` (P1).** [laws.py](../../moleg_api/laws.py). An LLM naturally passes a law *name*; it becomes `law_id="개인정보 보호법"` and silently misqueries.
-- **T1.4 `compare_law_versions(before, after)` ignores its date arguments (P1).** [laws.py](../../moleg_api/laws.py) calls a single `oldAndNew` payload and only echoes `before`/`after` into `raw`. Arbitrary two-date diffs are impossible despite the signature implying them.
+- **T1.1 `get_law(articles=[...])` silently used only `articles[0]` (P1).** Resolved by #51: `get_law()` now honors requested article subsets instead of silently returning whole-law context for a multi-article request.
+- **T1.2 `AmbiguousLawError` flattened candidates into a message string (P1).** Resolved by #52: ambiguity errors now carry structured `candidates`/`kind`, aligning exception handling with bundle `Ambiguity` records.
+- **T1.3 `identity_from_identifier(str)` aliased one string as both `law_id` and `name` (P1).** Resolved by #53: bare strings are no longer silently treated as both source ID and law name in identity-sensitive paths.
+- **T1.4 `compare_law_versions(before, after)` implied unsupported arbitrary date diffs (P1).** Resolved by #54: the interface now reflects the source-backed `oldAndNew` comparison behavior and rejects unsupported arbitrary date-window arguments instead of pretending to honor them.
 
 ### Tier 2 — Discoverability / guardrails (LLM mis-selection)
 
 - **T2.1 No docstrings on any of the 19 public methods (P1; implemented in #55).** A skill author previously had to read 1,692 lines to learn return shapes, params, failure modes, and when to pick which method. The implemented fix adds class-level method-selection guidance and narrative docstrings on each public `MolegApi` method, with a regression test that catches future public methods without caller guidance.
-- **T2.2 Free-form string params lack `Literal` types or validation (P1).** `source`/`court`/`basis`/`mode`/`search_scope`/`annex_type` accept any string; a misspelled `basis` silently defaults to effective, a bad `source` raises an opaque error.
+- **T2.2 Free-form string params lacked `Literal` types or validation (P1).** Resolved by #56 and integration follow-ups: public fixed-vocabulary params now use Literal aliases plus runtime validation, including `Basis`, annex/search scopes, interpretation sources, case courts, bundle modes, bundle request modes, and bundle budgets.
 - **T2.3 Bundle `LoadedContext` had six always-empty fields vs. docs that promised conditional full-text loading (P1).** Resolved by #57/#63: `loaded` exposes only material actually retrieved by `load_legal_context_bundle()`. It always supports statute/article/delegation context and now conditionally includes interpretation/case/Constitutional Court detail only when query intent and budget warrant it; administrative-rule, history, and diff details remain candidate/deferred context.
 - **T2.4 `search_interpretations(source="all")` returned only MOLEG + one specified ministry, not all ministries (P2).** Resolved by #58: `source="all"` now requires a ministry and means MOLEG plus that one ministry; `source="all_ministries"` explicitly performs the higher-cost MOLEG plus all-ministry fan-out for deep institutional analysis.
 
@@ -72,7 +76,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ## Issue roadmap
 
-All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#49**.
+All themes were published as 2026-06-16 GitHub issues, tracked under umbrella **#49**. They are implemented on integration PR #89 unless a row explicitly says the result was a source-backed non-build decision.
 
 | Theme | Issue | Type |
 |---|---|---|
@@ -98,7 +102,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | Fake-skill tracer-bullet gate | #90 | consumer-readiness gate |
 | Deterministic GitHub Actions CI | #91 | PR integration gate |
 
-Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader, and #65 is implemented as bounded source discovery rather than a ranked mechanism taxonomy. #90 and #91 are gate slices: the first proves public-interface orchestration through a fake skill, and the second makes deterministic PR verification visible in GitHub.
+Implementation status: PR #89 integrates Tier 0–2 (#50–#58), the cheap structuring/normalization layer (#59/#60/#61), the design-led Tier 3 slices (#62-#68), and the gate slices #90/#91. #62 is intentionally implemented as explicit-statute staged composition, #65 as bounded source discovery rather than ranked mechanism taxonomy, and #68 as a source-backed non-build decision against a fake doctrine filter.
 
 ## Gate strategy & implementation sequence
 
