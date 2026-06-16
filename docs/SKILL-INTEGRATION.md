@@ -115,6 +115,7 @@ These interfaces are implemented across the initial core slices. Administrative-
 - Never describe a proposed bill as current law unless MOLEG-API or another authoritative enacted-law source proves it.
 - State whether a law text was retrieved by effective-date or promulgation-date basis when the distinction matters.
 - Cite source type and identity metadata with legal text.
+- Use `referenced_articles` and `reviewed_articles` on interpretation, case, and Constitutional Court detail results to filter by article before spending reasoning budget on full free-text review.
 - Surface ambiguity and no-result states clearly.
 - Move to WebSearch for latest non-legal facts instead of forcing MOLEG-API to answer them.
 - When annex/form candidates appear, mention them as possible operative attached material unless the answer has actually inspected the selected body through `get_annex_form_body()` or another authoritative source.

@@ -17,7 +17,7 @@ Two adversarial multi-agent review rounds against the actual code (`moleg_api/*.
 
 **As an analysis-ready, multi-source, institution-level context provider: not yet (2/5).** Loaded text is *not structured for analysis* — the linking that turns loaded sources into an analyzable institutional picture (which interpretation/case concerns which article; how a 제도 spans multiple statutes; how a delegation chain recurses to a 고시 별표) is left entirely to Claude as manual orchestration. **This weak axis is exactly where the project's stated purpose — 제도 분석 and 법안 설계 — lives.**
 
-The single most consequential finding recurred in **all 7** analytical scenarios: interpretation/case/constitutional results carry their statute references only as free-text strings (`InterpretationText.related_laws` [models.py:258](../../moleg_api/models.py:258); `JudicialDecisionText.referenced_statutes`/`reviewed_statutes` [models.py:297](../../moleg_api/models.py:297)), with no structured `article` field — so Claude must read 15–20 full texts to find the 3–4 that bear on the article in question.
+The single most consequential finding recurred in **all 7** analytical scenarios: interpretation/case/constitutional results used to carry statute references only as free-text strings, forcing Claude to read 15–20 full texts to find the 3–4 that bear on the article in question. Resolved by #59: detail models now preserve those free-text fields and add structured `referenced_articles` / `reviewed_articles` when article references are unambiguous.
 
 ## Strategic decision — hybrid analysis-readiness placement
 
@@ -47,7 +47,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ### Tier 3 — Analysis-readiness layer (the project's purpose-critical axis; hybrid placement)
 
-- **T3.1 Sources lack structured article-level linking (P0/P1; recurs in all 7 scenarios).** Add `referenced_articles` / `reviewed_articles: list[ArticleReference{law_id, article}]` parsed onto interpretation/judicial models. Eliminates the largest source of manual text-parsing across every scenario.
+- **T3.1 Sources lacked structured article-level linking (P0/P1; recurred in all 7 scenarios).** Resolved by #59: interpretation/judicial detail models now add `referenced_articles` / `reviewed_articles: list[ArticleReference{law_name, law_id, article}]` while preserving the original free-text fields for fallback.
 - **T3.2 法令 체계도 (`lsStmd`) structural view + recursive delegation (P1).** `lsStmd` is classified **core** in [MOLEG-API-AUDIT.md:87](MOLEG-API-AUDIT.md) but **unimplemented** — only `lsDelegated` (1-level) exists. The 체계도 gives the 법→시행령→시행규칙→고시 tree, the backbone for assembling a 제도 and tracing multi-level delegation.
 - **T3.3 Administrative-rule → delegating-statute back-reference (P1).** `DelegatedRule.source_article` links statute→rule, but the reverse (rule→authorizing article) is missing, so delegation chains cannot be rebuilt from the rule side.
 - **T3.4 Multi-statute 제도 *loading* helper (P1; design-led/HITL).** All methods are single-law- or query-rooted; nothing assembles a concept spanning multiple statutes. A loading helper (not a reasoning engine) that gathers the laws/delegations/structured-links for a named 제도.

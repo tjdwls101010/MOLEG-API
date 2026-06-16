@@ -318,6 +318,15 @@ class InterpretationHit:
 
 
 @dataclass(frozen=True)
+class ArticleReference:
+    """Structured reference to a statute article parsed from source text."""
+
+    law_name: str
+    article: str
+    law_id: str | None = None
+
+
+@dataclass(frozen=True)
 class InterpretationText:
     """Normalized legal-interpretation full text."""
 
@@ -326,6 +335,7 @@ class InterpretationText:
     answer: str | None = None
     reason: str | None = None
     related_laws: str | None = None
+    referenced_articles: list[ArticleReference] = field(default_factory=list)
     text: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -367,6 +377,8 @@ class JudicialDecisionText:
     referenced_statutes: str | None = None
     reviewed_statutes: str | None = None
     referenced_cases: str | None = None
+    referenced_articles: list[ArticleReference] = field(default_factory=list)
+    reviewed_articles: list[ArticleReference] = field(default_factory=list)
     text: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 

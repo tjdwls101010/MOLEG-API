@@ -1318,8 +1318,53 @@ def test_get_interpretation_loads_full_text_by_identity():
     assert "등록 기준을 적용" in text.answer
     assert "입법 취지" in text.reason
     assert text.related_laws == "자동차관리법 제1조"
+    assert [(item.law_name, item.article, item.law_id) for item in text.referenced_articles] == [
+        ("자동차관리법", "제1조", None)
+    ]
     assert "질의요지" in text.text
     assert source.calls[0] == ("service", "expc", {"ID": "330471"})
+
+
+def test_get_interpretation_structures_multiple_referenced_articles():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "expc": {
+                    "법령해석례일련번호": "330472",
+                    "안건명": "개인정보 처리 관련 법령해석례",
+                    "관련법령": "개인정보 보호법 제8조, 제15조 및 데이터기본법 제5조",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_interpretation("330472")
+
+    assert text.related_laws == "개인정보 보호법 제8조, 제15조 및 데이터기본법 제5조"
+    assert [(item.law_name, item.article) for item in text.referenced_articles] == [
+        ("개인정보 보호법", "제8조"),
+        ("개인정보 보호법", "제15조"),
+        ("데이터기본법", "제5조"),
+    ]
+
+
+def test_get_interpretation_keeps_unparseable_related_laws_as_text_only():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "expc": {
+                    "법령해석례일련번호": "330473",
+                    "안건명": "비정형 관련 법령해석례",
+                    "관련법령": "기타 관련 법령 참조",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_interpretation("330473")
+
+    assert text.related_laws == "기타 관련 법령 참조"
+    assert text.referenced_articles == []
 
 
 def test_get_interpretation_refuses_ministry_without_detail_target():
@@ -1382,7 +1427,7 @@ def test_get_case_loads_case_text_by_source_id():
                     "법원명": "대법원",
                     "판시사항": "불법행위 손해배상책임의 성립 요건",
                     "판결요지": "위법행위와 손해 사이의 인과관계가 인정되어야 한다.",
-                    "참조조문": "민법 제750조",
+                    "참조조문": "근로기준법 제10조의2, 제20조~제25조",
                     "참조판례": "대법원 2019다0000 판결",
                     "판례내용": "주문 및 이유 전문",
                 }
@@ -1396,7 +1441,16 @@ def test_get_case_loads_case_text_by_source_id():
     assert text.identity.decision_id == "228541"
     assert "손해배상책임" in text.holdings
     assert "인과관계" in text.summary
-    assert text.referenced_statutes == "민법 제750조"
+    assert text.referenced_statutes == "근로기준법 제10조의2, 제20조~제25조"
+    assert [(item.law_name, item.article) for item in text.referenced_articles] == [
+        ("근로기준법", "제10조의2"),
+        ("근로기준법", "제20조"),
+        ("근로기준법", "제21조"),
+        ("근로기준법", "제22조"),
+        ("근로기준법", "제23조"),
+        ("근로기준법", "제24조"),
+        ("근로기준법", "제25조"),
+    ]
     assert "주문 및 이유" in text.full_text
     assert source.calls[0] == ("service", "prec", {"ID": "228541"})
 
@@ -1475,6 +1529,12 @@ def test_get_constitutional_decision_loads_decision_text_by_source_id():
     assert "위헌 여부" in text.holdings
     assert "과잉금지원칙" in text.summary
     assert "자동차관리법 제26조" in text.reviewed_statutes
+    assert [(item.law_name, item.article) for item in text.reviewed_articles] == [
+        ("자동차관리법", "제26조")
+    ]
+    assert [(item.law_name, item.article) for item in text.referenced_articles] == [
+        ("헌법", "제37조")
+    ]
     assert source.calls[0] == ("service", "detc", {"ID": "58400"})
 
 
