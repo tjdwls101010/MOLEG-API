@@ -2,6 +2,22 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-16 — Analysis-readiness is hybrid: structuring in MOLEG-API, synthesis in the skill
+
+The consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loads sources well but leaves all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
+
+## 2026-06-16 — Bundle LoadedContext made honest now; eager conditional loading deferred
+
+`load_legal_context_bundle` never populates `loaded.{interpretations,cases,constitutional_decisions,administrative_rules,histories,diffs}`, yet `LEGAL-CONTEXT-BUNDLE.md` described conditional top-1 full-text loading. Decision: first make the shape and docs honest (these are candidate/deferred, not loaded), and treat eager conditional full-text loading as a separate, demand-gated enhancement rather than blocking on it now.
+
+## 2026-06-16 — Ambiguity surfaces as enriched exceptions carrying structured candidates
+
+Direct methods raised `AmbiguousLawError` with candidate names flattened into a message string, while the bundle returned structured `Ambiguity` objects — forcing the skill to parse text in one path and read objects in the other. Decision: keep direct methods raising (backward-compatible, low-churn) but enrich the exception with structured `candidates`/`kind` fields so callers never parse a message string; chosen over a full Result-return refactor to avoid touching 19 methods and 43 tests.
+
+## 2026-06-16 — Skill consumes MOLEG-API as a PyPI package with a serialization layer
+
+The intended consumer is Claude+skill, but the repo had no invocation seam: no MCP server/CLI, no package metadata, and frozen dataclasses with no serialization. Decision: distribute MOLEG-API as a **PyPI package the skill imports**, add a **serialization layer** (`to_dict(include_raw=False)`/JSON — the real seam, needed regardless of transport), and ship a **skill-author cookbook**, with a documented vendored fallback for sandboxes lacking network `pip`. PyPI is the distribution mechanism; serialization is the substantive contract. The free, leak-tolerant `MOLEG_OC` key stays a runtime env var and is never packaged.
+
 ## 2026-06-15 — Annex/form bodies use text export before file parsers
 
 law.go.kr exposes selected law and administrative-rule annex/form bodies through text-export endpoints, while the visible detail pages often route through iframe/PDF-viewer surfaces. MOLEG-API therefore adds explicit `get_annex_form_body()` loading through `lsBylTextDownLoad.do` / `admRulBylTextDownLoad.do` and keeps direct HWP/PDF parsing out of the first body-loading interface.
