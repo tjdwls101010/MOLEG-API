@@ -202,6 +202,34 @@ def test_to_dict_serializes_full_context_bundle_graph():
     assert "raw" not in data["ambiguities"][0]["candidates"][0]
 
 
+def test_to_dict_serializes_follow_up_filter_values_deterministically():
+    identity = LawIdentity(
+        law_id="014152",
+        name="탄소중립법",
+        basis="effective",
+        raw_keys={"raw": "normalized identity metadata is not a raw payload"},
+    )
+    lookup = DeferredLookup(
+        interface="get_law",
+        query="탄소중립법",
+        reason="Load selected context",
+        filters={
+            ("law", "identity"): identity,
+            "articles": {"제3조", "제1조", "제2조"},
+        },
+    )
+
+    data = lookup.to_dict()
+    json_text = lookup.to_json_string()
+
+    assert data["filters"]["('law', 'identity')"]["law_id"] == "014152"
+    assert data["filters"]["('law', 'identity')"]["raw_keys"] == {
+        "raw": "normalized identity metadata is not a raw payload",
+    }
+    assert data["filters"]["articles"] == ["제1조", "제2조", "제3조"]
+    assert json_text == lookup.to_json_string()
+
+
 def test_to_json_string_returns_deterministic_json_without_escaping_korean():
     identity = LawIdentity(law_id="014152", name="탄소중립법", basis="effective")
     payload = identity.to_json_string()

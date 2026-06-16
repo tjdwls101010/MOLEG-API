@@ -58,13 +58,18 @@ def _serialize_value(value: Any, *, include_raw: bool) -> Any:
     if isinstance(value, tuple):
         return [_serialize_value(item, include_raw=include_raw) for item in value]
     if isinstance(value, set):
-        return [_serialize_value(item, include_raw=include_raw) for item in value]
+        serialized_items = [_serialize_value(item, include_raw=include_raw) for item in value]
+        return sorted(serialized_items, key=_json_sort_key)
     if isinstance(value, dict):
         return {
             _serialize_key(key): _serialize_value(item, include_raw=include_raw)
             for key, item in value.items()
         }
     return value
+
+
+def _json_sort_key(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
 def _serialize_key(key: Any) -> str | int | float | bool | None:
