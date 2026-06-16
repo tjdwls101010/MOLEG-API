@@ -64,7 +64,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - Keep noisy or expensive detail behind explicit loaders or `DeferredLookup` records. Candidate lists and context bundles should reveal what may matter without automatically spending context on every source body.
 - A context bundle is an entry point, not a maximal answer object. It should load high-leverage anchors and bounded candidates, then leave selective follow-up calls visible to Claude.
 - Annex/form body loading uses law.go.kr text-export endpoints for selected law and administrative-rule candidates. Direct HWP/PDF parsing remains outside the first body-loading interface.
-- MOLEG-API is distributed as the `moleg-api` Python package. Public model dataclasses serialize through `to_dict(include_raw=False)` and `to_json_string(include_raw=False)`, omitting `raw` payloads recursively by default.
+- MOLEG-API is packaged as the `moleg-api` Python package; PyPI publication remains a human release step. Public model dataclasses serialize through `to_dict(include_raw=False)` and `to_json_string(include_raw=False)`, omitting `raw` payloads recursively by default.
 
 ## Public Interface
 

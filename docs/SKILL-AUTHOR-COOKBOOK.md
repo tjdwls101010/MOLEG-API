@@ -4,11 +4,13 @@ This guide is for the future legislative-expert skill that imports MOLEG-API as 
 
 ## Installation And Setup
 
-Install the package in the skill runtime:
+After the human release step publishes the package, install it in the skill runtime:
 
 ```bash
 pip install moleg-api
 ```
+
+Before PyPI publication, use the repository checkout, a built wheel, or the vendored fallback below. The integration gate verifies wheel build and repo-external import; it does not prove that the package name is already available on PyPI.
 
 Instantiate the public facade:
 
