@@ -113,3 +113,17 @@ def test_skill_integration_interface_list_matches_public_methods():
 
     assert documented_methods == public_methods
     assert "These interfaces are implemented as the skill-facing contract" in section
+
+
+def test_skill_author_cookbook_distinguishes_pre_publication_install_paths():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    installation = cookbook.split("## Installation And Setup", 1)[1].split(
+        "## Serialization",
+        1,
+    )[0]
+
+    assert "After the human release step publishes the package" in installation
+    assert "Before PyPI publication" in installation
+    assert "python -m pip install ." in installation
+    assert "python -m pip wheel . --no-deps -w dist" in installation
+    assert "python -m pip install dist/moleg_api-*.whl --no-deps" in installation
