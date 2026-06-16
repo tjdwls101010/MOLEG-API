@@ -302,7 +302,16 @@ def test_trace_law_history_uses_article_change_history_json_surface():
                         }
                     ]
                 }
-            }
+            },
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "5",
+                        "조문제목": "적용의 완화",
+                        "조문내용": "제5조(적용의 완화) 허가권자는 건축기준을 완화하여 적용할 수 있다.",
+                    }
+                }
+            },
         ]
     )
 
@@ -312,11 +321,89 @@ def test_trace_law_history_uses_article_change_history_json_surface():
     assert history.events[0].article == "제5조"
     assert history.events[0].changed_date == "20250101"
     assert history.events[0].effective_date == "20250401"
+    assert history.events[0].article_text == "제5조(적용의 완화) 허가권자는 건축기준을 완화하여 적용할 수 있다."
     assert history.events[0].reason == "일부개정"
     assert source.calls[0] == (
         "service",
         "lsJoHstInf",
         {"ID": "001971", "JO": "000500"},
+    )
+    assert source.calls[1] == (
+        "service",
+        "eflawjosub",
+        {"ID": "001971", "efYd": "20250401", "JO": "000500"},
+    )
+
+
+def test_trace_law_history_uses_source_article_text_without_secondary_lookup():
+    identity = LawIdentity(
+        law_id="001971",
+        name="건축법",
+        basis="effective",
+    )
+    source = FakeSource(
+        service_payloads=[
+            {
+                "lsJoHstInf": {
+                    "law": [
+                        {
+                            "법령ID": "001971",
+                            "법령명한글": "건축법",
+                            "조문번호": "5",
+                            "조문변경일": "20250101",
+                            "조문시행일": "20250401",
+                            "조문내용": "제5조(적용의 완화) source payload text",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    history = MolegApi(source).trace_law_history(identity, article="제5조")
+
+    assert history.events[0].article_text == "제5조(적용의 완화) source payload text"
+    assert source.calls == [
+        (
+            "service",
+            "lsJoHstInf",
+            {"ID": "001971", "JO": "000500"},
+        )
+    ]
+
+
+def test_trace_law_history_keeps_article_text_none_when_snapshot_lookup_fails():
+    identity = LawIdentity(
+        law_id="001971",
+        name="건축법",
+        basis="effective",
+    )
+    source = FakeSource(
+        service_payloads=[
+            {
+                "lsJoHstInf": {
+                    "law": [
+                        {
+                            "법령ID": "001971",
+                            "법령명한글": "건축법",
+                            "조문번호": "5",
+                            "조문변경일": "20250101",
+                            "조문시행일": "20250401",
+                        }
+                    ]
+                }
+            },
+            {"Law": "일치하는 법령이 없습니다.  법령명을 확인하여 주십시오."},
+        ]
+    )
+
+    history = MolegApi(source).trace_law_history(identity, article="제5조")
+
+    assert history.events[0].article_text is None
+    assert source.calls[1] == (
+        "service",
+        "eflawjosub",
+        {"ID": "001971", "efYd": "20250401", "JO": "000500"},
     )
 
 
@@ -373,6 +460,7 @@ def test_trace_law_history_parses_full_law_history_html_surface():
     assert history.events[0].changed_date == "20251001"
     assert history.events[0].promulgation_date == "20251001"
     assert history.events[0].effective_date == "20251001"
+    assert history.events[0].article_text is None
     assert history.events[1].identity.mst == "273437"
     assert history.raw["source_target"] == "lsHistory"
     assert source.calls[0] == (

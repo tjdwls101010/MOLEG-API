@@ -643,7 +643,12 @@ def normalize_administrative_rule_article(
     )
 
 
-def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> list[HistoryEvent]:
+def normalize_history_events(
+    payload: dict[str, Any],
+    identity: LawIdentity,
+    *,
+    article_text_map: dict[str, str | None] | None = None,
+) -> list[HistoryEvent]:
     rows = collect_rows(
         payload,
         "law",
@@ -662,19 +667,46 @@ def normalize_history_events(payload: dict[str, Any], identity: LawIdentity) -> 
             row_identity = normalize_law_identity(row, basis=identity.basis)
         except ParseFailureError:
             row_identity = identity
+        changed_date = string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자")))
+        effective_date = string_or_none(compact_date(first_value(row, "조문시행일", "시행일자")))
+        article_text = history_event_article_text(
+            row,
+            changed_date=changed_date,
+            effective_date=effective_date,
+            article_text_map=article_text_map,
+        )
         event = HistoryEvent(
             identity=row_identity,
-            changed_date=string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자"))),
-            effective_date=string_or_none(compact_date(first_value(row, "조문시행일", "시행일자"))),
+            changed_date=changed_date,
+            effective_date=effective_date,
             promulgation_date=string_or_none(compact_date(first_value(row, "공포일자"))),
             promulgation_number=string_or_none(first_value(row, "공포번호")),
             revision_type=string_or_none(first_value(row, "제개정구분명", "제개정구분")),
             article=article_label(first_value(row, "조문번호", "조문정보", "JO")),
+            article_text=article_text,
             reason=string_or_none(first_value(row, "변경사유")),
             raw=row,
         )
         events.append(event)
     return events
+
+
+def history_event_article_text(
+    row: dict[str, Any],
+    *,
+    changed_date: str | None,
+    effective_date: str | None,
+    article_text_map: dict[str, str | None] | None,
+) -> str | None:
+    source_text = string_or_none(first_value(row, "조문내용", "조문본문", "현행조문내용", "개정조문내용"))
+    if source_text:
+        return source_text
+    if not article_text_map:
+        return None
+    for key in (effective_date, changed_date):
+        if key and key in article_text_map:
+            return article_text_map[key]
+    return None
 
 
 def parse_law_history_html(html: str) -> list[dict[str, Any]]:
