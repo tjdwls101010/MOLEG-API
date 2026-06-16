@@ -43,7 +43,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T2.1 No docstrings on any of the 19 public methods (P1; implemented in #55).** A skill author previously had to read 1,692 lines to learn return shapes, params, failure modes, and when to pick which method. The implemented fix adds class-level method-selection guidance and narrative docstrings on each public `MolegApi` method, with a regression test that catches future public methods without caller guidance.
 - **T2.2 Free-form string params lack `Literal` types or validation (P1).** `source`/`court`/`basis`/`mode`/`search_scope`/`annex_type` accept any string; a misspelled `basis` silently defaults to effective, a bad `source` raises an opaque error.
 - **T2.3 Bundle `LoadedContext` had six always-empty fields vs. docs that promised conditional full-text loading (P1).** Resolved by #57/#63: `loaded` exposes only material actually retrieved by `load_legal_context_bundle()`. It always supports statute/article/delegation context and now conditionally includes interpretation/case/Constitutional Court detail only when query intent and budget warrant it; administrative-rule, history, and diff details remain candidate/deferred context.
-- **T2.4 `search_interpretations(source="all")` returns only MOLEG + one specified ministry, not all ministries (P2).** [laws.py](../../moleg_api/laws.py) and the ministry registry. "all" is misleading; a 제도 enforced by several ministries is under-covered. (Note: the "≈38 live calls fan-out" hazard was *refuted* — `source="all"` does not loop all ministries.)
+- **T2.4 `search_interpretations(source="all")` returned only MOLEG + one specified ministry, not all ministries (P2).** Resolved by #58: `source="all"` now requires a ministry and means MOLEG plus that one ministry; `source="all_ministries"` explicitly performs the higher-cost MOLEG plus all-ministry fan-out for deep institutional analysis.
 
 ### Tier 3 — Analysis-readiness layer (the project's purpose-critical axis; hybrid placement)
 
@@ -60,7 +60,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ## What was refuted (do not act on these)
 
-- `source="all"` does **not** make ≈38 live ministry calls (3 ergonomics + 1 analytical finding refuted) — it queries MOLEG + one ministry.
+- `source="all"` does **not** make registry-wide live ministry calls; use `source="all_ministries"` when the analysis really needs MOLEG plus every ministry interpretation source.
 - Statistics / social context / crawled enforcement data are **by-design WebSearch boundaries**, not MOLEG-API gaps.
 - `find_delegated_rules`↔`search_administrative_rules` identity mapping is present enough to refute the "no mapping" claim.
 - `search_laws` returning an empty list (not raising) on no match is intended.

@@ -215,7 +215,7 @@ ANNEX_TYPE_CODES = {
 BASIS_VALUES = ("effective", "promulgated")
 ANNEX_SOURCE_VALUES = ("law", "administrative_rule")
 ANNEX_SEARCH_SCOPE_VALUES = ("title", "source", "body")
-INTERPRETATION_SOURCE_VALUES = ("moleg", "ministry", "all")
+INTERPRETATION_SOURCE_VALUES = ("moleg", "ministry", "all", "all_ministries")
 COURT_VALUES = ("all", "supreme", "lower")
 BUNDLE_MODE_VALUES = ("question", "promulgated_bill", "statute_review")
 BUNDLE_BUDGET_VALUES = ("minimal", "standard", "broad")
@@ -795,10 +795,13 @@ class MolegApi:
         interpreted_on: str | None = None,
         display: int = 20,
     ) -> list[InterpretationHit]:
-        """Search MOLEG or ministry first-instance legal interpretations.
+        """Search MOLEG and ministry first-instance legal interpretations.
 
         Use when: the skill needs official or ministry interpretation context
-        about how a statute is applied, distinct from court decisions.
+        about how a statute is applied, distinct from court decisions. Use
+        `source="all"` for MOLEG plus one specified ministry; use
+        `source="all_ministries"` only for deep institutional analysis that
+        justifies registry-wide fan-out.
         Returns: `InterpretationHit` rows with normalized source authority
         labels, ministry where relevant, case number, title, and date.
         Raises: `NoResultError` when ministry search lacks a ministry;
@@ -1828,11 +1831,16 @@ def interpretation_sources_for(source: str, ministry: str | None) -> list[Interp
     if source == "ministry":
         return [ministry_interpretation_source(ministry)]
     if source == "all":
+        if not ministry:
+            raise NoResultError(
+                "ministry is required for source='all'; use source='moleg' or source='all_ministries'"
+            )
         specs = [OFFICIAL_INTERPRETATION_SOURCE]
-        if ministry:
-            specs.append(ministry_interpretation_source(ministry))
+        specs.append(ministry_interpretation_source(ministry))
         return specs
-    raise AssertionError("validated interpretation source should be reachable")
+    if source == "all_ministries":
+        return [OFFICIAL_INTERPRETATION_SOURCE, *MINISTRY_INTERPRETATION_SOURCES.values()]
+    raise UnsupportedFormatError(f"Unsupported interpretation source: {source}")
 
 
 def ministry_interpretation_source(ministry: str | None) -> InterpretationSourceSpec:

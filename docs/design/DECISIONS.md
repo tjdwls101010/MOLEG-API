@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — Interpretation `all` fails closed without a ministry
+
+`search_interpretations(source="all")` used to mean "MOLEG plus one specified ministry", but without `ministry` it silently returned only MOLEG results, which is dangerous under-coverage for legal analysis. Decision: keep `source="all"` as MOLEG plus exactly one ministry and require `ministry`; add `source="all_ministries"` for explicit MOLEG plus all ministry fan-out despite the higher call cost.
+
 ## 2026-06-16 — compare_law_versions rejects arbitrary date windows
 
 The law.go.kr `oldAndNew` detail surface exposes a source-supplied before/after pair, not arbitrary caller-selected `before`/`after` dates. MOLEG-API keeps `compare_law_versions()` for that source-supplied pair and rejects date-window arguments with `UnsupportedFormatError`, rather than pretending to compare dates it cannot actually honor.

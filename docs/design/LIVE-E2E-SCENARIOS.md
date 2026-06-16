@@ -57,7 +57,7 @@ Result:
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.
-The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from ministry `dapaCgmExpc` results when `source="all"`.
+The ministry interpretation scenario uses a stable 방위사업청 search/detail path and verifies that official MOLEG `expc` results remain distinct from the specified ministry `dapaCgmExpc` results when `source="all"`.
 The full law-history scenario uses `lsHistory` HTML list parsing for 건축법 and verifies normalized law-level history events.
 The annex/form body scenario searches 식품위생법 law annexes, selects the 과태료 별표 candidate, and verifies non-empty text from `lsBylTextDownLoad.do`.
 

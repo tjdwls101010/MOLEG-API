@@ -22,7 +22,7 @@ AnnexType = Literal[
     "appendix",
     "부록",
 ]
-InterpretationSearchSource = Literal["moleg", "ministry", "all"]
+InterpretationSearchSource = Literal["moleg", "ministry", "all", "all_ministries"]
 CaseCourt = Literal["all", "supreme", "lower"]
 BundleMode = Literal["question", "promulgated_bill", "statute_review"]
 BundleBudget = Literal["minimal", "standard", "broad"]
