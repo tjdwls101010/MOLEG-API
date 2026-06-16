@@ -12,6 +12,15 @@ pip install moleg-api
 
 Before PyPI publication, use the repository checkout, a built wheel, or the vendored fallback below. The integration gate verifies wheel build and repo-external import; it does not prove that the package name is already available on PyPI.
 
+```bash
+# From a checked-out MOLEG-API repository
+python -m pip install .
+
+# Or build and install the same wheel shape the CI package gate verifies
+python -m pip wheel . --no-deps -w dist
+python -m pip install dist/moleg_api-*.whl --no-deps
+```
+
 Instantiate the public facade:
 
 ```python
