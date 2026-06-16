@@ -261,7 +261,11 @@ class MolegApi:
         identities = dedupe_identities([hit.identity for hit in filtered])
         if len(identities) > 1:
             names = ", ".join(identity.name for identity in identities[:5])
-            raise AmbiguousLawError(f"Promulgation bridge matched multiple laws: {names}")
+            raise AmbiguousLawError(
+                f"Promulgation bridge matched multiple laws: {names}",
+                kind="promulgation_bridge",
+                candidates=identities,
+            )
         return identities[0]
 
     def get_law(
@@ -935,7 +939,13 @@ class MolegApi:
                 law_candidates = [primary_identity]
                 search_query = primary_identity.name
             except AmbiguousLawError as exc:
-                ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
+                ambiguities.append(
+                    Ambiguity(
+                        kind=exc.kind or "promulgation_bridge",
+                        message=str(exc),
+                        candidates=exc.candidates,
+                    )
+                )
                 gaps.append(
                     ContextGap(
                         kind="manual_review_required",

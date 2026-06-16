@@ -107,19 +107,41 @@ def test_resolve_promulgated_law_raises_on_ambiguous_bridge():
             {
                 "LawSearch": {
                     "law": [
-                        {"법령ID": "1", "법령명한글": "데이터기본법", "공포번호": "1"},
-                        {"법령ID": "2", "법령명한글": "데이터기본법", "공포번호": "1"},
+                        {
+                            "법령ID": "1",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "100001",
+                            "공포번호": "1",
+                            "공포일자": "20250101",
+                            "소관부처명": "국가데이터처",
+                        },
+                        {
+                            "법령ID": "2",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "100002",
+                            "공포번호": "1",
+                            "공포일자": "20250201",
+                            "소관부처명": "국가데이터처",
+                        },
                     ]
                 }
             }
         ]
     )
 
-    with pytest.raises(AmbiguousLawError):
+    with pytest.raises(AmbiguousLawError) as exc_info:
         MolegApi(source).resolve_promulgated_law(
             prom_law_nm="데이터기본법",
             prom_no="1",
         )
+
+    error = exc_info.value
+    assert "Promulgation bridge matched multiple laws" in str(error)
+    assert error.message == str(error)
+    assert error.kind == "promulgation_bridge"
+    assert [candidate.law_id for candidate in error.candidates] == ["1", "2"]
+    assert [candidate.mst for candidate in error.candidates] == ["100001", "100002"]
+    assert error.candidates[0].promulgation_date == "20250101"
 
 
 def test_resolve_promulgated_law_raises_on_no_result():
@@ -1800,8 +1822,18 @@ def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():
             {
                 "LawSearch": {
                     "law": [
-                        {"법령ID": "1", "법령명한글": "데이터기본법", "공포번호": "1"},
-                        {"법령ID": "2", "법령명한글": "데이터기본법", "공포번호": "1"},
+                        {
+                            "법령ID": "1",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "100001",
+                            "공포번호": "1",
+                        },
+                        {
+                            "법령ID": "2",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "100002",
+                            "공포번호": "1",
+                        },
                     ]
                 }
             }
@@ -1817,6 +1849,8 @@ def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():
     assert bundle.ambiguities
     assert bundle.ambiguities[0].kind == "promulgation_bridge"
     assert "multiple laws" in bundle.ambiguities[0].message
+    assert [candidate.law_id for candidate in bundle.ambiguities[0].candidates] == ["1", "2"]
+    assert [candidate.mst for candidate in bundle.ambiguities[0].candidates] == ["100001", "100002"]
     assert bundle.gaps[0].kind == "manual_review_required"
 
 
