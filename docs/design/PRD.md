@@ -74,7 +74,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
 - `get_administrative_rule(identifier, *, articles=None)`
 - `search_annex_forms(query, *, source="law", search_scope="source", annex_type=None, ministry=None)`
-- `get_annex_form_body(identifier, *, source="law", title=None)`
+- `get_annex_form_body(identifier, *, source="law", title=None, attempt_structuring=True)`
 - `search_interpretations(query, *, source="moleg", ministry=None)`
 - `get_interpretation(identifier, *, source=None)`
 - `search_cases(query, *, court="all", court_name=None, decided_on=None, case_number=None)`
@@ -106,7 +106,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
 - `MolegApi.search_annex_forms()` searches law and administrative-rule annex/form candidates through `licbyl` and `admbyl`, preserving related source identity, annex name/number/type, ministry/date metadata, and file/detail links while hiding source target and numeric code choices.
-- `MolegApi.get_annex_form_body()` loads a selected law or administrative-rule annex/form body through law.go.kr text-export endpoints, preserving source identity, extraction method, file type, confidence, and metadata.
+- `MolegApi.get_annex_form_body()` loads a selected law or administrative-rule annex/form body through law.go.kr text-export endpoints, preserving source identity, extraction method, file type, confidence, and metadata. For table-like annexes, it attempts conservative text-table structuring into `StructuredTableData` while always preserving the original plain text; irregular tables return low-confidence structured data or text-only fallback rather than invented precision.
 - `MolegApi.search_interpretations()` searches official MOLEG interpretations through `expc` and ministry first-instance interpretations through a registry-backed `*CgmExpc` source family, normalizing live `Expc.expc` and `CgmExpc.cgmExpc` list wrappers behind the public interface.
 - `MolegApi.get_interpretation()` loads one interpretation by source ID and preserves source type, source target, ministry, case number, interpretation date, inquiry agency, reply/interpretation agency, question, answer, reason, and related-law text.
 - `MolegApi.search_cases()` and `MolegApi.get_case()` load Supreme Court/lower-court case context through `prec`, including case number, decision date, court, case type, holdings, summary, referenced statutes, referenced cases, and full text.

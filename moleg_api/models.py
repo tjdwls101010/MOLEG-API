@@ -209,6 +209,18 @@ class AnnexFormHit:
 
 
 @dataclass(frozen=True)
+class StructuredTableData:
+    """Best-effort structured rows extracted from a text-export annex/form body."""
+
+    title: str | None
+    headers: list[str]
+    rows: list[dict[str, str]]
+    units: list[str] = field(default_factory=list)
+    parsing_confidence: str = "low"
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class AnnexFormText:
     """Extracted annex/form body text."""
 
@@ -217,6 +229,7 @@ class AnnexFormText:
     file_type: str
     extraction_method: str
     extraction_confidence: str
+    structured_data: StructuredTableData | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 

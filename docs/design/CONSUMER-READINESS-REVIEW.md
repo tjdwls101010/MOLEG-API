@@ -52,7 +52,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.3 Administrative-rule → delegating-statute back-reference (P1).** `DelegatedRule.source_article` links statute→rule, but the reverse (rule→authorizing article) is missing, so delegation chains cannot be rebuilt from the rule side.
 - **T3.4 Multi-statute 제도 *loading* helper (P1; design-led/HITL).** All methods are single-law- or query-rooted; nothing assembles a concept spanning multiple statutes. A loading helper (not a reasoning engine) that gathers the laws/delegations/structured-links for a named 제도.
 - **T3.5 Bundle eager conditional full-text loading (P2).** Implement the deferred half of T2.3: selectively load top-N high-confidence interpretation/case/constitutional/history detail when the question warrants it.
-- **T3.6 Annex/form structured table parsing (P2; HITL — tension with the no-HWP/PDF-parsing decision).** Penalty/criteria tables (별표) lose row/column structure as plain text-export. Optional structured extraction for table-type annexes.
+- **T3.6 Annex/form structured table parsing (P2).** #64 adds optional, confidence-flagged `StructuredTableData` for clear table-like text-export annexes while preserving plain text and avoiding direct HWP/PDF parsing.
 - **T3.7 Similar-제도 / mechanism catalog for comparative design (P2; HITL).** "Find statutes with similar sanction/permit/authorization structures" — directly serves 법안 설계.
 - **T3.8 Per-article text version history (P2).** `trace_law_history` returns events, not the article *text* at each point; reconstructing textual evolution is manual.
 - **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** `HistoryEvent.reason` is free text; link each amendment to the enacting bill for legislative-intent analysis.
@@ -85,7 +85,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T3.3 admin-rule → statute back-reference | #61 | AFK |
 | T3.4 multi-statute 제도 loader | #62 | HITL (blocked by #59, #60) |
 | T3.5 bundle eager conditional loading | #63 | AFK (blocked by #57) |
-| T3.6 annex/form structured table parsing | #64 | HITL |
+| T3.6 annex/form structured table parsing | #64 | HITL implementation + review |
 | T3.7 similar-제도 / mechanism discovery | #65 | HITL |
 | T3.8 per-article text version history | #66 | AFK |
 | T3.9 `HistoryEvent` → congress-db `bill_id` | #67 | AFK |

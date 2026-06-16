@@ -102,7 +102,7 @@ Use only when the user asks for a survey, memo, or risk scan.
 2. Load current effective text through `get_law()` or requested `get_article()`.
 3. Use `trace_law_history()` or `compare_law_versions()` when dates/articles make the change traceable.
 4. Use `find_delegated_rules()` to identify enforcement decrees, enforcement rules, notices, and administrative rules.
-5. Search annex/forms when operative standards may live in attached tables, thresholds, amounts, or forms. Load selected annex/form bodies only when needed.
+5. Search annex/forms when operative standards may live in attached tables, thresholds, amounts, or forms. Load selected annex/form bodies only when needed. For table-like annexes, inspect `structured_data.parsing_confidence` before using extracted rows; keep the plain text as fallback authority.
 6. Search interpretations and judicial context, but defer full-text loading unless the bill raises application or constitutional-risk questions.
 7. Add a WebSearch gap for social context, statistics, or current policy background.
 
