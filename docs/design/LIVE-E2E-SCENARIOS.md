@@ -59,7 +59,7 @@ Last run on 2026-06-17:
 Result:
 
 ```text
-43 passed, 1 skipped in 128.34s (0:02:08)
+44 passed, 1 skipped in 140.12s (0:02:20)
 ```
 
 The Constitutional Court scenario uses a stable detail ID because current live `detc` search queries can return no rows even while detail loading remains available.

@@ -1,6 +1,6 @@
 # Completion Risk Audit
 
-Audited on 2026-06-15 after the legislative live e2e gate and annex/form body loading were added.
+Initial core risk audited on 2026-06-15 after the legislative live e2e gate and annex/form body loading were added. Current integration-branch evidence was refreshed on 2026-06-17 after the consumer-readiness gate work.
 
 ## Verdict
 
@@ -12,8 +12,9 @@ The current implementation has strong evidence for the core progressive-loading 
 
 - Public `MolegApi` methods hide raw law.go.kr `target` values.
 - Live law.go.kr smoke passed across representative source families.
-- The legislative live e2e gate passed 43 scenario tests, including selected annex/form body loading.
-- Full pytest with local credentials passed: `107 passed, 1 skipped`.
+- The legislative live e2e gate passed 44 scenario tests, including selected annex/form body loading, comparable-mechanism discovery, institutional-system loading, and congress bridge resolution.
+- Deterministic non-live tests passed on the integration branch: `110 passed, 54 deselected`.
+- Live smoke and live e2e gates passed separately with local credentials: `8 passed, 1 skipped` and `44 passed, 1 skipped`.
 - congress-db was introspected with `congress_ro`, with `transaction_read_only: on`.
 - Promulgated-bill bundles preserve law-name candidates and a `source_lag_or_manual_review_required` gap when exact congress-db bridge matching fails.
 - Credentials remain in ignored local env files, not committed.
