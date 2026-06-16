@@ -1,4 +1,6 @@
 import inspect
+import re
+from pathlib import Path
 from typing import get_type_hints
 
 from moleg_api.laws import MolegApi
@@ -68,3 +70,22 @@ def test_bundle_loader_budget_signatures_use_public_literal_vocabulary():
 
     assert institutional_hints["budget"] == BundleBudget
     assert context_hints["budget"] == BundleBudget
+
+
+def test_prd_public_interface_list_matches_public_methods():
+    prd = Path("docs/design/PRD.md").read_text(encoding="utf-8")
+    section = prd.split("## Public Interface", 1)[1].split("## Testing Decisions", 1)[0]
+    documented_methods = {
+        match.group(1)
+        for match in re.finditer(r"^- `([a-zA-Z_][a-zA-Z0-9_]*)\(", section, re.MULTILINE)
+    }
+    public_methods = {
+        name
+        for name, member in inspect.getmembers(MolegApi, predicate=inspect.isfunction)
+        if not name.startswith("_")
+    }
+
+    assert documented_methods == public_methods
+    assert "search_body=False" in section
+    assert "include_history=False" in section
+    assert "include_websearch_hint=True" in section

@@ -66,32 +66,36 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - Annex/form body loading uses law.go.kr text-export endpoints for selected law and administrative-rule candidates. Direct HWP/PDF parsing remains outside the first body-loading interface.
 - MOLEG-API is distributed as the `moleg-api` Python package. Public model dataclasses serialize through `to_dict(include_raw=False)` and `to_json_string(include_raw=False)`, omitting `raw` payloads recursively by default.
 
-## Public Interface Candidates
+## Public Interface
 
-- `search_laws(query, *, as_of=None, basis="effective", law_type=None, ministry=None)`
+These are implemented public `MolegApi` methods. Type-level details live in code and docstrings; this list keeps the PM/spec view aligned with the callable skill surface.
+
+- `search_laws(query, *, as_of=None, basis="effective", law_type=None, ministry=None, display=20)`
 - `get_law(identifier, *, as_of=None, basis="effective", articles=None, include_metadata=True)`
 - `get_article(law_identifier, article, *, as_of=None, basis="effective")`
 - `trace_law_history(law_identifier, *, date_range=None, article=None, promulgation_bridge=None)`
 - `compare_law_versions(law_identifier, *, before=None, after=None, article=None)`
 - `find_delegated_rules(law_identifier, *, article=None)`
 - `get_law_structure(law_identifier, *, depth=0)`
-- `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
-- `get_administrative_rule(identifier, *, articles=None)`
-- `search_annex_forms(query, *, source="law", search_scope="source", annex_type=None, ministry=None)`
-- `get_annex_form_body(identifier, *, source="law", title=None, attempt_structuring=True)`
-- `search_interpretations(query, *, source="moleg", ministry=None)`
-- `get_interpretation(identifier, *, source=None)`
-- `search_cases(query, *, court="all", court_name=None, decided_on=None, case_number=None)`
-- `get_case(identifier)`
-- `search_constitutional_decisions(query, *, decided_on=None, case_number=None)`
-- `get_constitutional_decision(identifier)`
-- `expand_legal_query(query)`
+- `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None, include_history=False, display=20)`
+- `get_administrative_rule(identifier, *, articles=None, include_metadata=True)`
+- `search_annex_forms(query, *, source="law", search_scope="source", annex_type=None, ministry=None, display=20)`
+- `get_annex_form_body(identifier, *, source="law", title=None, include_metadata=True, attempt_structuring=True)`
+- `search_interpretations(query, *, source="moleg", ministry=None, search_body=False, interpreted_on=None, display=20)`
+- `get_interpretation(identifier, *, source=None, ministry=None, include_metadata=True)`
+- `search_cases(query, *, court="all", court_name=None, search_body=False, decided_on=None, case_number=None, display=20)`
+- `get_case(identifier, *, include_metadata=True)`
+- `search_constitutional_decisions(query, *, search_body=False, decided_on=None, case_number=None, display=20)`
+- `get_constitutional_decision(identifier, *, include_metadata=True)`
+- `expand_legal_query(query, *, display=5, include_websearch_hint=True)`
 - `find_comparable_mechanisms(concept, *, display=5)`
 - `load_legal_context_bundle(query=None, *, promulgation_bridge=None, law_identifier=None, articles=None, mode="question", budget="standard")`
 - `load_institutional_system(statute_identifiers, *, articles=None, budget="standard")`
 - `resolve_promulgated_law(*, prom_law_nm=None, prom_no=None, promulgation_dt=None)`
 
-Names may change to match code style, but the interface principle should not: one deep module per recurring legal task is better than one shallow function per MOLEG endpoint.
+`compare_law_versions(before=..., after=...)` is present as a guardrail-compatible signature, but arbitrary caller-selected date windows are not source-backed; passing those arguments is rejected rather than silently pretending to compare them.
+
+The interface principle should not change: one deep module per recurring legal task is better than one shallow function per MOLEG endpoint.
 
 ## Testing Decisions
 
