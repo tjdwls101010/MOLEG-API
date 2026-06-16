@@ -91,8 +91,10 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T3.8 per-article text version history | #66 | AFK |
 | T3.9 `HistoryEvent` → congress-db `bill_id` | #67 | AFK |
 | T3.10 doctrine-indexed constitutional search | #68 | HITL discovery; not feasible unless law.go.kr adds a source field |
+| Fake-skill tracer-bullet gate | #90 | consumer-readiness gate |
+| Deterministic GitHub Actions CI | #91 | PR integration gate |
 
-Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader, and #65 is implemented as bounded source discovery rather than a ranked mechanism taxonomy.
+Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. Later Tier 3 items remain queued or in-flight; #62 is implemented as explicit-statute composition on top of #60's structure loader, and #65 is implemented as bounded source discovery rather than a ranked mechanism taxonomy. #90 and #91 are gate slices: the first proves public-interface orchestration through a fake skill, and the second makes deterministic PR verification visible in GitHub.
 
 ## Gate strategy & implementation sequence
 
@@ -101,7 +103,7 @@ Moving to stage 2 (the legislative-expert skill) is a costly one-way step: once 
 1. **Low-regret first.** Implement Tier 0–2 (#50–#58) and the cheap structuring/normalization (#59 keystone, #60, #61). Land #50 (serialization + PyPI) early so later validation consumes the package the way the skill will.
 2. **Tracer-bullet E2E.** A throwaway script that plays Claude+skill across the seven review scenario archetypes against the improved API — surfacing the exact shape the design-led interfaces need, plus any residual blocker, while fixes are still cheap. Implemented by #90 as `scripts/fake_skill_tracer_bullet.py`, with the contract recorded in `docs/design/FAKE-SKILL-TRACER-BULLET.md`.
 3. **Design-led Tier 3, informed by the tracer bullet.** Build #63 (eager bundle loading), #64 (annex tables), #66, #67, and #68 in the shape the tracer bullet revealed — not blind. #62 is already narrowed to explicit-statute staged composition, and #65 is narrowed to source-labeled comparable-mechanism discovery, with relationship inference, taxonomy, and synthesis left to the skill.
-4. **Final gate → stage 2.** Only after the gate does skill creation begin in a fresh session.
+4. **CI-backed final gate → stage 2.** #91 adds deterministic GitHub Actions checks for non-live tests across supported Python versions plus package installation, while live law.go.kr and congress-db checks remain credentialed local evidence. Only after the gate does skill creation begin in a fresh session.
 
 This sequence resolves the tension between "return is expensive" (argues for full coverage now) and "building design-led interfaces blind risks rework" (argues for waiting on the consumer): the tracer bullet is the cheap consumer-proxy that lets full coverage be built right the first time.
 
