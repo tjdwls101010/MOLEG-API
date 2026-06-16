@@ -1378,6 +1378,156 @@ def test_expand_legal_query_records_empty_sources_without_failing():
     assert "최신" in expansion.follow_up_searches[-1].query
 
 
+def test_expand_legal_query_normalizes_live_ai_search_nested_rows():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {
+                "aiSearch": {
+                    "target": "aiSearch",
+                    "키워드": "과징금",
+                    "검색결과개수": "2",
+                    "법령조문": [
+                        {
+                            "법령ID": "001111",
+                            "법령명": "독점규제 및 공정거래에 관한 법률",
+                            "조문번호": "50",
+                            "조문제목": "과징금",
+                        },
+                        {
+                            "법령ID": "002222",
+                            "법령명": "전기통신사업법",
+                            "조문번호": "53",
+                            "조문제목": "과징금",
+                        },
+                    ],
+                }
+            },
+            {"aiRltLs": {"target": "aiRltLs", "법령조문": []}},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("과징금", include_websearch_hint=False)
+
+    assert [law.name for law in expansion.related_laws] == [
+        "독점규제 및 공정거래에 관한 법률",
+        "전기통신사업법",
+    ]
+    assert expansion.related_laws[0].article == "제50조"
+    assert expansion.related_laws[0].source_target == "aiSearch"
+
+
+def test_find_comparable_mechanisms_returns_planning_law_identities_from_ai_surfaces():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "aiSearch": {
+                    "target": "aiSearch",
+                    "키워드": "과징금",
+                    "검색결과개수": "2",
+                    "법령조문": [
+                        {
+                            "법령ID": "001111",
+                            "법령명": "독점규제 및 공정거래에 관한 법률",
+                            "법령일련번호": "270001",
+                            "시행일자": "20250101",
+                            "공포일자": "20240101",
+                            "공포번호": "20001",
+                            "법령종류명": "법률",
+                            "소관부처명": "공정거래위원회",
+                            "조문번호": "50",
+                            "조문제목": "과징금",
+                        },
+                        {
+                            "법령ID": "002222",
+                            "법령명": "전기통신사업법",
+                            "법령일련번호": "270002",
+                            "시행일자": "20250101",
+                            "조문번호": "53",
+                            "조문제목": "과징금",
+                        },
+                    ],
+                }
+            },
+            {
+                "aiRltLs": {
+                    "target": "aiRltLs",
+                    "법령조문": [
+                        {
+                            "법령ID": "001111",
+                            "법령명": "독점규제 및 공정거래에 관한 법률",
+                            "조문번호": "50",
+                            "조문제목": "과징금",
+                        },
+                        {
+                            "법령ID": "003333",
+                            "법령명": "환경오염시설의 통합관리에 관한 법률",
+                            "조문번호": "35",
+                            "조문제목": "과징금",
+                        },
+                    ],
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "lstrmRltJo": [
+                    {
+                        "법령용어명": "과징금",
+                        "법령명": "전기통신사업법",
+                        "조번호": "53",
+                        "조문내용": "과징금 부과 기준",
+                    }
+                ]
+            },
+        ]
+    )
+
+    identities = MolegApi(source).find_comparable_mechanisms("과징금", display=3)
+
+    assert [identity.name for identity in identities] == [
+        "독점규제 및 공정거래에 관한 법률",
+        "전기통신사업법",
+        "환경오염시설의 통합관리에 관한 법률",
+    ]
+    assert identities[0].law_id == "001111"
+    assert identities[0].mst == "270001"
+    assert identities[0].basis == "effective"
+    assert identities[0].raw_keys == {
+        "comparative_discovery": True,
+        "concept": "과징금",
+        "discovery_endpoints": ["aiSearch", "aiRltLs"],
+        "source_articles": [{"article": "제50조", "title": "과징금", "source_target": "aiSearch"}],
+        "source_type": "law",
+    }
+    assert identities[1].raw_keys["discovery_endpoints"] == ["aiSearch", "lstrmRltJo"]
+    assert source.calls == [
+        ("search", "aiSearch", {"query": "과징금", "display": 3, "search": 0}),
+        ("search", "aiRltLs", {"query": "과징금", "search": 0}),
+        ("service", "lstrmRltJo", {"query": "과징금"}),
+    ]
+
+
+def test_find_comparable_mechanisms_raises_no_result_for_empty_sources():
+    source = FakeSource(
+        search_payloads=[
+            {"aiSearch": {"target": "aiSearch", "법령조문": []}},
+            {"aiRltLs": {"target": "aiRltLs", "법령조문": []}},
+        ],
+        service_payloads=[{"lstrmRltJo": []}],
+    )
+
+    with pytest.raises(NoResultError):
+        MolegApi(source).find_comparable_mechanisms("없는제도")
+
+
 def test_load_legal_context_bundle_stages_question_context():
     source = FakeSource(
         search_payloads=[
