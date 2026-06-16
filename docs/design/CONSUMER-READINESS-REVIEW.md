@@ -33,17 +33,17 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ### Tier 1 — Correctness / contract (wrong answers, silent failure)
 
-- **T1.1 `get_law(articles=[...])` silently uses only `articles[0]` (P1).** [laws.py:280](../../moleg_api/laws.py:280) sets `params["JO"]` from the first article only; the returned `LawText` then contains *all* articles. Highest cross-lens consensus (flagged 7×). Claude requesting a subset gets the whole law and wastes context.
-- **T1.2 `AmbiguousLawError` flattens candidates into a message string (P1).** [laws.py:262](../../moleg_api/laws.py:262) joins names into text; no machine-readable `candidates`. The bundle, by contrast, returns structured `Ambiguity` objects — two incompatible paradigms the skill must both handle. Decision: enrich exceptions with structured `candidates`/`kind`.
-- **T1.3 `identity_from_identifier(str)` aliases one string as both `law_id` and `name` (P1).** [laws.py:1222](../../moleg_api/laws.py:1222). An LLM naturally passes a law *name*; it becomes `law_id="개인정보 보호법"` and silently misqueries.
-- **T1.4 `compare_law_versions(before, after)` ignores its date arguments (P1).** [laws.py:385](../../moleg_api/laws.py:385) calls a single `oldAndNew` payload and only echoes `before`/`after` into `raw`. Arbitrary two-date diffs are impossible despite the signature implying them.
+- **T1.1 `get_law(articles=[...])` silently uses only `articles[0]` (P1).** [laws.py](../../moleg_api/laws.py) sets `params["JO"]` from the first article only; the returned `LawText` then contains *all* articles. Highest cross-lens consensus (flagged 7×). Claude requesting a subset gets the whole law and wastes context.
+- **T1.2 `AmbiguousLawError` flattens candidates into a message string (P1).** [laws.py](../../moleg_api/laws.py) joins names into text; no machine-readable `candidates`. The bundle, by contrast, returns structured `Ambiguity` objects — two incompatible paradigms the skill must both handle. Decision: enrich exceptions with structured `candidates`/`kind`.
+- **T1.3 `identity_from_identifier(str)` aliases one string as both `law_id` and `name` (P1).** [laws.py](../../moleg_api/laws.py). An LLM naturally passes a law *name*; it becomes `law_id="개인정보 보호법"` and silently misqueries.
+- **T1.4 `compare_law_versions(before, after)` ignores its date arguments (P1).** [laws.py](../../moleg_api/laws.py) calls a single `oldAndNew` payload and only echoes `before`/`after` into `raw`. Arbitrary two-date diffs are impossible despite the signature implying them.
 
 ### Tier 2 — Discoverability / guardrails (LLM mis-selection)
 
-- **T2.1 No docstrings on any of the 19 public methods (P1).** A skill author must read 1,692 lines to learn return shapes, params, failure modes, and when to pick which method.
+- **T2.1 No docstrings on any of the 19 public methods (P1; implemented in #55).** A skill author previously had to read 1,692 lines to learn return shapes, params, failure modes, and when to pick which method. The implemented fix adds class-level method-selection guidance and narrative docstrings on each public `MolegApi` method, with a regression test that catches future public methods without caller guidance.
 - **T2.2 Free-form string params lack `Literal` types or validation (P1).** `source`/`court`/`basis`/`mode`/`search_scope`/`annex_type` accept any string; a misspelled `basis` silently defaults to effective, a bad `source` raises an opaque error.
-- **T2.3 Bundle `LoadedContext` has six always-empty fields vs. docs that promise conditional full-text loading (P1).** `loaded.{interpretations,cases,constitutional_decisions,administrative_rules,histories,diffs}` are initialized empty and never populated ([laws.py:894](../../moleg_api/laws.py:894)–[1132](../../moleg_api/laws.py:1132)), while [LEGAL-CONTEXT-BUNDLE.md:84](LEGAL-CONTEXT-BUNDLE.md) describes loading top-1 detail. Decision: make the shape/docs honest now; eager conditional loading is a deferred enhancement (T3.5).
-- **T2.4 `search_interpretations(source="all")` returns only MOLEG + one specified ministry, not all ministries (P2).** [laws.py:568](../../moleg_api/laws.py:568) + the ministry registry ([laws.py:169](../../moleg_api/laws.py:169)). "all" is misleading; a 제도 enforced by several ministries is under-covered. (Note: the "≈38 live calls fan-out" hazard was *refuted* — `source="all"` does not loop all ministries.)
+- **T2.3 Bundle `LoadedContext` has six always-empty fields vs. docs that promise conditional full-text loading (P1).** `loaded.{interpretations,cases,constitutional_decisions,administrative_rules,histories,diffs}` are initialized empty and never populated in [laws.py](../../moleg_api/laws.py), while [LEGAL-CONTEXT-BUNDLE.md:84](LEGAL-CONTEXT-BUNDLE.md) describes loading top-1 detail. Decision: make the shape/docs honest now; eager conditional full-text loading is a deferred enhancement (T3.5).
+- **T2.4 `search_interpretations(source="all")` returns only MOLEG + one specified ministry, not all ministries (P2).** [laws.py](../../moleg_api/laws.py) and the ministry registry. "all" is misleading; a 제도 enforced by several ministries is under-covered. (Note: the "≈38 live calls fan-out" hazard was *refuted* — `source="all"` does not loop all ministries.)
 
 ### Tier 3 — Analysis-readiness layer (the project's purpose-critical axis; hybrid placement)
 
@@ -76,7 +76,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T1.2 structured candidates on `AmbiguousLawError` | #52 | AFK |
 | T1.3 identity string aliasing | #53 | bug, AFK |
 | T1.4 `compare_law_versions` before/after | #54 | bug, AFK |
-| T2.1 docstrings + selection guidance | #55 | AFK |
+| T2.1 docstrings + selection guidance | #55 | AFK — implemented |
 | T2.2 `Literal` params + validation | #56 | AFK |
 | T2.3 honest bundle `LoadedContext` | #57 | AFK |
 | T2.4 true all-ministries + `source='all'` semantics | #58 | AFK |
