@@ -70,23 +70,47 @@ def _json_sort_key(value: Any) -> str:
 
 
 def _serialize_dict(value: dict[Any, Any], *, include_raw: bool) -> dict[str, Any]:
-    groups: dict[str, list[tuple[Any, Any]]] = {}
+    entries: list[dict[str, Any]] = []
+    groups: dict[str, list[dict[str, Any]]] = {}
     for key, item in value.items():
-        groups.setdefault(_serialize_key(key), []).append((key, item))
+        serialized_key = _serialize_key(key)
+        entry = {
+            "key": key,
+            "item": item,
+            "serialized_key": serialized_key,
+            "disambiguated_key": _serialize_disambiguated_key(key),
+            "output_key": serialized_key,
+        }
+        entries.append(entry)
+        groups.setdefault(serialized_key, []).append(entry)
+
+    for group in groups.values():
+        if len(group) > 1:
+            for entry in group:
+                entry["output_key"] = entry["disambiguated_key"]
+
+    while True:
+        output_groups: dict[str, list[dict[str, Any]]] = {}
+        for entry in entries:
+            output_groups.setdefault(entry["output_key"], []).append(entry)
+        conflicting_entries = [
+            entry
+            for group in output_groups.values()
+            if len(group) > 1
+            for entry in group
+        ]
+        promoted = False
+        for entry in conflicting_entries:
+            if entry["output_key"] != entry["disambiguated_key"]:
+                entry["output_key"] = entry["disambiguated_key"]
+                promoted = True
+        if not promoted:
+            break
 
     data: dict[str, Any] = {}
-    for serialized_key, entries in groups.items():
-        if len(entries) == 1:
-            key, item = entries[0]
-            output_key = serialized_key
-            if output_key in data:
-                output_key = _dedupe_key(_serialize_disambiguated_key(key), data)
-            data[output_key] = _serialize_value(item, include_raw=include_raw)
-            continue
-
-        for key, item in entries:
-            output_key = _dedupe_key(_serialize_disambiguated_key(key), data)
-            data[output_key] = _serialize_value(item, include_raw=include_raw)
+    for entry in sorted(entries, key=_serialized_entry_sort_key):
+        output_key = _dedupe_key(entry["output_key"], data)
+        data[output_key] = _serialize_value(entry["item"], include_raw=include_raw)
     return data
 
 
@@ -98,6 +122,11 @@ def _serialize_key(key: Any) -> str:
 
 def _serialize_disambiguated_key(key: Any) -> str:
     return f"{type(key).__name__}:{key!r}"
+
+
+def _serialized_entry_sort_key(entry: dict[str, Any]) -> tuple[str, str]:
+    key = entry["key"]
+    return (entry["output_key"], f"{type(key).__module__}.{type(key).__qualname__}:{key!r}")
 
 
 def _dedupe_key(key: str, data: dict[str, Any]) -> str:

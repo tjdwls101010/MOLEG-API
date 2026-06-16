@@ -253,6 +253,23 @@ def test_to_dict_serializes_follow_up_filter_values_deterministically():
         "str:'1'": "string-one",
         "str:'int:1'": "literal-tag",
     }
+    collision_permutations = [
+        {"1": "string-one", 1: "int-one", "int:1": "literal-tag"},
+        {"int:1": "literal-tag", "1": "string-one", 1: "int-one"},
+        {1: "int-one", "int:1": "literal-tag", "1": "string-one"},
+    ]
+    serialized_collisions = [
+        DeferredLookup(
+            interface="get_law",
+            query="탄소중립법",
+            reason="Load selected context",
+            filters={"collision": payload},
+        ).to_dict()["filters"]["collision"]
+        for payload in collision_permutations
+    ]
+    assert serialized_collisions == [data["filters"]["colliding_keys"]] * len(
+        collision_permutations
+    )
     assert json_text == lookup.to_json_string()
 
 
