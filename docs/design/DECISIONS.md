@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — No synthetic constitutional doctrine filter
+
+The `detc` catalog and live detail response expose Constitutional Court doctrines only inside prose fields such as `판시사항`, `결정요지`, and `전문`, not as a structured source field. MOLEG-API will not add `search_constitutional_decisions(doctrine=...)` or infer doctrine labels from free text; the skill should use body keyword search plus detail loading until law.go.kr exposes a source-backed doctrine/category field.
+
 ## 2026-06-16 — Full pre-skill gate, de-risked by a tracer-bullet fake skill
 
 Returning to MOLEG-API after the legislative-expert skill integrates it is expensive (repo freeze/handoff plus skill↔API coupling — an API change then forces a skill change), so the API must clear a full gate before stage 2 begins. Decision: do not start skill creation until MOLEG-API passes a full gate (Tier 0–2 plus all justified Tier 3); and because the real skill is too costly to use as the feedback loop, pull consumer feedback forward with a throwaway "fake skill" tracer-bullet E2E across the seven review scenarios to reveal the correct shape of the design-led interfaces (#62/#64/#65…) before building them. Sequence: low-regret first (Tier 0–2, #59/#60/#61) → tracer-bullet → design-led Tier 3 → final gate.

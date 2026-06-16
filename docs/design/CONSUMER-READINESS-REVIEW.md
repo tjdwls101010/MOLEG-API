@@ -56,7 +56,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - **T3.7 Similar-제도 / mechanism catalog for comparative design (P2; HITL).** "Find statutes with similar sanction/permit/authorization structures" — directly serves 법안 설계.
 - **T3.8 Per-article text version history (P2).** `trace_law_history` returns events, not the article *text* at each point; reconstructing textual evolution is manual.
 - **T3.9 `HistoryEvent` → congress-db `bill_id` link (P2).** `HistoryEvent.reason` is free text; link each amendment to the enacting bill for legislative-intent analysis.
-- **T3.10 Doctrine-indexed constitutional search (P3; conditional on source fields).** No filter for 과잉금지원칙/평등원칙; free-text keyword only.
+- **T3.10 Doctrine-indexed constitutional search (P3; refuted by source discovery).** #68 found that law.go.kr `detc` exposes doctrines only in prose fields, not as structured source labels. Keep constitutional doctrine discovery as free-text search plus detail loading; do not add a fake doctrine filter.
 
 ## What was refuted (do not act on these)
 
@@ -64,6 +64,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 - Statistics / social context / crawled enforcement data are **by-design WebSearch boundaries**, not MOLEG-API gaps.
 - `find_delegated_rules`↔`search_administrative_rules` identity mapping is present enough to refute the "no mapping" claim.
 - `search_laws` returning an empty list (not raising) on no match is intended.
+- Doctrine-indexed Constitutional Court search is **not source-backed** in `detc`; the catalog exposes only free-text/detail prose fields for doctrine terms.
 
 ## Issue roadmap
 
@@ -89,7 +90,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 | T3.7 similar-제도 / mechanism discovery | #65 | HITL |
 | T3.8 per-article text version history | #66 | AFK |
 | T3.9 `HistoryEvent` → congress-db `bill_id` | #67 | AFK |
-| T3.10 doctrine-indexed constitutional search | #68 | HITL |
+| T3.10 doctrine-indexed constitutional search | #68 | HITL discovery; not feasible unless law.go.kr adds a source field |
 
 Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. The rest (#62–#68) are queued.
 

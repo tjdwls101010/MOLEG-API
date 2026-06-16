@@ -66,6 +66,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. It exposes metadata and file/detail links; call `get_annex_form_body()` for a selected law/admin-rule candidate when the attached table, threshold, amount, criterion, or form may be operative.
+- Treat constitutional doctrines such as `과잉금지원칙` or `평등원칙` as free-text search terms, not structured filters. The law.go.kr `detc` source does not expose a doctrine/category field, so `search_constitutional_decisions(search_body=True)` can find candidate decisions by keyword but cannot prove doctrine-indexed coverage.
 - Preserve source authority labels in answers: MOLEG interpretation, ministry interpretation, Supreme Court case, and Constitutional Court decision are different source types.
 
 ## Fallback Rules
