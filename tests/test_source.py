@@ -1,9 +1,16 @@
 import io
+from pathlib import Path
 import urllib.error
 
 import pytest
 
 from moleg_api import LawGoKrClient, RateLimitError, RetryExhaustedError, UnsupportedFormatError
+
+
+REQUIRED_ENV_EXAMPLE_KEYS = {
+    "CONGRESS_DB_READONLY_URL",
+    "MOLEG_OC",
+}
 
 
 class FakeResponse:
@@ -236,3 +243,16 @@ def test_law_client_process_env_wins_over_env_file(tmp_path, monkeypatch):
     client = LawGoKrClient(ssl_context=object())
 
     assert client.oc == "process-secret"
+
+
+def test_env_example_documents_required_runtime_keys_without_values():
+    entries = {}
+    for line in Path(".env.example").read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        entries[key.strip()] = value.strip()
+
+    assert REQUIRED_ENV_EXAMPLE_KEYS <= set(entries)
+    assert all(entries[key] == "" for key in REQUIRED_ENV_EXAMPLE_KEYS)

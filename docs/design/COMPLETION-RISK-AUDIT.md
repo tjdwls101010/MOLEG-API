@@ -13,7 +13,7 @@ The current implementation has strong evidence for the core progressive-loading 
 - Public `MolegApi` methods hide raw law.go.kr `target` values.
 - Live law.go.kr smoke passed across representative source families.
 - The legislative live e2e gate passed 44 scenario tests, including selected annex/form body loading, comparable-mechanism discovery, institutional-system loading, and congress bridge resolution.
-- Deterministic non-live tests passed on the integration branch: `122 passed, 54 deselected`.
+- Deterministic non-live tests passed on the integration branch: `123 passed, 54 deselected`.
 - PR #89 now runs deterministic GitHub Actions CI on the pushed head: non-live tests on Python 3.10/3.11/3.12 plus a package wheel/install gate. The PR status checks are the authoritative current-head CI evidence because each pushed evidence-only update creates a new run.
 - Live smoke and live e2e gates passed separately with local credentials: `8 passed, 1 skipped` and `44 passed, 1 skipped`.
 - congress-db was introspected with `congress_ro`, with `transaction_read_only: on`, and with the default scope limited to the `public` schema.
