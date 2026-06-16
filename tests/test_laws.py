@@ -515,6 +515,10 @@ def test_search_administrative_rules_normalizes_current_rule_hits():
                             "현행연혁구분": "현행",
                             "제개정구분명": "일부개정",
                             "시행일자": "20250501",
+                            "위임법령ID": "009999",
+                            "위임법령명": "항공안전법",
+                            "위임조문번호": "제5조제2항",
+                            "위임조문제목": "항공업무",
                         }
                     ]
                 }
@@ -540,6 +544,10 @@ def test_search_administrative_rules_normalizes_current_rule_hits():
     assert identity.effective_date == "20250501"
     assert identity.ministry == "소방청"
     assert identity.current_status == "현행"
+    assert identity.source_law_id == "009999"
+    assert identity.source_law_name == "항공안전법"
+    assert identity.source_article == "제5조제2항"
+    assert identity.source_article_title == "항공업무"
     assert source.calls[0] == (
         "search",
         "admrul",
@@ -763,6 +771,10 @@ def test_get_administrative_rule_loads_structured_articles_and_filters():
                     "발령번호": "제2025-1호",
                     "소관부처명": "소방청",
                     "시행일자": "20250501",
+                    "위임법령ID": "009999",
+                    "위임법령명": "항공안전법",
+                    "위임조문번호": "제5조제2항",
+                    "위임조문제목": "항공업무",
                     "조문": {
                         "조문단위": [
                             {
@@ -774,6 +786,10 @@ def test_get_administrative_rule_loads_structured_articles_and_filters():
                                 "조문번호": "2",
                                 "조문제목": "정의",
                                 "조문내용": "이 훈령에서 사용하는 용어의 뜻은 다음과 같다.",
+                                "근거법령ID": "004001",
+                                "근거법령명": "119구조ㆍ구급에 관한 법률",
+                                "근거조문": "제3조",
+                                "근거조문제목": "국가 등의 책무",
                             },
                         ]
                     },
@@ -790,9 +806,16 @@ def test_get_administrative_rule_loads_structured_articles_and_filters():
 
     assert text.identity.name == "119항공대 운영 규정"
     assert text.identity.serial_id == "2100000248758"
+    assert text.identity.source_law_id == "009999"
+    assert text.identity.source_law_name == "항공안전법"
+    assert text.identity.source_article == "제5조제2항"
     assert text.articles[0].article == "제2조"
     assert text.articles[0].title == "정의"
     assert "용어의 뜻" in text.articles[0].text
+    assert text.articles[0].source_law_id == "004001"
+    assert text.articles[0].source_law_name == "119구조ㆍ구급에 관한 법률"
+    assert text.articles[0].source_article == "제3조"
+    assert text.articles[0].source_article_title == "국가 등의 책무"
     assert "정의" in text.text
     assert source.calls[0] == ("service", "admrul", {"ID": "2100000248758"})
 
@@ -825,8 +848,38 @@ def test_get_administrative_rule_accepts_live_service_wrapper():
 
     assert text.identity.name == "2015년 하이브리드자동차 구매보조금 대상차종"
     assert text.identity.rule_id == "2077465"
+    assert text.identity.source_law_id is None
+    assert text.identity.source_article is None
     assert text.articles[0].text == "하이브리드자동차 구매보조금 대상차종은 다음과 같다."
+    assert text.articles[0].source_law_id is None
+    assert text.articles[0].source_article is None
     assert source.calls[0] == ("service", "admrul", {"ID": "2200000037921"})
+
+
+def test_get_administrative_rule_reads_source_reference_from_service_wrapper_top_level():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "AdmRulService": {
+                    "행정규칙기본정보": {
+                        "행정규칙일련번호": "2200000038000",
+                        "행정규칙ID": "2078000",
+                        "행정규칙명": "데이터 연계 관리지침",
+                        "행정규칙종류": "예규",
+                    },
+                    "위임근거": "「데이터기반행정 활성화에 관한 법률」 제15조제2항",
+                    "조문내용": "기관 간 데이터 연계 기준을 정한다.",
+                }
+            }
+        ]
+    )
+
+    text = MolegApi(source).get_administrative_rule("2200000038000")
+
+    assert text.identity.source_law_name == "데이터기반행정 활성화에 관한 법률"
+    assert text.identity.source_article == "제15조제2항"
+    assert text.articles[0].source_law_name == "데이터기반행정 활성화에 관한 법률"
+    assert text.articles[0].source_article == "제15조제2항"
 
 
 def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
@@ -837,6 +890,7 @@ def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
                     "행정규칙명": "데이터기반행정 활성화 규정",
                     "행정규칙종류": "고시",
                     "발령일자": "20240115",
+                    "위임근거": "「데이터기반행정 활성화에 관한 법률」 제20조제1항",
                     "조문내용": "제1조(목적) 이 고시는 데이터기반행정 활성화에 필요한 사항을 정한다.",
                 }
             }
@@ -848,8 +902,12 @@ def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
     assert text.identity.name == "데이터기반행정 활성화 규정"
     assert text.identity.rule_type == "고시"
     assert text.identity.issuing_date == "20240115"
+    assert text.identity.source_law_name == "데이터기반행정 활성화에 관한 법률"
+    assert text.identity.source_article == "제20조제1항"
     assert text.articles[0].article is None
     assert "데이터기반행정" in text.articles[0].text
+    assert text.articles[0].source_law_name == "데이터기반행정 활성화에 관한 법률"
+    assert text.articles[0].source_article == "제20조제1항"
     assert source.calls[0] == (
         "service",
         "admrul",

@@ -31,6 +31,116 @@ from .models import (
 
 LAW_SEARCH_ENVELOPES = ("LawSearch", "lawSearch", "LawSearchService")
 
+ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS = (
+    "위임법령ID",
+    "위임법령 ID",
+    "위임 법령ID",
+    "위임 법령 ID",
+    "근거법령ID",
+    "근거법령 ID",
+    "근거 법령ID",
+    "근거 법령 ID",
+    "수권법령ID",
+    "수권법령 ID",
+    "수권 법령ID",
+    "수권 법령 ID",
+    "상위법령ID",
+    "상위법령 ID",
+    "상위 법령ID",
+    "상위 법령 ID",
+    "모법령ID",
+    "모법령 ID",
+    "모법 ID",
+    "법적근거법령ID",
+    "법적근거 법령ID",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS = (
+    "위임법령명",
+    "위임법령",
+    "위임 법령명",
+    "위임 법령",
+    "근거법령명",
+    "근거법령",
+    "근거 법령명",
+    "근거 법령",
+    "수권법령명",
+    "수권법령",
+    "수권 법령명",
+    "수권 법령",
+    "상위법령명",
+    "상위법령",
+    "상위 법령명",
+    "상위 법령",
+    "모법령명",
+    "모법령",
+    "모법명",
+    "모법",
+    "법적근거법령명",
+    "법적근거법령",
+    "법적근거 법령명",
+    "법적근거 법령",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS = (
+    "위임조문번호",
+    "위임조문",
+    "위임 조문번호",
+    "위임 조문",
+    "위임근거조문",
+    "위임근거 조문",
+    "근거조문번호",
+    "근거조문",
+    "근거 조문번호",
+    "근거 조문",
+    "수권조문번호",
+    "수권조문",
+    "수권 조문번호",
+    "수권 조문",
+    "상위조문번호",
+    "상위조문",
+    "상위 조문번호",
+    "상위 조문",
+    "모법령조문",
+    "모법조문",
+    "법적근거조문",
+    "법적근거 조문",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS = (
+    "위임조문제목",
+    "위임 조문제목",
+    "위임 조문 제목",
+    "근거조문제목",
+    "근거 조문제목",
+    "근거 조문 제목",
+    "수권조문제목",
+    "수권 조문제목",
+    "상위조문제목",
+    "상위 조문제목",
+    "모법령조문제목",
+    "모법조문제목",
+    "법적근거조문제목",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS = (
+    "위임근거",
+    "위임 근거",
+    "근거",
+    "법적근거",
+    "법적 근거",
+    "수권근거",
+    "수권 근거",
+)
+
+ADMINISTRATIVE_RULE_SOURCE_KEYS = (
+    *ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS,
+    *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS,
+)
+
 
 def ensure_list(value: Any) -> list[Any]:
     if value is None:
@@ -74,6 +184,43 @@ def content_value(value: Any) -> Any:
     return value
 
 
+def administrative_rule_source_reference(row: dict[str, Any]) -> dict[str, str | None]:
+    basis_text = string_or_none(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_BASIS_KEYS))
+    return {
+        "source_law_id": string_or_none(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_LAW_ID_KEYS)),
+        "source_law_name": string_or_none(
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_LAW_NAME_KEYS)
+        )
+        or quoted_law_name(basis_text),
+        "source_article": article_label(first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_KEYS))
+        or article_from_source_basis(basis_text),
+        "source_article_title": string_or_none(
+            first_value(row, *ADMINISTRATIVE_RULE_SOURCE_ARTICLE_TITLE_KEYS)
+        ),
+    }
+
+
+def quoted_law_name(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"[「『](.+?)[」』]", text)
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
+def article_from_source_basis(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(
+        r"제\s*\d+\s*조(?:\s*의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?",
+        text,
+    )
+    if not match:
+        return None
+    return re.sub(r"\s+", "", match.group(0))
+
+
 def normalize_law_identity(row: dict[str, Any], *, basis: Basis) -> LawIdentity:
     info = row.get("기본정보") if isinstance(row.get("기본정보"), dict) else row
     name = first_value(info, "법령명_한글", "법령명한글", "법령명", "법령명약칭")
@@ -115,12 +262,13 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
         info = row["행정규칙기본정보"]
     else:
         info = row
+    source_info = {**row, **info} if info is not row else info
     name = first_value(info, "행정규칙명", "신구법명", "LM")
     if not name:
         raise ParseFailureError("Administrative-rule identity is missing a name")
 
     raw_keys = {
-        key: info.get(key)
+        key: source_info.get(key)
         for key in (
             "행정규칙 일련번호",
             "행정규칙일련번호",
@@ -129,9 +277,11 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
             "LID",
             "행정규칙 상세링크",
             "신구법 상세링크",
+            *ADMINISTRATIVE_RULE_SOURCE_KEYS,
         )
-        if info.get(key) not in (None, "")
+        if source_info.get(key) not in (None, "")
     }
+    source_reference = administrative_rule_source_reference(source_info)
     return AdministrativeRuleIdentity(
         serial_id=string_or_none(first_value(info, "행정규칙 일련번호", "행정규칙일련번호", "ID", "admrul id")),
         rule_id=string_or_none(first_value(info, "행정규칙ID", "LID")),
@@ -144,6 +294,7 @@ def normalize_administrative_rule_identity(row: dict[str, Any]) -> Administrativ
         ministry_code=string_or_none(first_value(info, "소관부처코드")),
         current_status=string_or_none(first_value(info, "현행여부", "현행연혁구분")),
         revision_type=string_or_none(first_value(info, "제개정구분명")),
+        **source_reference,
         raw_keys=raw_keys,
     )
 
@@ -601,6 +752,10 @@ def extract_administrative_rule_articles(
                 title=string_or_none(first_value(raw_rule, "조문제목", "제목")),
                 text=str(flat_text),
                 effective_date=string_or_none(compact_date(first_value(raw_rule, "시행일자"))),
+                source_law_id=identity.source_law_id,
+                source_law_name=identity.source_law_name,
+                source_article=identity.source_article,
+                source_article_title=identity.source_article_title,
                 raw=raw_rule,
             )
         )
@@ -633,12 +788,28 @@ def normalize_administrative_rule_article(
     title = first_value(row, "조문제목", "제목", "title")
     if number is None and text is None and title is None:
         return None
+    source_reference = administrative_rule_source_reference(row)
+    if not any(source_reference.values()):
+        source_reference = {
+            "source_law_id": identity.source_law_id,
+            "source_law_name": identity.source_law_name,
+            "source_article": identity.source_article,
+            "source_article_title": identity.source_article_title,
+        }
+    else:
+        source_reference = {
+            "source_law_id": source_reference["source_law_id"] or identity.source_law_id,
+            "source_law_name": source_reference["source_law_name"] or identity.source_law_name,
+            "source_article": source_reference["source_article"],
+            "source_article_title": source_reference["source_article_title"],
+        }
     return AdministrativeRuleArticleText(
         identity=identity,
         article=article_label(number),
         title=string_or_none(title),
         text=str(text or ""),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
+        **source_reference,
         raw=row,
     )
 

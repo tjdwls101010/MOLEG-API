@@ -66,6 +66,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 - Treat law-name search as candidate discovery. Multiple plausible results are an ambiguity, not permission to pick the first hit.
 - Use `expand_legal_query()` for search planning, not as final legal authority; its follow-up searches can include annex/form discovery before WebSearch handoff.
 - Treat annex/form search as candidate discovery. It exposes metadata and file/detail links; call `get_annex_form_body()` for a selected law/admin-rule candidate when the attached table, threshold, amount, criterion, or form may be operative.
+- Treat administrative-rule `source_law_id`, `source_law_name`, `source_article`, and `source_article_title` as source-provided back-references only. If they are `None`, the correct interpretation is "not exposed in this MOLEG payload"; do not infer that the rule has no authorizing statute.
 - Preserve source authority labels in answers: MOLEG interpretation, ministry interpretation, Supreme Court case, and Constitutional Court decision are different source types.
 
 ## Fallback Rules
@@ -107,6 +108,8 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.load_legal_context_bundle()`
 
 These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`; selected bodies load through `get_annex_form_body()` text-export calls rather than direct HWP/PDF parsing. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels; the implementation normalizes live `Expc.expc` and `CgmExpc.cgmExpc` list wrappers so Claude does not need to know those source shapes. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, AI search surfaces, and annex/form follow-up recommendations as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
+
+Administrative-rule back-references are deliberately conservative. MOLEG-API can surface the delegating statute/article from explicit `admrul` metadata such as 위임/근거/수권/상위 법령ㆍ조문 fields or an explicitly named `위임근거` field, but it does not parse ordinary body text, change reasons, or run reverse delegation lookups to fabricate missing links.
 
 ## Answering Discipline For The Skill
 
