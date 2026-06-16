@@ -93,6 +93,17 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 
 Near-term implementation set: Tier 0–2 (#50–#58) plus #59/#60/#61. The rest (#62–#68) are queued.
 
+## Gate strategy & implementation sequence
+
+Moving to stage 2 (the legislative-expert skill) is a costly one-way step: once the skill integrates MOLEG-API, the repo is effectively frozen/handed off, and any later API change forces a corresponding skill change (skill↔API coupling). MOLEG-API therefore clears a **full gate** before stage 2 — and because the real skill is too expensive to use as the feedback loop, consumer feedback is pulled forward with a cheap **tracer-bullet "fake skill"**.
+
+1. **Low-regret first.** Implement Tier 0–2 (#50–#58) and the cheap structuring/normalization (#59 keystone, #60, #61). Land #50 (serialization + PyPI) early so later validation consumes the package the way the skill will.
+2. **Tracer-bullet E2E.** A throwaway script that plays Claude+skill across the seven review scenario archetypes against the improved API — surfacing the exact shape the design-led interfaces need, plus any residual blocker, while fixes are still cheap.
+3. **Design-led Tier 3, informed by the tracer bullet.** Build #62 (multi-statute loader), #63 (eager bundle loading), #64 (annex tables), #65 (similar-제도), #66, #67, #68 in the shape the tracer bullet revealed — not blind.
+4. **Final gate → stage 2.** Only after the gate does skill creation begin in a fresh session.
+
+This sequence resolves the tension between "return is expensive" (argues for full coverage now) and "building design-led interfaces blind risks rework" (argues for waiting on the consumer): the tracer bullet is the cheap consumer-proxy that lets full coverage be built right the first time.
+
 ## Out of scope (unchanged)
 
 Generic 195-endpoint SDK; direct SQL to `congress-db`; WebSearch/news/statistics inside MOLEG-API; local ordinances / treaties / administrative-appeal modules until a scenario justifies them; a large local mirror DB. MOLEG-API stays a source loader/normalizer, never a legal-reasoning or insight-generation engine.

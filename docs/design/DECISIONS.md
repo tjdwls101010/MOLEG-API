@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-16 — Full pre-skill gate, de-risked by a tracer-bullet fake skill
+
+Returning to MOLEG-API after the legislative-expert skill integrates it is expensive (repo freeze/handoff plus skill↔API coupling — an API change then forces a skill change), so the API must clear a full gate before stage 2 begins. Decision: do not start skill creation until MOLEG-API passes a full gate (Tier 0–2 plus all justified Tier 3); and because the real skill is too costly to use as the feedback loop, pull consumer feedback forward with a throwaway "fake skill" tracer-bullet E2E across the seven review scenarios to reveal the correct shape of the design-led interfaces (#62/#64/#65…) before building them. Sequence: low-regret first (Tier 0–2, #59/#60/#61) → tracer-bullet → design-led Tier 3 → final gate.
+
 ## 2026-06-16 — Analysis-readiness is hybrid: structuring in MOLEG-API, synthesis in the skill
 
 The consumer-readiness review (`CONSUMER-READINESS-REVIEW.md`) scored institutional-analysis insight-readiness at 2/5: the API loads sources well but leaves all cross-source linking to Claude. Decision: add cheap, high-leverage *structuring/normalization* (structured article references on interpretations/cases, the `lsStmd` 체계도 view, administrative-rule→statute back-references, a multi-statute loading helper) inside MOLEG-API, but keep heavy *synthesis and insight generation* in the skill's reasoning — because normalization is MOLEG-API's job while legal conclusions are not, consistent with the bundle/query-expansion decisions.
