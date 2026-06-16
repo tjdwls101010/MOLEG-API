@@ -438,8 +438,6 @@ def test_compare_law_versions_normalizes_old_and_new_articles():
 
     diff = MolegApi(source).compare_law_versions(
         identity,
-        before="2024-01-01",
-        after="2025-01-01",
         article="제1조",
     )
 
@@ -449,6 +447,21 @@ def test_compare_law_versions_normalizes_old_and_new_articles():
     assert diff.changes[0].before_text == "종전 목적"
     assert diff.changes[0].after_text == "개정 목적"
     assert source.calls[0] == ("service", "oldAndNew", {"ID": "000182"})
+
+
+def test_compare_law_versions_rejects_arbitrary_date_window():
+    identity = LawIdentity(law_id="000182", name="가정폭력방지법", basis="effective")
+    source = FakeSource()
+
+    with pytest.raises(UnsupportedFormatError) as exc_info:
+        MolegApi(source).compare_law_versions(
+            identity,
+            before="2024-01-01",
+            after="2025-01-01",
+        )
+
+    assert "Arbitrary two-date comparison is not supported" in str(exc_info.value)
+    assert source.calls == []
 
 
 def test_find_delegated_rules_normalizes_lower_rule_relationships():

@@ -69,7 +69,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - `get_law(identifier, *, as_of=None, basis="effective", articles=None, include_metadata=True)`
 - `get_article(law_identifier, article, *, as_of=None, basis="effective")`
 - `trace_law_history(law_identifier, *, date_range=None, article=None)`
-- `compare_law_versions(law_identifier, *, before, after, article=None)`
+- `compare_law_versions(law_identifier, *, article=None)`
 - `find_delegated_rules(law_identifier, *, article=None)`
 - `search_administrative_rules(query, *, ministry=None, rule_type=None, issued_on=None)`
 - `get_administrative_rule(identifier, *, articles=None)`
@@ -101,7 +101,7 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.get_law()` retrieves effective/promulgation-basis law text and normalizes articles.
 - `MolegApi.get_article()` accepts human article notation such as `제10조의2` and formats the source `JO` value internally.
 - `MolegApi.trace_law_history()` supports JSON-reachable article/date-range change history and full law-level history through the HTML-only `lsHistory` list table. If the live HTML shape changes, parsing fails explicitly instead of returning partial or misleading history.
-- `MolegApi.compare_law_versions()` normalizes `oldAndNew` before/after article text behind a public comparison interface.
+- `MolegApi.compare_law_versions()` normalizes the source-supplied `oldAndNew` before/after article text behind a public comparison interface and rejects unsupported arbitrary date-window arguments.
 - `MolegApi.find_delegated_rules()` normalizes `lsDelegated` relationships so the caller sees delegated-rule context rather than raw lower-law fields.
 - `MolegApi.search_administrative_rules()` searches current or historical administrative rules through source `admrul`, preserving serial ID, rule ID, rule type, issuing date, effective date, ministry, and current/history status.
 - `MolegApi.get_administrative_rule()` loads administrative-rule text by source serial ID, rule ID, or exact name and returns normalized structured articles when available, while preserving flat source text when the source does not expose article structure.
