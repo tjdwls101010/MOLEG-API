@@ -312,6 +312,7 @@ The runtime contract stays the same: `MOLEG_OC` must be supplied by the environm
 
 ## Error Handling
 
+- `MolegApiError`: base class for MOLEG-API public-interface failures when the skill needs one broad catch path.
 - `AmbiguousLawError`: surface `exc.candidates` or ask for a more precise identifier. Do not select the first result silently.
 - `NoResultError`: treat as no source match for that exact task, not as proof that the legal claim is false.
 - `RateLimitError` / `RetryExhaustedError`: treat as temporary source-access problems.

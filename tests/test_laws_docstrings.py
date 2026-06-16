@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import get_type_hints
 
 import moleg_api
+import moleg_api.errors as error_model
 from moleg_api.laws import MolegApi
 from moleg_api.models import BundleBudget
 
@@ -233,3 +234,24 @@ def test_skill_author_cookbook_vendored_fallback_lists_package_files():
     }
 
     assert documented_files == package_files
+
+
+def test_skill_author_cookbook_error_handling_covers_public_error_exports():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    section = cookbook.split("## Error Handling", 1)[1].split(
+        "## Source Boundaries",
+        1,
+    )[0]
+    public_error_names = {
+        name
+        for name, value in vars(error_model).items()
+        if (
+            isinstance(value, type)
+            and issubclass(value, Exception)
+            and value.__module__ == error_model.__name__
+            and name in moleg_api.__all__
+        )
+    }
+
+    assert public_error_names
+    assert public_error_names <= set(re.findall(r"`([A-Za-z][A-Za-z0-9_]+)`", section))
