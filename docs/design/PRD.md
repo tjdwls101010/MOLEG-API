@@ -43,6 +43,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 21. As a legislative-expert skill, I want a staged legal context bundle, so that I can load statutes, delegations, administrative rules, annex/form candidates, interpretations, cases, Constitutional Court decisions, ambiguity records, and WebSearch gaps without memorizing source call order.
 22. As a legislative-expert skill, I want clear error types for no result, ambiguity, unsupported format, source API error, parse failure, and retry exhaustion, so that I can decide whether to ask the user, retry, or fall back.
 23. As a legislative-expert skill, I want guidance on when to use WebSearch instead, so that latest social context is not incorrectly searched in MOLEG.
+24. As a legislative-expert skill, I want normalized result objects to serialize without raw source payloads by default, so that I can place legal context into Claude prompts without wasting budget on endpoint-shaped data.
 
 ## Implementation Decisions
 
@@ -62,6 +63,7 @@ Completeness means covering the legal-source paths a legislative expert repeated
 - Keep noisy or expensive detail behind explicit loaders or `DeferredLookup` records. Candidate lists and context bundles should reveal what may matter without automatically spending context on every source body.
 - A context bundle is an entry point, not a maximal answer object. It should load high-leverage anchors and bounded candidates, then leave selective follow-up calls visible to Claude.
 - Annex/form body loading uses law.go.kr text-export endpoints for selected law and administrative-rule candidates. Direct HWP/PDF parsing remains outside the first body-loading interface.
+- MOLEG-API is distributed as the `moleg-api` Python package. Public model dataclasses serialize through `to_dict(include_raw=False)` and `to_json_string(include_raw=False)`, omitting `raw` payloads recursively by default.
 
 ## Public Interface Candidates
 
@@ -115,6 +117,8 @@ Names may change to match code style, but the interface principle should not: on
 - `MolegApi.load_legal_context_bundle()` composes the task-level interfaces into a staged bundle for Claude, with loaded statute/article/delegation context, bounded administrative-rule, annex/form, interpretation, and judicial candidates, deferred full-text lookups, ambiguity records, and structured WebSearch gaps.
 - `LawGoKrClient` is the live JSON source adapter and reads `MOLEG_OC` from the environment.
 - `LawGoKrClient` performs bounded retries for transient law.go.kr failures and raises `RateLimitError` or `RetryExhaustedError` instead of collapsing temporary source-access failures into legal no-result states.
+- Public model dataclasses expose recursive `to_dict()` and `to_json_string()` serialization. `raw` source payloads are omitted by default and included only when `include_raw=True`.
+- `pyproject.toml` defines the distributable `moleg-api` package metadata; `docs/SKILL-AUTHOR-COOKBOOK.md` documents installation, canonical call sequences, serialization guidance, vendored fallback, and error handling for the future skill author.
 - Normal tests use fake adapters; `tests/test_live_smoke.py` and `tests/test_live_e2e_scenarios.py` are marked `live` and skip unless `MOLEG_OC` exists. Smoke tests prove representative source families are callable; e2e scenarios prove legislative-expert workflows through public `MolegApi` methods.
 
 ## Out of Scope

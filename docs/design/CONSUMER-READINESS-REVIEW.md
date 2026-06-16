@@ -29,7 +29,7 @@ Severities are post-verification. `file:line` is the verified evidence location.
 
 ### Tier 0 — Foundation (does the skill even have a callable seam?)
 
-- **T0.1 Invocation & serialization seam is undefined (P1).** No MCP server, no CLI, no package metadata ([pyproject.toml](../../pyproject.toml) holds only pytest config), and no serialization (`to_dict`/`__str__`/JSON) on the ~40 frozen dataclasses ([models.py](../../moleg_api/models.py)). The consumer is an LLM, but the return type is a Python object graph with embedded `raw` dicts. Decision: distribute as a **PyPI package** the skill imports, add a **serialization layer** (the real seam), and ship a **skill-author cookbook**; document a vendored fallback for sandboxes without network `pip`.
+- **T0.1 Invocation & serialization seam (P1).** #50 adds package metadata, recursive `to_dict(include_raw=False)` / `to_json_string()` on public model dataclasses, and `docs/SKILL-AUTHOR-COOKBOOK.md`. The consumer can now import MOLEG-API as a package and serialize normalized results without carrying large `raw` payloads by default; PyPI publishing itself remains a human release step.
 
 ### Tier 1 — Correctness / contract (wrong answers, silent failure)
 
@@ -71,7 +71,7 @@ All themes are published as 2026-06-16 GitHub issues, tracked under umbrella **#
 
 | Theme | Issue | Type |
 |---|---|---|
-| T0.1 serialization + PyPI + cookbook | #50 | HITL |
+| T0.1 serialization + PyPI + cookbook | #50 | HITL release step after implementation |
 | T1.1 `get_law(articles)` first-article bug | #51 | bug, AFK |
 | T1.2 structured candidates on `AmbiguousLawError` | #52 | AFK |
 | T1.3 identity string aliasing | #53 | bug, AFK |

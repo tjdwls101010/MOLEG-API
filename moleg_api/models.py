@@ -2,11 +2,63 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Literal
 
 
 Basis = Literal["effective", "promulgated"]
+
+
+def _model_to_dict(self: Any, *, include_raw: bool = False) -> dict[str, Any]:
+    return _serialize_dataclass(self, include_raw=include_raw)
+
+
+def _model_to_json_string(self: Any, *, include_raw: bool = False) -> str:
+    return json.dumps(
+        self.to_dict(include_raw=include_raw),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _serialize_dataclass(value: Any, *, include_raw: bool) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for item in fields(value):
+        if item.name == "raw" and not include_raw:
+            continue
+        data[item.name] = _serialize_value(getattr(value, item.name), include_raw=include_raw)
+    return data
+
+
+def _serialize_value(value: Any, *, include_raw: bool) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return _serialize_dataclass(value, include_raw=include_raw)
+    if isinstance(value, list):
+        return [_serialize_value(item, include_raw=include_raw) for item in value]
+    if isinstance(value, tuple):
+        return [_serialize_value(item, include_raw=include_raw) for item in value]
+    if isinstance(value, set):
+        return [_serialize_value(item, include_raw=include_raw) for item in value]
+    if isinstance(value, dict):
+        return {
+            _serialize_key(key): _serialize_value(item, include_raw=include_raw)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _serialize_key(key: Any) -> str | int | float | bool | None:
+    if isinstance(key, str | int | float | bool) or key is None:
+        return key
+    return str(key)
+
+
+def _install_serialization_methods() -> None:
+    for value in list(globals().values()):
+        if isinstance(value, type) and value.__module__ == __name__ and is_dataclass(value):
+            setattr(value, "to_dict", _model_to_dict)
+            setattr(value, "to_json_string", _model_to_json_string)
 
 
 @dataclass(frozen=True)
@@ -451,3 +503,6 @@ class LegalContextBundle:
     ambiguities: list[Ambiguity] = field(default_factory=list)
     gaps: list[ContextGap] = field(default_factory=list)
     source_notes: list[str] = field(default_factory=list)
+
+
+_install_serialization_methods()

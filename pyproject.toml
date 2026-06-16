@@ -1,3 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moleg-api"
+version = "0.1.0"
+description = "Task-level Python interface for loading Korean legal sources from law.go.kr"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  {name = "MOLEG-API maintainers"},
+]
+keywords = [
+  "korea",
+  "law",
+  "legislation",
+  "moleg",
+  "law.go.kr",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+]
+test = [
+  "pytest>=8,<9",
+]
+
+[tool.setuptools.packages.find]
+include = ["moleg_api*"]
+
+[tool.setuptools.package-data]
+moleg_api = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

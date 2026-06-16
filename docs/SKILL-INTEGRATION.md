@@ -4,6 +4,8 @@ This document describes how the future legislative-expert skill should use MOLEG
 
 The intended user is Claude with a legislative-expert skill loaded. MOLEG-API should therefore return normalized legal context that can be inserted into reasoning, citations, and follow-up calls, not raw endpoint payloads that force the skill prompt to memorize law.go.kr trivia.
 
+For package installation, serialization examples, vendored fallback, and skill-runtime error handling, use `docs/SKILL-AUTHOR-COOKBOOK.md`.
+
 ## Source Responsibilities
 
 Use `congress-db` for National Assembly facts:
