@@ -242,6 +242,10 @@ class AdministrativeRuleIdentity:
     ministry_code: str | None = None
     current_status: str | None = None
     revision_type: str | None = None
+    source_law_id: str | None = None
+    source_law_name: str | None = None
+    source_article: str | None = None
+    source_article_title: str | None = None
     raw_keys: dict[str, Any] = field(default_factory=dict)
 
 
@@ -262,6 +266,10 @@ class AdministrativeRuleArticleText:
     text: str
     title: str | None = None
     effective_date: str | None = None
+    source_law_id: str | None = None
+    source_law_name: str | None = None
+    source_article: str | None = None
+    source_article_title: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 

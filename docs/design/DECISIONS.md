@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-17 — Administrative-rule back-references require explicit source metadata
+
+The `admrul` catalog/live samples do not expose a stable standard back-reference field, while some administrative-rule prose can mention legal bases inside body/change-reason text. Decision: MOLEG-API exposes `source_law_id`, `source_law_name`, `source_article`, and `source_article_title` only from explicit delegation/authorization metadata fields, including explicitly named basis fields such as `위임근거`, and never by body parsing or reverse lookup; `None` means unknown in the source payload, not proof that no delegation exists.
+
 ## 2026-06-17 — Institutional-system loading composes explicit statutes, not inferred 제도 reasoning
 
 The multi-statute 제도 helper could either infer which statutes form an institution or compose a statute set the skill already selected. MOLEG-API chooses the latter: `load_institutional_system()` loads explicit statute identities, law structures, delegations, and bounded candidates/deferred lookups, while relationship reasoning, primary-statute judgment, and full legal-authority detail loading remain in the skill or later eager-loading slices.
