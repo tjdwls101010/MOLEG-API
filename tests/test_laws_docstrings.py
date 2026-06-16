@@ -1,3 +1,4 @@
+import ast
 import inspect
 import re
 from pathlib import Path
@@ -211,6 +212,15 @@ def test_skill_author_cookbook_method_examples_are_public_moleg_api_methods():
 
     assert documented_methods
     assert documented_methods <= public_methods
+
+
+def test_skill_author_cookbook_python_examples_are_syntax_valid():
+    cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
+    python_blocks = re.findall(r"```python\n(.*?)\n```", cookbook, re.DOTALL)
+
+    assert python_blocks
+    for index, block in enumerate(python_blocks, start=1):
+        ast.parse(block, filename=f"docs/SKILL-AUTHOR-COOKBOOK.md python block {index}")
 
 
 def test_skill_author_cookbook_vendored_fallback_lists_package_files():
