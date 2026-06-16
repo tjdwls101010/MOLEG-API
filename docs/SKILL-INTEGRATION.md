@@ -82,7 +82,7 @@ Do not treat unused law.go.kr endpoints as missing context. If a source is optio
 
 ## Context Bundle
 
-The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated context next, administrative-rule and annex/form candidates when attached material may matter, interpretation and judicial context as bounded candidates with explicit follow-up detail loading, and WebSearch gaps for latest social context.
+The bundle contract for Claude is in `docs/design/LEGAL-CONTEXT-BUNDLE.md`. `MolegApi.load_legal_context_bundle()` implements staged loading: statutes/articles first, delegated context next, administrative-rule and annex/form candidates when attached material may matter, conditional top-ranked interpretation/case/Constitutional Court detail when the question asks for legal meaning, application, precedent, or constitutional-risk analysis, deferred follow-up handles for the remaining candidates, and WebSearch gaps for latest social context.
 
 ## Expected Public Interfaces
 
@@ -108,7 +108,7 @@ These names may change as implementation settles, but the future skill should ex
 - `MolegApi.expand_legal_query()`
 - `MolegApi.load_legal_context_bundle()`
 
-These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`; selected bodies load through `get_annex_form_body()` text-export calls rather than direct HWP/PDF parsing. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels; the implementation normalizes live `Expc.expc` and `CgmExpc.cgmExpc` list wrappers so Claude does not need to know those source shapes. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, AI search surfaces, and annex/form follow-up recommendations as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, and WebSearch gaps.
+These interfaces are implemented across the initial core slices. Administrative-rule search uses source `admrul` but exposes `issued_on` rather than `as_of` because the catalog filter is 발령일자, not a true effective-date basis. Annex/form search uses `licbyl` and `admbyl` internally while exposing task terms such as `source`, `search_scope`, and `annex_type`; selected bodies load through `get_annex_form_body()` text-export calls rather than direct HWP/PDF parsing. Interpretation search uses official `expc` and registry-backed ministry `*CgmExpc` targets while preserving source authority labels; the implementation normalizes live `Expc.expc` and `CgmExpc.cgmExpc` list wrappers so Claude does not need to know those source shapes. Case search uses `prec`; Constitutional Court decision search uses `detc`. Query expansion uses legal terms, everyday terms, related terms/articles/laws, AI search surfaces, and annex/form follow-up recommendations as planning hints only. The context bundle composes those interfaces into one staged loading surface for Claude, while preserving deferred lookups, ambiguities, WebSearch gaps, and conditionally loaded interpretation/judicial detail when the first bundle needs it.
 
 ## Answering Discipline For The Skill
 
@@ -119,4 +119,4 @@ These interfaces are implemented across the initial core slices. Administrative-
 - Move to WebSearch for latest non-legal facts instead of forcing MOLEG-API to answer them.
 - When annex/form candidates appear, mention them as possible operative attached material unless the answer has actually inspected the selected body through `get_annex_form_body()` or another authoritative source.
 - Treat `expand_legal_query()` output as candidate planning context. It can suggest terms, laws, articles, and WebSearch follow-ups, but it is not a source to cite as final authority.
-- Treat `load_legal_context_bundle()` as source loading, not legal reasoning. Claude still decides what each loaded source means and which deferred lookups to run.
+- Treat `load_legal_context_bundle()` as source loading, not legal reasoning. Claude still decides what each loaded source means and which deferred lookups to run; eager-loaded interpretation/case/Constitutional Court detail is a bounded first pass, not an exhaustive authority survey.

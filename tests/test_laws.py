@@ -1762,19 +1762,255 @@ def test_load_legal_context_bundle_stages_question_context():
     assert bundle.candidates.annex_forms[0].identity.title == "무단방치 자동차 처리 기준"
     assert bundle.candidates.annex_forms[0].identity.source_target == "licbyl"
     assert bundle.candidates.annex_forms[1].identity.source_target == "admbyl"
-    for unloaded_field in (
-        "administrative_rules",
-        "interpretations",
-        "cases",
-        "constitutional_decisions",
-        "histories",
-        "diffs",
-    ):
+    assert bundle.loaded.interpretations == []
+    assert bundle.loaded.cases == []
+    assert bundle.loaded.constitutional_decisions == []
+    for unloaded_field in ("administrative_rules", "histories", "diffs"):
         assert not hasattr(bundle.loaded, unloaded_field)
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     assert bundle.gaps[0].kind == "websearch_required"
     assert bundle.gaps[0].recommended_interface == "websearch"
+
+
+def test_load_legal_context_bundle_eager_loads_detail_for_legal_meaning_question():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "개인정보 보호법 동의 해석"},
+                        {"법령해석례일련번호": "101", "안건명": "개인정보 보호법 처리 해석"},
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "200", "사건명": "개인정보 보호법 손해배상"},
+                        {"판례일련번호": "201", "사건명": "정보통신망 사건"},
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "300", "사건명": "개인정보 보호법 위헌확인"},
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {
+                "expc": {
+                    "법령해석례일련번호": "100",
+                    "안건명": "개인정보 보호법 동의 해석",
+                    "질의요지": "동의의 의미는 무엇인가?",
+                    "회답": "정보주체의 명확한 의사표시를 뜻한다.",
+                    "이유": "문언과 체계를 함께 본다.",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "200",
+                    "사건명": "개인정보 보호법 손해배상",
+                    "판례내용": "개인정보 처리와 손해배상에 관한 판례 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "300",
+                    "사건명": "개인정보 보호법 위헌확인",
+                    "전문": "개인정보 자기결정권과 과잉금지원칙에 관한 결정 전문",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 동의의 의미와 해석",
+        budget="standard",
+    )
+
+    assert bundle.loaded.interpretations[0].identity.interpretation_id == "100"
+    assert bundle.loaded.cases[0].identity.decision_id == "200"
+    assert bundle.loaded.constitutional_decisions[0].identity.decision_id == "300"
+    assert any("Eager detail loading triggered" in note for note in bundle.source_notes)
+    deferred_ids = {item.filters.get("id") for item in bundle.deferred}
+    assert "100" not in deferred_ids
+    assert "200" not in deferred_ids
+    assert "300" not in deferred_ids
+    assert "101" in deferred_ids
+    assert source.calls[-3:] == [
+        ("service", "expc", {"ID": "100"}),
+        ("service", "prec", {"ID": "200"}),
+        ("service", "detc", {"ID": "300"}),
+    ]
+
+
+def test_load_legal_context_bundle_eager_loads_broad_constitutional_scan():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "300", "사건명": "표현의 자유 제한 위헌확인"},
+                        {"헌재결정례일련번호": "301", "사건명": "표현의 자유 과잉금지원칙"},
+                        {"헌재결정례일련번호": "302", "사건명": "헌법소원 기타 사건"},
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {
+                "detc": {
+                    "헌재결정례일련번호": "300",
+                    "사건명": "표현의 자유 제한 위헌확인",
+                    "전문": "표현의 자유 제한에 관한 결정 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "301",
+                    "사건명": "표현의 자유 과잉금지원칙",
+                    "전문": "과잉금지원칙 판단에 관한 결정 전문",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "표현의 자유 관점에서 위헌인가",
+        budget="broad",
+    )
+
+    assert [text.identity.decision_id for text in bundle.loaded.constitutional_decisions] == [
+        "300",
+        "301",
+    ]
+    deferred_ids = {item.filters.get("id") for item in bundle.deferred}
+    assert "302" in deferred_ids
+    assert source.calls[-2:] == [
+        ("service", "detc", {"ID": "300"}),
+        ("service", "detc", {"ID": "301"}),
+    ]
+
+
+def test_load_legal_context_bundle_keeps_detail_deferred_for_narrow_lookup():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "제10조 관련 법령해석"},
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "200", "사건명": "제10조 관련 판례"},
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {"헌재결정례일련번호": "300", "사건명": "제10조 관련 결정"},
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle("제10조", budget="standard")
+
+    assert bundle.loaded.interpretations == []
+    assert bundle.loaded.cases == []
+    assert bundle.loaded.constitutional_decisions == []
+    assert any(item.interface == "get_interpretation" for item in bundle.deferred)
+    assert any(item.interface == "get_case" for item in bundle.deferred)
+    assert any(item.interface == "get_constitutional_decision" for item in bundle.deferred)
+    assert all(call[0] != "service" or call[1] not in {"expc", "prec", "detc"} for call in source.calls)
+
+
+def test_load_legal_context_bundle_keeps_failed_eager_detail_as_deferred():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "개인정보 보호법 동의 해석"},
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {"Law": "일치하는 법령해석례가 없습니다.  법령해석례명을 확인하여 주십시오."},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "개인정보 보호법 동의의 의미",
+        budget="standard",
+    )
+
+    assert bundle.loaded.interpretations == []
+    assert any("Eager interpretation detail load skipped" in note for note in bundle.source_notes)
+    assert any(
+        item.interface == "get_interpretation" and item.filters.get("id") == "100"
+        for item in bundle.deferred
+    )
 
 
 def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():

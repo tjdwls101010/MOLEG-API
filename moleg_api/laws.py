@@ -119,6 +119,60 @@ BUNDLE_BUDGETS: dict[str, dict[str, int]] = {
     },
 }
 
+BUNDLE_EAGER_DETAIL_LIMITS: dict[str, dict[str, int]] = {
+    "minimal": {
+        "interpretations": 0,
+        "cases": 0,
+        "constitutional_decisions": 0,
+    },
+    "standard": {
+        "interpretations": 1,
+        "cases": 1,
+        "constitutional_decisions": 1,
+    },
+    "broad": {
+        "interpretations": 2,
+        "cases": 2,
+        "constitutional_decisions": 2,
+    },
+}
+
+BUNDLE_EAGER_TEXT_CHAR_LIMITS = {
+    "minimal": 0,
+    "standard": 30_000,
+    "broad": 80_000,
+}
+
+BUNDLE_LEGAL_MEANING_KEYWORDS = (
+    "의미",
+    "뜻",
+    "해석",
+    "법령해석",
+    "어떻게 보아야",
+)
+
+BUNDLE_APPLICATION_KEYWORDS = (
+    "적용",
+    "요건",
+    "조건",
+    "판례",
+    "사례",
+    "분쟁",
+    "책임",
+)
+
+BUNDLE_CONSTITUTIONAL_KEYWORDS = (
+    "위헌",
+    "헌법",
+    "기본권",
+    "평등",
+    "과잉금지원칙",
+    "비례",
+    "표현의 자유",
+    "적법",
+    "정당성",
+)
+
 ANNEX_FORM_TARGETS = {
     "law": "licbyl",
     "administrative_rule": "admbyl",
@@ -1163,6 +1217,9 @@ class MolegApi:
         loaded_laws: list[LawText] = []
         loaded_articles: list[ArticleText] = []
         loaded_delegations: list[DelegationGraph] = []
+        loaded_interpretations: list[InterpretationText] = []
+        loaded_cases: list[JudicialDecisionText] = []
+        loaded_constitutional_decisions: list[JudicialDecisionText] = []
         query_expansion: LegalQueryExpansion | None = None
         law_candidates: list[LawIdentity] = []
         administrative_candidates: list[AdministrativeRuleHit] = []
@@ -1170,6 +1227,7 @@ class MolegApi:
         interpretation_candidates: list[InterpretationHit] = []
         case_candidates: list[JudicialDecisionHit] = []
         constitutional_candidates: list[JudicialDecisionHit] = []
+        loaded_detail_keys: set[tuple[str | None, str]] = set()
 
         primary_identity: LawIdentity | None = None
         search_query = query
@@ -1366,11 +1424,90 @@ class MolegApi:
                 ),
             ][:annex_form_limit]
 
-        deferred.extend(deferred_from_candidates(interpretation_candidates, "get_interpretation", "interpretation"))
-        deferred.extend(deferred_from_candidates(case_candidates, "get_case", "case"))
+        eager_detail_limits = bundle_eager_detail_limits(search_query, mode=mode, budget=budget)
+        eager_text_budget = BUNDLE_EAGER_TEXT_CHAR_LIMITS[budget]
+        eager_text_used = 0
+        if any(eager_detail_limits.values()):
+            source_notes.append(
+                "Eager detail loading triggered for "
+                + ", ".join(key for key, value in eager_detail_limits.items() if value)
+                + "."
+            )
+
+        for candidate in ranked_candidates(
+            interpretation_candidates,
+            search_query,
+            limit=eager_detail_limits["interpretations"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_interpretation(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager interpretation detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager interpretation detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_interpretations.append(text)
+            loaded_detail_keys.add(key)
+
+        for candidate in ranked_candidates(
+            case_candidates,
+            search_query,
+            limit=eager_detail_limits["cases"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_case(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager case detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager case detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_cases.append(text)
+            loaded_detail_keys.add(key)
+
+        for candidate in ranked_candidates(
+            constitutional_candidates,
+            search_query,
+            limit=eager_detail_limits["constitutional_decisions"],
+        ):
+            key = candidate_identity_key(candidate)
+            try:
+                text = self.get_constitutional_decision(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Eager constitutional detail load skipped: {exc}")
+                continue
+            text_length = len(text.text)
+            if eager_text_used + text_length > eager_text_budget:
+                source_notes.append("Eager constitutional detail load skipped: text budget exceeded")
+                continue
+            eager_text_used += text_length
+            loaded_constitutional_decisions.append(text)
+            loaded_detail_keys.add(key)
+
         deferred.extend(
             deferred_from_candidates(
-                constitutional_candidates,
+                unloaded_candidates(interpretation_candidates, loaded_detail_keys),
+                "get_interpretation",
+                "interpretation",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(case_candidates, loaded_detail_keys),
+                "get_case",
+                "case",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(constitutional_candidates, loaded_detail_keys),
                 "get_constitutional_decision",
                 "constitutional",
             )
@@ -1392,6 +1529,9 @@ class MolegApi:
                 laws=loaded_laws,
                 articles=loaded_articles,
                 delegations=loaded_delegations,
+                interpretations=loaded_interpretations,
+                cases=loaded_cases,
+                constitutional_decisions=loaded_constitutional_decisions,
             ),
             candidates=CandidateContext(
                 query_expansion=query_expansion,
@@ -1966,6 +2106,47 @@ def bundle_limits(budget: str) -> dict[str, int]:
     return BUNDLE_BUDGETS[budget]
 
 
+def bundle_eager_detail_limits(
+    query: str | None,
+    *,
+    mode: str,
+    budget: str,
+) -> dict[str, int]:
+    try:
+        budget_limits = BUNDLE_EAGER_DETAIL_LIMITS[budget]
+    except KeyError as exc:
+        raise UnsupportedFormatError(f"Unsupported legal context bundle budget: {budget}") from exc
+    limits = {key: 0 for key in budget_limits}
+    intents = bundle_query_intents(query, mode=mode)
+    if "legal_meaning" in intents:
+        limits["interpretations"] = budget_limits["interpretations"]
+        limits["cases"] = budget_limits["cases"]
+        limits["constitutional_decisions"] = budget_limits["constitutional_decisions"]
+    if "application" in intents:
+        limits["interpretations"] = max(limits["interpretations"], budget_limits["interpretations"])
+        limits["cases"] = max(limits["cases"], budget_limits["cases"])
+    if "constitutional" in intents:
+        limits["constitutional_decisions"] = max(
+            limits["constitutional_decisions"],
+            budget_limits["constitutional_decisions"],
+        )
+    return limits
+
+
+def bundle_query_intents(query: str | None, *, mode: str) -> set[str]:
+    if mode not in ("question", "statute_review"):
+        return set()
+    text = str(query or "")
+    intents: set[str] = set()
+    if any(keyword in text for keyword in BUNDLE_LEGAL_MEANING_KEYWORDS):
+        intents.add("legal_meaning")
+    if any(keyword in text for keyword in BUNDLE_APPLICATION_KEYWORDS):
+        intents.add("application")
+    if any(keyword in text for keyword in BUNDLE_CONSTITUTIONAL_KEYWORDS):
+        intents.add("constitutional")
+    return intents
+
+
 def string_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
@@ -2011,3 +2192,52 @@ def deferred_from_candidates(
             )
         )
     return deferred
+
+
+def ranked_candidates(candidates: list[Any], query: str | None, *, limit: int) -> list[Any]:
+    if limit <= 0:
+        return []
+    terms = significant_query_terms(query)
+    scored = [
+        (candidate_rank_score(candidate, terms), index, candidate)
+        for index, candidate in enumerate(candidates)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [candidate for _, _, candidate in scored[:limit]]
+
+
+def significant_query_terms(query: str | None) -> list[str]:
+    text = str(query or "")
+    return [term for term in text.split() if len(term) >= 2]
+
+
+def candidate_rank_score(candidate: Any, terms: list[str]) -> int:
+    identity = getattr(candidate, "identity", None)
+    haystack = " ".join(
+        str(value or "")
+        for value in (
+            getattr(identity, "title", None),
+            getattr(identity, "case_number", None),
+            getattr(identity, "source_type", None),
+            getattr(identity, "ministry", None),
+        )
+    )
+    return sum(1 for term in terms if term in haystack)
+
+
+def unloaded_candidates(candidates: list[Any], loaded_keys: set[tuple[str | None, str]]) -> list[Any]:
+    return [candidate for candidate in candidates if candidate_identity_key(candidate) not in loaded_keys]
+
+
+def candidate_identity_key(candidate: Any) -> tuple[str | None, str]:
+    identity = getattr(candidate, "identity", None)
+    source_target = getattr(identity, "source_target", None)
+    source_id = (
+        getattr(identity, "interpretation_id", None)
+        or getattr(identity, "decision_id", None)
+        or getattr(identity, "serial_id", None)
+        or getattr(identity, "law_id", None)
+        or getattr(identity, "title", None)
+        or getattr(identity, "name", None)
+    )
+    return (source_target, str(source_id or ""))
