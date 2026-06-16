@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import get_args, get_type_hints
 
 import moleg_api
+import moleg_api.errors as errors
 import moleg_api.models as models
 from moleg_api import (
     Ambiguity,
@@ -30,6 +31,23 @@ def test_public_model_types_are_exported_from_package_root():
 
     assert "Basis" in public_model_names
     missing_exports = sorted(name for name in public_model_names if name not in moleg_api.__all__)
+
+    assert missing_exports == []
+
+
+def test_public_error_types_are_exported_from_package_root():
+    public_error_names = {
+        name
+        for name, value in vars(errors).items()
+        if (
+            isinstance(value, type)
+            and issubclass(value, Exception)
+            and value.__module__ == errors.__name__
+        )
+    }
+
+    assert "MolegApiError" in public_error_names
+    missing_exports = sorted(name for name in public_error_names if name not in moleg_api.__all__)
 
     assert missing_exports == []
 
