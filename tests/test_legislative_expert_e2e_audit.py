@@ -27,6 +27,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_requested_law_not_loaded_guardrail",
         "context_bundle_requested_article_not_loaded_guardrail",
         "context_bundle_article_status_guardrail",
+        "context_bundle_whole_law_article_status_guardrail",
         "context_bundle_delegation_lookup_failure_guardrail",
         "case_search_candidate_detail_guardrail",
         "empty_case_search_absence_guardrail",
@@ -471,6 +472,48 @@ def test_legislative_expert_e2e_audit_preserves_context_bundle_article_status():
     assert "context_bundle_deleted_article_not_current_operational_text" in status.risk_flags
     assert (
         "context_bundle_moved_article_destination_loaded_before_current_substance"
+        in status.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_preserves_whole_law_article_status_guardrails():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    status = by_scenario["context_bundle_whole_law_article_status_guardrail"]
+
+    assert status.status == "needs_more_source_loading"
+    assert status.public_interfaces == ["load_legal_context_bundle", "load_article_context"]
+    assert status.must_have["whole_law_loaded"] is True
+    assert status.must_have["deleted_article_gap_preserved"] is True
+    assert status.must_have["moved_article_gap_preserved"] is True
+    assert status.must_have["movement_followup_preserved"] is True
+    assert status.must_have["deleted_marker_not_operational_text"] is True
+    assert status.must_have["moved_marker_not_operational_text"] is True
+    assert status.must_have["destination_article_present_but_not_chain_verified"] is True
+    assert status.evidence["loaded_law_articles"] == ["제8조", "제9조", "제12조"]
+    assert status.evidence["article_statuses"][0]["is_deleted"] is True
+    assert status.evidence["article_statuses"][1]["moved_to"] == "제12조"
+    assert "deleted_article" in status.evidence["gap_kinds"]
+    assert "moved_article" in status.evidence["gap_kinds"]
+    assert status.evidence["deferred"] == [
+        {
+            "interface": "load_article_context",
+            "query": "자동차관리법 제9조",
+            "filters": {
+                "article": "제9조",
+                "basis": "effective",
+                "law_id": "001747",
+                "moved_to": "제12조",
+            },
+        }
+    ]
+    assert {citation.article for citation in status.citations} == {"제8조", "제9조"}
+    assert "whole_law_deleted_article_is_not_current_operational_text" in status.risk_flags
+    assert (
+        "whole_law_moved_article_requires_article_context_before_current_substance"
         in status.risk_flags
     )
 

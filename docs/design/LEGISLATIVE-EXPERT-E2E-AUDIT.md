@@ -54,6 +54,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Deleted article status guardrail | ready for reasoning | A loaded article marked deleted remains citable as source state but cannot become a current duty, permission, sanction, or procedure. |
 | Moved article status guardrail | ready for reasoning | `load_article_context()` preserves the searched moved article as source state and loads the destination article before current-substance citations. |
 | Context bundle article status guardrail | ready for reasoning | `load_legal_context_bundle()` preserves deleted requested articles as gaps/source state and follows moved requested articles to destination text before current-substance citations. |
+| Context bundle whole-law article status guardrail | needs more source loading | Whole-law `load_legal_context_bundle()` preserves deleted/moved article rows as source state and emits gaps plus a `load_article_context()` follow-up before moved-marker current-substance claims. |
 | Query expansion candidate authority guardrail | needs more source loading | Legal-term, related-law, and AI-search candidates remain planning context; no citation is available until selected law/article text is loaded. |
 | Law-search candidate detail guardrail | needs more source loading | Law-name search hits remain identity candidates; no law text, article wording, current duty, sanction, or procedure is citable until selected law/article text is loaded. |
 | Empty law-search absence guardrail | needs more source loading | A zero-hit scoped law search can be disclosed with its query/effective-basis scope, but cannot become a claim that no current law or legal basis exists. |
@@ -94,7 +95,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 
 ## Current Evidence
 
-Last run on 2026-06-17:
+Last run on 2026-06-18:
 
 ```bash
 python3 scripts/legislative_expert_e2e_audit.py
@@ -110,13 +111,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 59 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 60 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 53 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 54 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 54 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 55 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 
@@ -138,6 +139,7 @@ tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 - A nested-article-unit scenario is a success when `ArticleText.text` preserves source 항, 호, and 목 text and the skill is forbidden from answering definition/application-target questions from `조문제목` or top-level `조문내용` alone.
 - A deleted-article scenario is a success when `ArticleText.is_deleted` and related status metadata prevent the skill from treating `제N조 삭제` as operative current text.
 - A moved-article scenario is a success when `ArticleText.moved_to` is preserved as source state and `load_article_context()` loads the destination article before any current-substance citation.
+- A whole-law context-bundle article-status scenario is a success when deleted/moved rows in `LawText.articles` stay loaded as source state while gaps and `load_article_context()` deferred follow-ups prevent moved markers from becoming current-substance claims.
 - A query-expansion scenario is a success when law/term/related-article candidates produce follow-up searches but zero usable citations until selected source text is loaded.
 - A loaded before/after amendment-delta scenario is a success when `compare_law_versions()` supports a selected article wording-delta claim but cannot become amendment reason, legislative intent, full bill purpose, or exhaustive changed-provision coverage.
 - A law-search scenario is a success when `search_laws()` preserves identity candidates but produces zero usable law-text or article citations until selected source text is loaded.

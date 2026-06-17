@@ -3215,6 +3215,41 @@ def institutional_law_payload(
     }
 
 
+def law_payload_with_deleted_and_moved_articles(law_id: str, name: str, mst: str):
+    return {
+        "eflaw": {
+            "기본정보": {
+                "법령ID": law_id,
+                "법령명_한글": name,
+                "법령일련번호": mst,
+                "시행일자": "20260101",
+            },
+            "조문": {
+                "조문단위": [
+                    {
+                        "조문번호": "8",
+                        "조문제목": "삭제",
+                        "조문내용": "제8조 삭제 <2025. 1. 1.>",
+                        "조문제개정유형": "삭제",
+                    },
+                    {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                    {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차 소유자는 등록하여야 한다.",
+                    },
+                ]
+            },
+        }
+    }
+
+
 def institutional_structure_payload(law_id: str, name: str, mst: str, child_name: str):
     return {
         "lsStmd": {
@@ -3587,6 +3622,59 @@ def test_load_institutional_system_preserves_law_structure_load_failures():
     assert [(item.query, item.filters) for item in structure_deferred] == [
         ("전자금융거래법", {"depth": 1, "law_id": "100001"})
     ]
+
+
+def test_load_institutional_system_marks_whole_law_deleted_and_moved_articles_as_source_state():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            institutional_interpretation_search_payload("자동차관리법"),
+            institutional_case_search_payload("자동차관리법"),
+            institutional_constitutional_search_payload("자동차관리법"),
+            institutional_law_annex_payload("자동차관리법"),
+            institutional_admin_annex_payload("자동차관리법"),
+        ],
+        service_payloads=[
+            law_payload_with_deleted_and_moved_articles("001747", "자동차관리법", "270001"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system([identity], budget="minimal")
+
+    assert [article.article for article in bundle.loaded.laws[0].articles] == [
+        "제8조",
+        "제9조",
+        "제12조",
+    ]
+    assert bundle.loaded.laws[0].articles[0].is_deleted is True
+    assert bundle.loaded.laws[0].articles[1].moved_to == "제12조"
+    status_gaps = [
+        gap for gap in bundle.gaps if gap.kind in {"deleted_article", "moved_article"}
+    ]
+    assert [(gap.kind, gap.query, gap.recommended_interface) for gap in status_gaps] == [
+        ("deleted_article", "자동차관리법 제8조", "trace_law_history"),
+        ("moved_article", "자동차관리법 제9조", "load_article_context"),
+    ]
+    movement_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "load_article_context" and item.source_type == "law_article"
+    ]
+    assert [(item.query, item.filters) for item in movement_deferred] == [
+        (
+            "자동차관리법 제9조",
+            {
+                "article": "제9조",
+                "basis": "effective",
+                "law_id": "001747",
+                "moved_to": "제12조",
+            },
+        )
+    ]
+    assert any("moved article source state" in note for note in bundle.source_notes)
 
 
 def test_load_institutional_system_preserves_statute_resolution_source_access_failures():
@@ -5253,6 +5341,70 @@ def test_load_legal_context_bundle_follows_moved_requested_article_to_destinatio
         ("service", "eflawjosub", {"ID": "001747", "JO": "001200"}),
         ("service", "lsDelegated", {"ID": "001747"}),
     ]
+
+
+def test_load_legal_context_bundle_marks_whole_law_deleted_and_moved_articles_as_source_state():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            law_payload_with_deleted_and_moved_articles("001747", "자동차관리법", "270001"),
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 현행 조문",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        mode="statute_review",
+        budget="minimal",
+    )
+
+    assert [article.article for article in bundle.loaded.laws[0].articles] == [
+        "제8조",
+        "제9조",
+        "제12조",
+    ]
+    assert bundle.loaded.laws[0].articles[0].is_deleted is True
+    assert bundle.loaded.laws[0].articles[1].moved_to == "제12조"
+    status_gaps = [
+        gap for gap in bundle.gaps if gap.kind in {"deleted_article", "moved_article"}
+    ]
+    assert [(gap.kind, gap.query, gap.recommended_interface) for gap in status_gaps] == [
+        ("deleted_article", "자동차관리법 제8조", "trace_law_history"),
+        ("moved_article", "자동차관리법 제9조", "load_article_context"),
+    ]
+    movement_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "load_article_context" and item.source_type == "law_article"
+    ]
+    assert [(item.query, item.filters) for item in movement_deferred] == [
+        (
+            "자동차관리법 제9조",
+            {
+                "article": "제9조",
+                "basis": "effective",
+                "law_id": "001747",
+                "moved_to": "제12조",
+            },
+        )
+    ]
+    assert any("deleted article source state" in note for note in bundle.source_notes)
+    assert any("moved article source state" in note for note in bundle.source_notes)
 
 
 def test_load_legal_context_bundle_preserves_primary_law_load_failures():

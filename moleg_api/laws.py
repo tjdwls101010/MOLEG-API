@@ -2152,6 +2152,14 @@ class MolegApi:
                         source_notes,
                         query=identity.name,
                     )
+                    append_whole_law_article_status_gaps(
+                        law_text,
+                        gaps,
+                        deferred,
+                        source_notes,
+                        as_of=reference_date,
+                        basis="effective",
+                    )
                 except MolegApiError as exc:
                     source_notes.append(f"Law load skipped for {identity.name}: {exc}")
                     append_requested_law_load_gap(
@@ -2759,6 +2767,14 @@ class MolegApi:
                         gaps,
                         source_notes,
                         query=search_query or primary_identity.name,
+                    )
+                    append_whole_law_article_status_gaps(
+                        law_text,
+                        gaps,
+                        deferred,
+                        source_notes,
+                        as_of=reference_date,
+                        basis="effective",
                     )
                 except MolegApiError as exc:
                     source_notes.append(f"Primary law load skipped: {exc}")
@@ -3920,6 +3936,53 @@ def append_moved_destination_deferred(
             filters=article_lookup_filters(identity, article, as_of=as_of, basis=basis),
         )
     )
+
+
+def append_whole_law_article_status_gaps(
+    law_text: LawText,
+    gaps: list[ContextGap],
+    deferred: list[DeferredLookup],
+    source_notes: list[str],
+    *,
+    as_of: str | None,
+    basis: Basis,
+) -> None:
+    for article in law_text.articles:
+        if article.is_deleted:
+            append_deleted_article_gap(article, gaps, source_notes)
+            continue
+        if not article.moved_to:
+            continue
+
+        query = f"{article.identity.name} {article.article}".strip()
+        gaps.append(
+            ContextGap(
+                kind="moved_article",
+                reason=(
+                    f"{query} is marked moved to {article.moved_to}; "
+                    "do not treat the movement marker as current article substance."
+                ),
+                query=query,
+                recommended_interface="load_article_context",
+            )
+        )
+        filters = article_lookup_filters(article.identity, article.article, as_of=as_of, basis=basis)
+        filters["moved_to"] = article.moved_to
+        deferred.append(
+            DeferredLookup(
+                interface="load_article_context",
+                query=query,
+                reason=(
+                    "Load moved-article context so the destination article is established "
+                    "before making a current article-substance claim."
+                ),
+                source_type="law_article",
+                filters=filters,
+            )
+        )
+        source_notes.append(
+            f"{query} is a moved article source state to {article.moved_to}, not operative text."
+        )
 
 
 def append_deleted_administrative_rule_article_gap(

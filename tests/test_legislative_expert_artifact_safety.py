@@ -365,6 +365,29 @@ def test_context_bundle_article_status_cites_destination_not_deleted_or_moved_ma
     )
 
 
+def test_whole_law_context_bundle_article_status_requires_followup_before_operational_claim():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["context_bundle_whole_law_article_status_guardrail"]
+
+    assert readiness.status == "needs_more_source_loading"
+    assert readiness.evidence["article_statuses"][0]["is_deleted"] is True
+    assert readiness.evidence["article_statuses"][1]["moved_to"] == "제12조"
+    assert "deleted_article" in readiness.evidence["gap_kinds"]
+    assert "moved_article" in readiness.evidence["gap_kinds"]
+    assert readiness.evidence["deferred"][0]["interface"] == "load_article_context"
+    assert {citation.authority for citation in readiness.citations} == {
+        "deleted article marker",
+        "moved article marker",
+    }
+    assert "whole_law_deleted_article_is_not_current_operational_text" in readiness.risk_flags
+    assert (
+        "whole_law_moved_article_requires_article_context_before_current_substance"
+        in readiness.risk_flags
+    )
+
+
 def test_query_expansion_candidates_are_not_promoted_to_source_citations():
     readiness = {
         report.scenario: report
