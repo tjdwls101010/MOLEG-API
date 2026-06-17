@@ -2462,6 +2462,7 @@ class MolegApi:
         loaded_candidate_keys: set[tuple[str | None, str]] = set()
         administrative_candidates = list(bundle.candidates.administrative_rules)
         annex_form_candidates = list(bundle.candidates.annex_forms)
+        delegated_scope = delegated_criteria_target_scope(bundle)
 
         if explicit_query:
             query_administrative_candidates = dedupe_candidates(
@@ -2553,6 +2554,12 @@ class MolegApi:
                 deferred.extend(rule_context.deferred)
                 source_notes.extend(rule_context.source_notes)
                 rule_text = administrative_rule_text_from_current_articles(rule_context)
+                rule_text = filter_administrative_rule_text_to_delegated_scope(
+                    rule_text,
+                    delegated_scope,
+                    gaps,
+                    source_notes,
+                )
                 if rule_text.articles:
                     loaded_administrative_rules.append(rule_text)
                 loaded_candidate_keys.add(candidate_identity_key(candidate))
@@ -3709,6 +3716,91 @@ def administrative_rule_text_from_current_articles(
         text=administrative_rule_text_from_articles(current_articles),
         articles=current_articles,
     )
+
+
+def filter_administrative_rule_text_to_delegated_scope(
+    rule: AdministrativeRuleText,
+    scope: dict[str, set[str]],
+    gaps: list[ContextGap],
+    source_notes: list[str],
+) -> AdministrativeRuleText:
+    if not rule.articles or (not scope["law_names"] and not scope["law_ids"]):
+        return rule
+
+    article_states = [
+        (article, administrative_rule_article_source_match_state(article, scope))
+        for article in rule.articles
+    ]
+    matching_articles = [
+        article
+        for article, (match_state, _) in article_states
+        if match_state == "matched"
+    ]
+    if not matching_articles:
+        return rule
+
+    query = delegated_criteria_scope_label(scope)
+    for article, (match_state, source_label) in article_states:
+        if match_state == "matched":
+            continue
+        article_label = article.article or "unlabeled article"
+        if match_state == "unverified":
+            reason = (
+                f"{rule.identity.name} {article_label} was excluded from target delegated criteria "
+                f"because its source-law or source-article reference is missing for {query}."
+            )
+            kind = "delegated_criteria_source_unverified"
+        else:
+            reason = (
+                f"{rule.identity.name} {article_label} was excluded from target delegated criteria "
+                f"because its explicit source reference ({source_label}) does not match {query}."
+            )
+            kind = "delegated_criteria_source_mismatch"
+        gaps.append(
+            ContextGap(
+                kind=kind,
+                reason=reason,
+                query=query,
+                recommended_interface="find_delegated_rules",
+            )
+        )
+        source_notes.append(reason)
+
+    return replace(
+        rule,
+        text=administrative_rule_text_from_articles(matching_articles),
+        articles=matching_articles,
+    )
+
+
+def administrative_rule_article_source_match_state(
+    article: AdministrativeRuleArticleText,
+    scope: dict[str, set[str]],
+) -> tuple[str, str]:
+    reference = {
+        "law_id": article.source_law_id,
+        "law_name": article.source_law_name,
+        "article": comparable_article_label(article.source_article),
+    }
+    if not any(reference.values()):
+        return ("unverified", "missing source reference")
+    source_label = " ".join(
+        part
+        for part in (
+            reference["law_name"] or reference["law_id"] or "unknown law",
+            reference["article"],
+        )
+        if part
+    )
+    if not source_law_matches_scope(reference, scope):
+        return ("mismatch", source_label)
+    if not scope["articles"]:
+        return ("matched", source_label)
+    if not reference["article"]:
+        return ("unverified", source_label)
+    if any(articles_overlap(reference["article"], target_article) for target_article in scope["articles"]):
+        return ("matched", source_label)
+    return ("mismatch", source_label)
 
 
 def matches_bridge(
