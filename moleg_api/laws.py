@@ -2431,6 +2431,13 @@ class MolegApi:
             gaps,
             source_notes,
         )
+        append_delegated_criteria_annex_source_gaps(
+            bundle,
+            loaded_administrative_rules,
+            loaded_annex_forms,
+            gaps,
+            source_notes,
+        )
 
         deferred.extend(
             deferred_from_candidates(
@@ -3545,8 +3552,70 @@ def append_delegated_criteria_source_gaps(
         source_notes.append(reason)
 
 
+def append_delegated_criteria_annex_source_gaps(
+    bundle: LegalContextBundle,
+    administrative_rules: list[AdministrativeRuleText],
+    annex_forms: list[AnnexFormText],
+    gaps: list[ContextGap],
+    source_notes: list[str],
+) -> None:
+    scope = delegated_criteria_annex_target_scope(bundle, administrative_rules)
+    if not annex_forms or (not scope["law_names"] and not scope["law_ids"]):
+        return
+    for annex in annex_forms:
+        match_state, source_label = delegated_criteria_annex_source_match_state(annex, scope)
+        if match_state == "matched":
+            continue
+        query = delegated_criteria_scope_label(scope)
+        if match_state == "unverified":
+            reason = (
+                f"{annex.identity.title} was loaded as delegated criteria, but its "
+                f"source-law or source-rule reference is missing for {query}; inspect "
+                "attached-material metadata before treating it as target operational criteria."
+            )
+            kind = "delegated_criteria_annex_source_unverified"
+        else:
+            reason = (
+                f"{annex.identity.title} was loaded as delegated criteria, but its explicit "
+                f"attached-material source reference ({source_label}) does not match {query}; "
+                "do not cite it as target operational criteria without another source."
+            )
+            kind = "delegated_criteria_annex_source_mismatch"
+        gaps.append(
+            ContextGap(
+                kind=kind,
+                reason=reason,
+                query=query,
+                recommended_interface="search_annex_forms",
+            )
+        )
+        source_notes.append(reason)
+
+
+def delegated_criteria_annex_target_scope(
+    bundle: LegalContextBundle,
+    administrative_rules: list[AdministrativeRuleText],
+) -> dict[str, set[str]]:
+    scope = delegated_criteria_target_scope(bundle)
+    scope["administrative_rule_names"] = set()
+    scope["administrative_rule_ids"] = set()
+    scope["administrative_rule_serial_ids"] = set()
+    for rule in administrative_rules:
+        match_state, _ = delegated_criteria_source_match_state(rule, scope)
+        if match_state != "matched":
+            continue
+        if rule.identity.name:
+            scope["administrative_rule_names"].add(rule.identity.name)
+        if rule.identity.rule_id:
+            scope["administrative_rule_ids"].add(rule.identity.rule_id)
+        if rule.identity.serial_id:
+            scope["administrative_rule_serial_ids"].add(rule.identity.serial_id)
+    return scope
+
+
 def delegated_criteria_target_scope(bundle: LegalContextBundle) -> dict[str, set[str]]:
     law_ids: set[str] = set()
+    law_msts: set[str] = set()
     law_names: set[str] = set()
     articles: set[str] = {
         comparable_article_label(article)
@@ -3556,11 +3625,15 @@ def delegated_criteria_target_scope(bundle: LegalContextBundle) -> dict[str, set
     for law in bundle.loaded.laws:
         if law.identity.law_id:
             law_ids.add(law.identity.law_id)
+        if law.identity.mst:
+            law_msts.add(law.identity.mst)
         if law.identity.name:
             law_names.add(law.identity.name)
     for article in bundle.loaded.articles:
         if article.identity.law_id:
             law_ids.add(article.identity.law_id)
+        if article.identity.mst:
+            law_msts.add(article.identity.mst)
         if article.identity.name:
             law_names.add(article.identity.name)
         if article.article:
@@ -3568,9 +3641,11 @@ def delegated_criteria_target_scope(bundle: LegalContextBundle) -> dict[str, set
     for graph in bundle.loaded.delegations:
         if graph.identity.law_id:
             law_ids.add(graph.identity.law_id)
+        if graph.identity.mst:
+            law_msts.add(graph.identity.mst)
         if graph.identity.name:
             law_names.add(graph.identity.name)
-    return {"law_ids": law_ids, "law_names": law_names, "articles": articles}
+    return {"law_ids": law_ids, "law_msts": law_msts, "law_names": law_names, "articles": articles}
 
 
 def delegated_criteria_scope_label(scope: dict[str, set[str]]) -> str:
@@ -3609,6 +3684,96 @@ def delegated_criteria_source_match_state(
     ):
         return ("matched", administrative_rule_source_reference_label(article_refs))
     return ("mismatch", administrative_rule_source_reference_label(article_refs))
+
+
+def delegated_criteria_annex_source_match_state(
+    annex: AnnexFormText,
+    scope: dict[str, set[str]],
+) -> tuple[str, str]:
+    reference = annex_form_source_reference(annex.identity)
+    if not annex_form_has_related_source_reference(reference):
+        return ("unverified", "missing attached-material source reference")
+    source_label = annex_form_source_reference_label(reference)
+    if annex.identity.source_type == "law":
+        if annex_law_reference_matches_scope(reference, scope):
+            return ("matched", source_label)
+        return ("mismatch", source_label)
+    if annex.identity.source_type == "administrative_rule":
+        if not (
+            scope["administrative_rule_names"]
+            or scope["administrative_rule_ids"]
+            or scope["administrative_rule_serial_ids"]
+        ):
+            return ("unverified", source_label)
+        if annex_administrative_rule_reference_matches_scope(reference, scope):
+            return ("matched", source_label)
+        return ("mismatch", source_label)
+    return ("unverified", source_label)
+
+
+def annex_form_source_reference(identity: AnnexFormIdentity) -> dict[str, str | None]:
+    return {
+        "source_type": identity.source_type,
+        "related_name": identity.related_name,
+        "related_id": identity.related_id,
+        "related_serial_id": identity.related_serial_id,
+    }
+
+
+def annex_form_has_related_source_reference(reference: dict[str, str | None]) -> bool:
+    return bool(
+        reference["related_name"]
+        or reference["related_id"]
+        or reference["related_serial_id"]
+    )
+
+
+def annex_law_reference_matches_scope(
+    reference: dict[str, str | None],
+    scope: dict[str, set[str]],
+) -> bool:
+    return bool(
+        (reference["related_id"] and reference["related_id"] in scope["law_ids"])
+        or (
+            reference["related_serial_id"]
+            and reference["related_serial_id"] in scope["law_msts"]
+        )
+        or (reference["related_name"] and reference["related_name"] in scope["law_names"])
+    )
+
+
+def annex_administrative_rule_reference_matches_scope(
+    reference: dict[str, str | None],
+    scope: dict[str, set[str]],
+) -> bool:
+    return bool(
+        (
+            reference["related_id"]
+            and reference["related_id"] in scope["administrative_rule_ids"]
+        )
+        or (
+            reference["related_serial_id"]
+            and reference["related_serial_id"] in scope["administrative_rule_serial_ids"]
+        )
+        or (
+            reference["related_name"]
+            and reference["related_name"] in scope["administrative_rule_names"]
+        )
+    )
+
+
+def annex_form_source_reference_label(reference: dict[str, str | None]) -> str:
+    parts = [
+        value
+        for value in (
+            reference["source_type"],
+            reference["related_name"],
+            reference["related_id"],
+            reference["related_serial_id"],
+        )
+        if value
+    ]
+    return " ".join(parts) if parts else "missing source reference"
 
 
 def administrative_rule_source_references(rule: AdministrativeRuleText) -> list[dict[str, str | None]]:

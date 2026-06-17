@@ -52,6 +52,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "empty_annex_form_search_absence_guardrail",
         "delegated_criteria_after_followups",
         "delegated_criteria_administrative_rule_article_status_guardrail",
+        "delegated_criteria_annex_source_mismatch_guardrail",
         "delegated_criteria_source_mismatch_guardrail",
         "low_confidence_annex_body_guardrail",
         "as_of_delegation_uses_loaded_article_version_guardrail",
@@ -1197,6 +1198,34 @@ def test_legislative_expert_e2e_audit_preserves_delegated_criteria_rule_article_
     assert (
         "delegated_criteria_moved_administrative_rule_destination_loaded_before_criteria_claim"
         in status.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_blocks_delegated_criteria_annex_source_mismatches():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    mismatch = by_scenario["delegated_criteria_annex_source_mismatch_guardrail"]
+
+    assert mismatch.status == "needs_more_source_loading"
+    assert mismatch.public_interfaces == ["load_delegated_criteria"]
+    assert mismatch.must_have["annex_body_loaded"] is True
+    assert mismatch.must_have["annex_source_mismatch_gap_preserved"] is True
+    assert mismatch.must_have["mismatch_recommends_annex_followup"] is True
+    assert mismatch.must_have["mismatched_annex_not_cited_as_target_criteria"] is True
+    assert {citation.source_type for citation in mismatch.citations} == {
+        "law",
+        "delegation",
+        "administrative_rule",
+    }
+    assert "delegated_criteria_annex_source_mismatch" in mismatch.evidence["gap_kinds"]
+    assert mismatch.evidence["annex_related_sources"][0]["related_name"] == "자동차손해배상 보장법"
+    assert "annex" not in mismatch.evidence["citation_source_types"]
+    assert (
+        "delegated_criteria_annex_source_mismatch_not_target_operational_criteria"
+        in mismatch.risk_flags
     )
 
 

@@ -135,6 +135,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_empty_annex_form_search_absence_guardrail(),
             _audit_delegated_criteria_after_followups(),
             _audit_delegated_criteria_administrative_rule_article_status_guardrail(),
+            _audit_delegated_criteria_annex_source_mismatch_guardrail(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
             _audit_low_confidence_annex_body(),
             _audit_as_of_delegation_uses_loaded_article_version(),
@@ -3868,6 +3869,94 @@ def _audit_delegated_criteria_administrative_rule_article_status_guardrail() -> 
             "gap_kinds": gap_kinds,
             "source_notes": bundle.source_notes,
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
+        },
+    )
+
+
+def _audit_delegated_criteria_annex_source_mismatch_guardrail() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    rule_name = "무단방치 자동차 처리 규정"
+    identity = LawIdentity(law_id="001747", name=law_name, basis="effective", mst="270001")
+    source = ScenarioSource(
+        service_payloads=[
+            law_text_payload(law_name, "001747", "270001", article="제26조", title="자동차의 강제처리"),
+            law_structure_payload(law_name, "001747", "270001", "자동차관리법 시행령"),
+            delegation_payload(law_name, "자동차관리법 시행령", law_id="001747", article="26"),
+            _administrative_rule_detail_payload(),
+        ],
+        search_payloads=[
+            administrative_rule_search_payload(rule_name),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "440000009",
+                        "별표명": "무단방치 자동차 처리 기준",
+                        "관련법령명": "자동차손해배상 보장법",
+                        "관련법령ID": "009999",
+                        "별표종류": "별표",
+                    }
+                ]
+            },
+            {"admbyl": []},
+        ],
+        text_payloads=[
+            "■ 자동차손해배상 보장법 [별표]\n| 구분 | 기준 |\n| 공고 | 7일 |"
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+    annex_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_annex_source_mismatch"
+    ]
+    annex = bundle.loaded.annex_forms[0] if bundle.loaded.annex_forms else None
+    citations = [
+        SourceCitation("law", "eflaw", law_name, "제26조", "current statute"),
+        SourceCitation("delegation", "lsDelegated", "자동차관리법 시행령", "제26조", "delegated rule graph"),
+        SourceCitation("administrative_rule", "admrul", rule_name, "제2조", "loaded administrative rule"),
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_annex_source_mismatch_guardrail",
+        question="로드된 별표 body가 대상 법령/검증된 행정규칙이 아닌 다른 법령에 붙어 있을 때 운용기준 인용을 막는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "annex_body_loaded": annex is not None and "7일" in annex.text,
+            "annex_source_mismatch_gap_preserved": [gap.query for gap in annex_gaps]
+            == [law_name],
+            "mismatch_recommends_annex_followup": [
+                gap.recommended_interface for gap in annex_gaps
+            ]
+            == ["search_annex_forms"],
+            "mismatched_annex_not_cited_as_target_criteria": True,
+        },
+        citations=citations,
+        risk_flags=[
+            "delegated_criteria_annex_source_mismatch_not_target_operational_criteria",
+            "loaded_annex_form_source_reference_must_match_target_source",
+        ],
+        next_actions=[
+            "Run a scoped annex/form follow-up for the target statute or the source-verified administrative rule before citing attached criteria.",
+        ],
+        evidence={
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "annex_related_sources": [
+                {
+                    "title": item.identity.title,
+                    "related_name": item.identity.related_name,
+                    "related_id": item.identity.related_id,
+                    "source_type": item.identity.source_type,
+                }
+                for item in bundle.loaded.annex_forms
+            ],
+            "citation_source_types": [citation.source_type for citation in citations],
         },
     )
 

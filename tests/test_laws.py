@@ -3907,6 +3907,132 @@ def test_load_delegated_criteria_preserves_moved_administrative_rule_destination
     assert not any("제4조는 제6조로 이동" in rule.text for rule in bundle.loaded.administrative_rules)
 
 
+def test_load_delegated_criteria_marks_annex_source_mismatches():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "44다른법",
+                        "별표명": "무단방치 자동차 처리 기준",
+                        "관련법령명": "자동차손해배상 보장법",
+                        "관련법령ID": "009999",
+                        "별표종류": "별표",
+                    }
+                ]
+            },
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=["■ 자동차손해배상 보장법 [별표]\n| 구분 | 기준 |\n| 공고 | 7일 |"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    assert [annex.identity.title for annex in bundle.loaded.annex_forms] == [
+        "무단방치 자동차 처리 기준"
+    ]
+    mismatch_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_annex_source_mismatch"
+    ]
+    assert [(gap.query, gap.recommended_interface) for gap in mismatch_gaps] == [
+        ("자동차관리법", "search_annex_forms")
+    ]
+    assert "자동차손해배상 보장법" in mismatch_gaps[0].reason
+    assert "자동차관리법" in mismatch_gaps[0].reason
+
+
+def test_load_delegated_criteria_marks_missing_annex_source_references_as_unverified():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {
+                "licbyl": [
+                    {
+                        "licbyl id": "44출처없음",
+                        "별표명": "무단방치 자동차 처리 기준",
+                        "별표종류": "별표",
+                    }
+                ]
+            },
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=["■ 출처 미상 [별표]\n| 구분 | 기준 |\n| 공고 | 7일 |"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    unverified_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_annex_source_unverified"
+    ]
+    assert [(gap.query, gap.recommended_interface) for gap in unverified_gaps] == [
+        ("자동차관리법", "search_annex_forms")
+    ]
+    assert "source-law or source-rule reference is missing" in unverified_gaps[0].reason
+
+
 def test_load_delegated_criteria_marks_rule_source_article_mismatches():
     identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
     source = FakeSource(

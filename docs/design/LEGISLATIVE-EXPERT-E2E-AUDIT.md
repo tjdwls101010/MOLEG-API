@@ -81,6 +81,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Annex/form-search candidate detail guardrail | needs more source loading | Annex/form search hits remain candidate metadata; no thresholds, amounts, criteria, form contents, body text, or extracted rows are citable until `get_annex_form_body()` loads selected detail. |
 | Empty annex/form-search absence guardrail | needs more source loading | A zero-hit scoped annex/form search can be disclosed with query/source/type/scope, but cannot become a claim that no attached criteria, annex, form, threshold table, or amount criterion exists. |
 | Delegated-criteria administrative-rule article-status guardrail | ready for reasoning | `load_delegated_criteria()` runs selected administrative-rule detail through article-status handling, so deleted/moved markers stay out of current operational-criteria citations and moved destination articles are loaded first. |
+| Delegated-criteria annex/form source mismatch guardrail | needs more source loading | `load_delegated_criteria()` may load an annex/form body, but `delegated_criteria_annex_source_mismatch` prevents citing it as target operational criteria when its attached-material source points to a different statute or unverified rule. |
 | Delegated-criteria source mismatch guardrail | needs more source loading | `load_delegated_criteria()` may load administrative-rule detail, but `delegated_criteria_source_mismatch` prevents citing it as target-article operational criteria when its explicit source law/article points elsewhere. |
 | As-of delegation version guardrail | ready for reasoning | `load_legal_context_bundle()` carries the loaded as-of article `MST` into delegation lookup, so historical/reference-date article text is not mixed with a current-ID delegation graph. |
 | Future-effective administrative rule | ready for reasoning | A selected administrative-rule body can be loaded while its `effective_date` is after the reference date; the packet allows citation as loaded source text but forbids calling it current operational criteria. |
@@ -109,13 +110,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 58 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 59 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 52 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 53 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 53 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 54 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 
@@ -131,6 +132,7 @@ tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 - A context-bundle authority-temporal-mismatch scenario is a success when `authority_temporal_mismatch` gaps preserve authority dates older than the loaded article's effective date or missing/unparseable authority dates and prevent matching article references from becoming current-authority claims before history/as-of checks.
 - A follow-up-loaded scenario is a success when selected administrative-rule and annex/form bodies are loaded through their detail interfaces before they appear as usable citations.
 - A delegated-criteria source-mismatch scenario is a success when loaded administrative-rule detail stays follow-up context and does not become target operational criteria unless its explicit source law/article matches the target statute/article.
+- A delegated-criteria annex/form source-mismatch scenario is a success when loaded attached body text stays follow-up context and does not become target operational criteria unless its related statute or related administrative rule matches the target source.
 - A latest-social-context WebSearch scenario is a success when MOLEG legal text remains citable as legal authority but no latest statistic, news, or social-fact claim is allowed until WebSearch has loaded separate sources.
 - A supplementary-transition scenario is a success when `supplementary_provisions` are citable separately and the skill cannot answer 시행일, 적용례, or 경과조치 from main-article text or law-level `effective_date` metadata alone.
 - A nested-article-unit scenario is a success when `ArticleText.text` preserves source 항, 호, and 목 text and the skill is forbidden from answering definition/application-target questions from `조문제목` or top-level `조문내용` alone.

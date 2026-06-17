@@ -1039,6 +1039,27 @@ def test_delegated_criteria_rule_article_status_is_not_promoted_to_marker_criter
     )
 
 
+def test_delegated_criteria_annex_source_mismatch_is_not_promoted_to_operational_criteria():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_annex_source_mismatch_guardrail"]
+
+    assert readiness.status == "needs_more_source_loading"
+    assert "delegated_criteria_annex_source_mismatch" in readiness.evidence["gap_kinds"]
+    assert readiness.evidence["annex_related_sources"][0]["related_name"] == "자동차손해배상 보장법"
+    assert "annex" not in readiness.evidence["citation_source_types"]
+    assert {citation.source_type for citation in readiness.citations} == {
+        "law",
+        "delegation",
+        "administrative_rule",
+    }
+    assert (
+        "delegated_criteria_annex_source_mismatch_not_target_operational_criteria"
+        in readiness.risk_flags
+    )
+
+
 def test_missing_administrative_rule_source_reference_is_not_promoted_to_no_authorization():
     readiness = {
         report.scenario: report
