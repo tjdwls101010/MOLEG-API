@@ -3743,6 +3743,170 @@ def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
     )
 
 
+def test_load_delegated_criteria_preserves_administrative_rule_article_status():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "삭제",
+                                "조문내용": "제3조 삭제 <2025. 1. 1.>",
+                                "조문제개정유형": "삭제",
+                            },
+                            {
+                                "조문번호": "4",
+                                "조문제목": "이동",
+                                "조문내용": "제4조는 제6조로 이동 <2025. 1. 1.>",
+                                "조문제개정유형": "이동",
+                                "조문이동이후": "6",
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "6",
+                                "조문제목": "처리 기준",
+                                "조문내용": "제6조(처리 기준) 현행 처리 기준을 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="현행 처리 기준",
+        budget="minimal",
+    )
+
+    assert len(bundle.loaded.administrative_rules) == 1
+    loaded_rule = bundle.loaded.administrative_rules[0]
+    assert [article.article for article in loaded_rule.articles] == ["제6조"]
+    assert "현행 처리 기준" in loaded_rule.text
+    assert "삭제" not in loaded_rule.text
+    assert "제4조는 제6조로 이동" not in loaded_rule.text
+    assert [gap.kind for gap in bundle.gaps if gap.kind == "deleted_administrative_rule_article"] == [
+        "deleted_administrative_rule_article"
+    ]
+    assert any("moved to 제6조" in note for note in bundle.source_notes)
+    assert [
+        call
+        for call in source.calls
+        if call[0] == "service" and call[1] == "admrul"
+    ] == [
+        ("service", "admrul", {"ID": "21자동차관리법"}),
+        ("service", "admrul", {"ID": "21자동차관리법"}),
+    ]
+
+
+def test_load_delegated_criteria_preserves_moved_administrative_rule_destination_failure():
+    class DestinationRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            admrul_service_calls = [
+                call for call in self.calls if call[0] == "service" and call[1] == "admrul"
+            ]
+            if target == "admrul" and len(admrul_service_calls) == 2:
+                raise RateLimitError("law.go.kr rate limited target admrul after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = DestinationRateLimitedSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "4",
+                                "조문제목": "이동",
+                                "조문내용": "제4조는 제6조로 이동 <2025. 1. 1.>",
+                                "조문제개정유형": "이동",
+                                "조문이동이후": "6",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="현행 처리 기준",
+        budget="minimal",
+    )
+
+    assert bundle.loaded.administrative_rules == []
+    assert [
+        (gap.kind, gap.recommended_interface, gap.query)
+        for gap in bundle.gaps
+        if gap.recommended_interface == "load_administrative_rule_context"
+    ] == [
+        ("source_access_failure", "load_administrative_rule_context", "자동차관리법 고시 제6조")
+    ]
+    assert [
+        (item.interface, item.query, item.filters)
+        for item in bundle.deferred
+        if item.interface == "load_administrative_rule_context"
+    ] == [
+        (
+            "load_administrative_rule_context",
+            "자동차관리법 고시 제6조",
+            {"article": "제6조", "serial_id": "21자동차관리법"},
+        )
+    ]
+    assert not any("제4조는 제6조로 이동" in rule.text for rule in bundle.loaded.administrative_rules)
+
+
 def test_load_delegated_criteria_marks_rule_source_article_mismatches():
     identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
     source = FakeSource(

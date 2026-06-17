@@ -1011,6 +1011,34 @@ def test_delegated_criteria_source_mismatch_is_not_promoted_to_operational_crite
     assert any("source mismatch" in claim for claim in discipline.forbidden_claims)
 
 
+def test_delegated_criteria_rule_article_status_is_not_promoted_to_marker_criteria():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_administrative_rule_article_status_guardrail"]
+
+    assert readiness.status == "ready_for_reasoning"
+    assert readiness.evidence["loaded_administrative_rule_articles"] == ["제6조"]
+    assert "deleted_administrative_rule_article" in readiness.evidence["gap_kinds"]
+    assert {citation.article for citation in readiness.citations if citation.source_type == "administrative_rule"} == {
+        "제6조"
+    }
+    assert "제3조" not in {
+        citation.article for citation in readiness.citations if citation.source_type == "administrative_rule"
+    }
+    assert "제4조" not in {
+        citation.article for citation in readiness.citations if citation.source_type == "administrative_rule"
+    }
+    assert (
+        "delegated_criteria_deleted_administrative_rule_article_not_operational_criteria"
+        in readiness.risk_flags
+    )
+    assert (
+        "delegated_criteria_moved_administrative_rule_destination_loaded_before_criteria_claim"
+        in readiness.risk_flags
+    )
+
+
 def test_missing_administrative_rule_source_reference_is_not_promoted_to_no_authorization():
     readiness = {
         report.scenario: report

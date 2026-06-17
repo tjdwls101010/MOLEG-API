@@ -134,6 +134,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_annex_form_search_candidate_detail_guardrail(),
             _audit_empty_annex_form_search_absence_guardrail(),
             _audit_delegated_criteria_after_followups(),
+            _audit_delegated_criteria_administrative_rule_article_status_guardrail(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
             _audit_low_confidence_annex_body(),
             _audit_as_of_delegation_uses_loaded_article_version(),
@@ -3736,13 +3737,137 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
         risk_flags=["delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey"],
         next_actions=["Use WebSearch only for latest enforcement practice or policy context outside MOLEG."],
         evidence={
-            "loaded_detail_interfaces": ["get_administrative_rule", "get_annex_form_body"],
+            "loaded_detail_interfaces": ["load_administrative_rule_context", "get_annex_form_body"],
             "administrative_rule_articles": [article.article for article in administrative_rule.articles],
             "source_law_name": administrative_rule.identity.source_law_name,
             "source_article": administrative_rule.identity.source_article,
             "annex_extraction_method": annex_body.extraction_method,
             "structured_annex_rows": len(annex_body.structured_data.rows if annex_body.structured_data else []),
             "call_targets": call_targets,
+        },
+    )
+
+
+def _audit_delegated_criteria_administrative_rule_article_status_guardrail() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    rule_name = "무단방치 자동차 처리 규정"
+    identity = LawIdentity(law_id="001747", name=law_name, basis="effective", mst="270001")
+    source = ScenarioSource(
+        service_payloads=[
+            law_text_payload(law_name, "001747", "270001", article="제26조", title="자동차의 강제처리"),
+            law_structure_payload(law_name, "001747", "270001", "자동차관리법 시행령"),
+            delegation_payload(law_name, "자동차관리법 시행령", law_id="001747", article="26"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": rule_name,
+                    "행정규칙종류": "고시",
+                    "발령일자": "20250101",
+                    "소관부처명": "국토교통부",
+                    "시행일자": "20250101",
+                    "위임법령ID": "001747",
+                    "위임법령명": law_name,
+                    "위임조문번호": "제26조",
+                    "위임조문제목": "자동차의 강제처리",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "삭제",
+                                "조문내용": "제3조 삭제 <2025. 1. 1.>",
+                                "조문제개정유형": "삭제",
+                            },
+                            {
+                                "조문번호": "4",
+                                "조문제목": "이동",
+                                "조문내용": "제4조는 제6조로 이동 <2025. 1. 1.>",
+                                "조문제개정유형": "이동",
+                                "조문이동이후": "6",
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": rule_name,
+                    "행정규칙종류": "고시",
+                    "발령일자": "20250101",
+                    "소관부처명": "국토교통부",
+                    "시행일자": "20250101",
+                    "위임법령ID": "001747",
+                    "위임법령명": law_name,
+                    "위임조문번호": "제26조",
+                    "위임조문제목": "자동차의 강제처리",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "6",
+                                "조문제목": "처리 기준",
+                                "조문내용": "제6조(처리 기준) 무단방치 자동차 현행 처리 기준을 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        search_payloads=[
+            administrative_rule_search_payload(rule_name),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        query="무단방치 자동차 현행 처리 기준",
+        budget="minimal",
+    )
+    administrative_rule = bundle.loaded.administrative_rules[0]
+    loaded_articles = [article.article for article in administrative_rule.articles]
+    gap_kinds = [gap.kind for gap in bundle.gaps]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_administrative_rule_article_status_guardrail",
+        question="`load_delegated_criteria()`가 선택된 행정규칙 detail 안의 삭제/이동 조문을 현재 기준으로 승격하지 않는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "deleted_administrative_rule_article_gap_preserved": "deleted_administrative_rule_article"
+            in gap_kinds,
+            "moved_marker_not_loaded_as_current_criteria": "제4조" not in loaded_articles,
+            "deleted_marker_not_loaded_as_current_criteria": "제3조" not in loaded_articles,
+            "destination_article_loaded_as_current_criteria": loaded_articles == ["제6조"]
+            and "현행 처리 기준" in administrative_rule.text,
+            "destination_loaded_inside_task_interface": [
+                target for kind, target, _ in source.calls if kind == "service" and target == "admrul"
+            ]
+            == ["admrul", "admrul"],
+        },
+        citations=[
+            SourceCitation("law", "eflaw", law_name, "제26조", "current statute"),
+            SourceCitation("delegation", "lsDelegated", "자동차관리법 시행령", "제26조", "delegated rule graph"),
+            SourceCitation("administrative_rule", "admrul", rule_name, "제6조", "current destination article"),
+        ],
+        risk_flags=[
+            "delegated_criteria_deleted_administrative_rule_article_not_operational_criteria",
+            "delegated_criteria_moved_administrative_rule_destination_loaded_before_criteria_claim",
+        ],
+        next_actions=[
+            "Use the loaded administrative-rule destination article for current operational criteria.",
+            "Disclose deleted administrative-rule articles as source state, not as current criteria.",
+        ],
+        evidence={
+            "loaded_administrative_rule_articles": loaded_articles,
+            "gap_kinds": gap_kinds,
+            "source_notes": bundle.source_notes,
+            "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
         },
     )
 

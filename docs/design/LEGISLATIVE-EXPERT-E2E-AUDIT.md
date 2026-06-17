@@ -80,6 +80,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Comparable-mechanism candidate detail guardrail | needs more source loading | Comparable-mechanism discovery results remain planning candidates; no legal equivalence, source structure, or design-suitability claim is citable until selected articles are loaded. |
 | Annex/form-search candidate detail guardrail | needs more source loading | Annex/form search hits remain candidate metadata; no thresholds, amounts, criteria, form contents, body text, or extracted rows are citable until `get_annex_form_body()` loads selected detail. |
 | Empty annex/form-search absence guardrail | needs more source loading | A zero-hit scoped annex/form search can be disclosed with query/source/type/scope, but cannot become a claim that no attached criteria, annex, form, threshold table, or amount criterion exists. |
+| Delegated-criteria administrative-rule article-status guardrail | ready for reasoning | `load_delegated_criteria()` runs selected administrative-rule detail through article-status handling, so deleted/moved markers stay out of current operational-criteria citations and moved destination articles are loaded first. |
 | Delegated-criteria source mismatch guardrail | needs more source loading | `load_delegated_criteria()` may load administrative-rule detail, but `delegated_criteria_source_mismatch` prevents citing it as target-article operational criteria when its explicit source law/article points elsewhere. |
 | As-of delegation version guardrail | ready for reasoning | `load_legal_context_bundle()` carries the loaded as-of article `MST` into delegation lookup, so historical/reference-date article text is not mixed with a current-ID delegation graph. |
 | Future-effective administrative rule | ready for reasoning | A selected administrative-rule body can be loaded while its `effective_date` is after the reference date; the packet allows citation as loaded source text but forbids calling it current operational criteria. |
@@ -108,13 +109,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 57 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 58 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 51 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 52 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 52 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 53 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 

@@ -1034,10 +1034,7 @@ class MolegApi:
             rule_articles = select_requested_administrative_rule_articles(rule_articles, articles)
         if not rule_articles:
             raise NoResultError("No administrative-rule text found")
-        text = "\n\n".join(
-            f"{article.article or ''} {article.title or ''}\n{article.text}".strip()
-            for article in rule_articles
-        )
+        text = administrative_rule_text_from_articles(rule_articles)
         return AdministrativeRuleText(
             identity=identity,
             text=text,
@@ -2384,11 +2381,16 @@ class MolegApi:
             limit=limits["administrative_rules"],
         ):
             try:
-                rule_text = self.get_administrative_rule(candidate.identity)
-                loaded_administrative_rules.append(rule_text)
+                rule_context = self.load_administrative_rule_context(candidate.identity)
+                gaps.extend(rule_context.gaps)
+                deferred.extend(rule_context.deferred)
+                source_notes.extend(rule_context.source_notes)
+                rule_text = administrative_rule_text_from_current_articles(rule_context)
+                if rule_text.articles:
+                    loaded_administrative_rules.append(rule_text)
                 loaded_candidate_keys.add(candidate_identity_key(candidate))
                 append_administrative_rule_not_effective_as_of_gap(
-                    rule_text.identity,
+                    rule_context.rule.identity,
                     as_of,
                     gaps,
                     source_notes,
@@ -3407,6 +3409,24 @@ def select_requested_administrative_rule_articles(
     if missing:
         raise NoResultError(f"No administrative-rule article text found for: {', '.join(missing)}")
     return selected
+
+
+def administrative_rule_text_from_articles(articles: list[AdministrativeRuleArticleText]) -> str:
+    return "\n\n".join(
+        f"{article.article or ''} {article.title or ''}\n{article.text}".strip()
+        for article in articles
+    )
+
+
+def administrative_rule_text_from_current_articles(
+    context: AdministrativeRuleContext,
+) -> AdministrativeRuleText:
+    current_articles = list(context.current_articles)
+    return replace(
+        context.rule,
+        text=administrative_rule_text_from_articles(current_articles),
+        articles=current_articles,
+    )
 
 
 def matches_bridge(

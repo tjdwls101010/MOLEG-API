@@ -51,6 +51,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "annex_form_search_candidate_detail_guardrail",
         "empty_annex_form_search_absence_guardrail",
         "delegated_criteria_after_followups",
+        "delegated_criteria_administrative_rule_article_status_guardrail",
         "delegated_criteria_source_mismatch_guardrail",
         "low_confidence_annex_body_guardrail",
         "as_of_delegation_uses_loaded_article_version_guardrail",
@@ -1164,13 +1165,39 @@ def test_legislative_expert_e2e_audit_marks_followup_loaded_delegated_criteria_r
     assert loaded.must_have["structured_annex_rows_loaded"] is True
     assert loaded.evidence["call_targets"][-2:] == ["admrul", "admRulBylTextDownLoad.do"]
     assert loaded.evidence["loaded_detail_interfaces"] == [
-        "get_administrative_rule",
+        "load_administrative_rule_context",
         "get_annex_form_body",
     ]
     assert {"administrative_rule", "annex"}.issubset(
         {citation.source_type for citation in loaded.citations}
     )
     assert "delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey" in loaded.risk_flags
+
+
+def test_legislative_expert_e2e_audit_preserves_delegated_criteria_rule_article_status():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    status = by_scenario["delegated_criteria_administrative_rule_article_status_guardrail"]
+
+    assert status.status == "ready_for_reasoning"
+    assert status.public_interfaces == ["load_delegated_criteria"]
+    assert status.must_have["deleted_administrative_rule_article_gap_preserved"] is True
+    assert status.must_have["moved_marker_not_loaded_as_current_criteria"] is True
+    assert status.must_have["deleted_marker_not_loaded_as_current_criteria"] is True
+    assert status.must_have["destination_article_loaded_as_current_criteria"] is True
+    assert status.must_have["destination_loaded_inside_task_interface"] is True
+    assert status.evidence["loaded_administrative_rule_articles"] == ["제6조"]
+    assert "deleted_administrative_rule_article" in status.evidence["gap_kinds"]
+    assert {citation.article for citation in status.citations if citation.source_type == "administrative_rule"} == {
+        "제6조"
+    }
+    assert (
+        "delegated_criteria_moved_administrative_rule_destination_loaded_before_criteria_claim"
+        in status.risk_flags
+    )
 
 
 def test_legislative_expert_e2e_audit_blocks_delegated_criteria_source_mismatches():
