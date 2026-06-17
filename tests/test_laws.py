@@ -4844,6 +4844,127 @@ def test_load_legal_context_bundle_preserves_requested_article_load_failures():
     ]
 
 
+def test_load_legal_context_bundle_preserves_deleted_requested_article_gap():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "8",
+                        "조문내용": "제8조 삭제 <2025. 1. 1.>",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제8조 현행 의무",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        articles=["제8조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+
+    assert bundle.loaded.articles[0].article == "제8조"
+    assert bundle.loaded.articles[0].is_deleted is True
+    deleted_gaps = [gap for gap in bundle.gaps if gap.kind == "deleted_article"]
+    assert [(gap.query, gap.recommended_interface) for gap in deleted_gaps] == [
+        ("자동차관리법 제8조", "trace_law_history")
+    ]
+    assert any("deleted article source state" in note for note in bundle.source_notes)
+
+
+def test_load_legal_context_bundle_follows_moved_requested_article_to_destination():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "8",
+                        "조문제목": "이동",
+                        "조문내용": "제8조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문시행일자": "20250101",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차 소유자는 등록하여야 한다.",
+                        "조문시행일자": "20250101",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제8조 현행 의무",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        articles=["제8조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+
+    assert [article.article for article in bundle.loaded.articles] == ["제8조", "제12조"]
+    assert bundle.loaded.articles[0].moved_to == "제12조"
+    assert "등록하여야" in bundle.loaded.articles[1].text
+    assert source.calls[:3] == [
+        ("service", "eflawjosub", {"ID": "001747", "JO": "000800"}),
+        ("service", "eflawjosub", {"ID": "001747", "JO": "001200"}),
+        ("service", "lsDelegated", {"ID": "001747"}),
+    ]
+
+
 def test_load_legal_context_bundle_preserves_primary_law_load_failures():
     source = FakeSource(
         search_payloads=[

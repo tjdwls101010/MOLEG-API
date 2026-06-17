@@ -347,6 +347,24 @@ def test_moved_article_status_is_not_promoted_to_current_operational_claim():
     assert any("moved article" in disclosure for disclosure in discipline.required_disclosures)
 
 
+def test_context_bundle_article_status_cites_destination_not_deleted_or_moved_marker():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["context_bundle_article_status_guardrail"]
+
+    assert readiness.status == "ready_for_reasoning"
+    assert readiness.evidence["article_statuses"][0]["is_deleted"] is True
+    assert readiness.evidence["article_statuses"][1]["moved_to"] == "제12조"
+    assert "deleted_article" in readiness.evidence["gap_kinds"]
+    assert {citation.article for citation in readiness.citations} == {"제12조"}
+    assert "context_bundle_deleted_article_not_current_operational_text" in readiness.risk_flags
+    assert (
+        "context_bundle_moved_article_destination_loaded_before_current_substance"
+        in readiness.risk_flags
+    )
+
+
 def test_query_expansion_candidates_are_not_promoted_to_source_citations():
     readiness = {
         report.scenario: report

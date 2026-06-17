@@ -109,6 +109,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_source_access_failure_not_no_result_guardrail(),
             _audit_context_bundle_requested_law_not_loaded_guardrail(),
             _audit_context_bundle_requested_article_not_loaded_guardrail(),
+            _audit_context_bundle_article_status_guardrail(),
             _audit_context_bundle_delegation_lookup_failure_guardrail(),
             _audit_case_search_candidate_detail_guardrail(),
             _audit_empty_case_search_absence_guardrail(),
@@ -1393,6 +1394,116 @@ def _audit_context_bundle_requested_law_not_loaded_guardrail() -> LegislativeExp
             "citations_loaded": 0,
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
+        },
+    )
+
+
+def _audit_context_bundle_article_status_guardrail() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    source = ScenarioSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "8",
+                        "조문제목": "삭제",
+                        "조문내용": "제8조 삭제 <2025. 1. 1.>",
+                        "조문제개정유형": "삭제",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": law_name},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        f"{law_name} 삭제/이동 조문 현행성",
+        law_identifier=LawIdentity(law_id="001747", name=law_name, basis="effective"),
+        articles=["제8조", "제9조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+    loaded_articles = bundle.loaded.articles
+    deleted_gaps = [gap for gap in bundle.gaps if gap.kind == "deleted_article"]
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_article_status_guardrail",
+        question="context bundle이 요청 조문의 삭제/이동 상태와 이동 목적지 조문을 함께 보존하는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "deleted_article_gap_preserved": [gap.query for gap in deleted_gaps]
+            == [f"{law_name} 제8조"],
+            "moved_marker_preserved": loaded_articles[1].article == "제9조"
+            and loaded_articles[1].moved_to == "제12조",
+            "destination_article_loaded": loaded_articles[2].article == "제12조"
+            and "등록하여야" in loaded_articles[2].text,
+            "deleted_marker_not_promoted": loaded_articles[0].is_deleted is True,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", law_name, "제12조", "current destination article"),
+        ],
+        risk_flags=[
+            "context_bundle_deleted_article_not_current_operational_text",
+            "context_bundle_moved_article_destination_loaded_before_current_substance",
+            "context_bundle_article_status_required_before_substantive_citation",
+        ],
+        next_actions=[
+            "Use the loaded destination article for current-substance claims when a requested article is moved.",
+            "Disclose deleted requested articles as source state and use history if prior wording or amendment reason matters.",
+        ],
+        evidence={
+            "loaded_articles": [article.article for article in loaded_articles],
+            "article_statuses": [
+                {
+                    "article": article.article,
+                    "is_deleted": article.is_deleted,
+                    "revision_type": article.revision_type,
+                    "moved_to": article.moved_to,
+                }
+                for article in loaded_articles
+            ],
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "source_notes": bundle.source_notes,
+            "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
         },
     )
 

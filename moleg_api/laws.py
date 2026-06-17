@@ -2113,16 +2113,25 @@ class MolegApi:
             if articles:
                 for article in articles[: limits["articles"]]:
                     try:
-                        article_text = self.get_article(identity, article, as_of=reference_date)
-                        loaded_articles.append(article_text)
-                        identity = prefer_versioned_law_identity(identity, article_text.identity)
-                        append_not_effective_as_of_gap(
-                            article_text.identity,
-                            reference_date,
-                            gaps,
-                            source_notes,
-                            query=identity.name,
+                        article_context = self.load_article_context(
+                            identity,
+                            article,
+                            as_of=reference_date,
+                            basis="effective",
                         )
+                        loaded_articles.extend(article_context.loaded_articles)
+                        gaps.extend(article_context.gaps)
+                        deferred.extend(article_context.deferred)
+                        source_notes.extend(article_context.source_notes)
+                        for article_text in article_context.loaded_articles:
+                            identity = prefer_versioned_law_identity(identity, article_text.identity)
+                            append_not_effective_as_of_gap(
+                                article_text.identity,
+                                reference_date,
+                                gaps,
+                                source_notes,
+                                query=identity.name,
+                            )
                     except MolegApiError as exc:
                         source_notes.append(f"Article load skipped for {identity.name} {article}: {exc}")
                         append_requested_article_load_gap(
@@ -2698,19 +2707,28 @@ class MolegApi:
             if articles:
                 for article in articles[: limits["articles"]]:
                     try:
-                        article_text = self.get_article(primary_identity, article, as_of=reference_date)
-                        loaded_articles.append(article_text)
-                        primary_identity = prefer_versioned_law_identity(
+                        article_context = self.load_article_context(
                             primary_identity,
-                            article_text.identity,
+                            article,
+                            as_of=reference_date,
+                            basis="effective",
                         )
-                        append_not_effective_as_of_gap(
-                            article_text.identity,
-                            reference_date,
-                            gaps,
-                            source_notes,
-                            query=search_query or primary_identity.name,
-                        )
+                        loaded_articles.extend(article_context.loaded_articles)
+                        gaps.extend(article_context.gaps)
+                        deferred.extend(article_context.deferred)
+                        source_notes.extend(article_context.source_notes)
+                        for article_text in article_context.loaded_articles:
+                            primary_identity = prefer_versioned_law_identity(
+                                primary_identity,
+                                article_text.identity,
+                            )
+                            append_not_effective_as_of_gap(
+                                article_text.identity,
+                                reference_date,
+                                gaps,
+                                source_notes,
+                                query=search_query or primary_identity.name,
+                            )
                     except MolegApiError as exc:
                         source_notes.append(f"Article load skipped for {article}: {exc}")
                         append_requested_article_load_gap(

@@ -26,6 +26,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "source_access_failure_not_no_result_guardrail",
         "context_bundle_requested_law_not_loaded_guardrail",
         "context_bundle_requested_article_not_loaded_guardrail",
+        "context_bundle_article_status_guardrail",
         "context_bundle_delegation_lookup_failure_guardrail",
         "case_search_candidate_detail_guardrail",
         "empty_case_search_absence_guardrail",
@@ -439,6 +440,36 @@ def test_legislative_expert_e2e_audit_marks_requested_article_not_loaded():
     assert (
         "current_target_article_claim_requires_get_article_followup"
         in missing_article.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_preserves_context_bundle_article_status():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    status = by_scenario["context_bundle_article_status_guardrail"]
+
+    assert status.status == "ready_for_reasoning"
+    assert status.public_interfaces == ["load_legal_context_bundle"]
+    assert status.must_have["deleted_article_gap_preserved"] is True
+    assert status.must_have["moved_marker_preserved"] is True
+    assert status.must_have["destination_article_loaded"] is True
+    assert status.must_have["deleted_marker_not_promoted"] is True
+    assert status.evidence["loaded_articles"] == ["제8조", "제9조", "제12조"]
+    assert status.evidence["article_statuses"][0]["is_deleted"] is True
+    assert status.evidence["article_statuses"][1]["moved_to"] == "제12조"
+    assert status.evidence["service_call_targets"][:3] == [
+        "eflawjosub",
+        "eflawjosub",
+        "eflawjosub",
+    ]
+    assert {citation.article for citation in status.citations} == {"제12조"}
+    assert "context_bundle_deleted_article_not_current_operational_text" in status.risk_flags
+    assert (
+        "context_bundle_moved_article_destination_loaded_before_current_substance"
+        in status.risk_flags
     )
 
 

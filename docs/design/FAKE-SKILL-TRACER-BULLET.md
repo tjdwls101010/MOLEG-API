@@ -54,16 +54,16 @@ Results:
 
 ```text
 scripts/fake_skill_tracer_bullet.py -> emitted JSON summaries for 7 archetypes
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 56 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 57 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
 tests/test_fake_skill_tracer_bullet.py -q -> 2 passed
-tests/test_legislative_expert_e2e_audit.py -q -> 50 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 51 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 51 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 52 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
-python3 -m pytest -q -m 'not live' -> 388 passed, 54 deselected
+python3 -m pytest -q -m 'not live' -> 392 passed, 54 deselected
 ```
 
 ## Non-Goals
