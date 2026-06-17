@@ -6342,6 +6342,11 @@ def _audit_promulgation_bridge_source_lag() -> LegislativeExpertScenarioReport:
         mode="promulgated_bill",
         budget="minimal",
     )
+    bridge_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "resolve_promulgated_law" and item.source_type == "law"
+    ]
 
     return LegislativeExpertScenarioReport(
         scenario="promulgation_bridge_source_lag_guardrail",
@@ -6351,6 +6356,18 @@ def _audit_promulgation_bridge_source_lag() -> LegislativeExpertScenarioReport:
         must_have={
             "source_lag_ambiguity_surfaced": any(item.kind == "promulgation_bridge_lag" for item in bundle.ambiguities),
             "source_lag_gap_preserved": any(gap.kind == "source_lag_or_manual_review_required" for gap in bundle.gaps),
+            "bridge_retry_deferred_preserved": [
+                (item.query, item.filters) for item in bridge_deferred
+            ] == [
+                (
+                    "데이터기본법",
+                    {
+                        "prom_law_nm": "데이터기본법",
+                        "prom_no": "99999",
+                        "promulgation_dt": "2025-02-01",
+                    },
+                )
+            ],
             "candidate_preserved": len(bundle.candidates.laws) == 1,
             "no_current_law_loaded": not bundle.loaded.laws,
         },
@@ -6360,6 +6377,8 @@ def _audit_promulgation_bridge_source_lag() -> LegislativeExpertScenarioReport:
             "ambiguity_kinds": [item.kind for item in bundle.ambiguities],
             "gap_kinds": [gap.kind for gap in bundle.gaps],
             "candidate_names": [identity.name for identity in bundle.candidates.laws],
+            "deferred_interfaces": [item.interface for item in bridge_deferred],
+            "deferred_filters": [item.filters for item in bridge_deferred],
         },
     )
 

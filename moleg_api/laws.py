@@ -2928,6 +2928,23 @@ class MolegApi:
                             recommended_interface="resolve_promulgated_law",
                         )
                     )
+                    deferred.append(
+                        DeferredLookup(
+                            interface="resolve_promulgated_law",
+                            query=prom_law_nm or "",
+                            reason=(
+                                "Recheck the strict congress-db promulgation bridge after "
+                                "confirming source lag or bridge-field correction; do not "
+                                "treat this exact miss as proof the bill was not enacted."
+                            ),
+                            source_type="law",
+                            filters=promulgation_bridge_filters(
+                                prom_law_nm=prom_law_nm,
+                                prom_no=prom_no,
+                                promulgation_dt=promulgation_dt,
+                            ),
+                        )
+                    )
                 else:
                     ambiguities.append(Ambiguity(kind="promulgation_bridge", message=str(exc)))
                     gaps.append(
@@ -5624,7 +5641,28 @@ def append_promulgation_bridge_resolution_failure_gap(
         recommended_interface="resolve_promulgated_law",
         source_label="Promulgation bridge resolution",
     )
-    filters = {
+    deferred.append(
+        DeferredLookup(
+            interface="resolve_promulgated_law",
+            query=str(query or ""),
+            reason="Retry the strict congress-db promulgation bridge before treating the bill as not enacted or unavailable in MOLEG.",
+            source_type="law",
+            filters=promulgation_bridge_filters(
+                prom_law_nm=prom_law_nm,
+                prom_no=prom_no,
+                promulgation_dt=promulgation_dt,
+            ),
+        )
+    )
+
+
+def promulgation_bridge_filters(
+    *,
+    prom_law_nm: str | None,
+    prom_no: str | None,
+    promulgation_dt: str | None,
+) -> dict[str, str]:
+    return {
         key: value
         for key, value in {
             "prom_law_nm": prom_law_nm,
@@ -5633,15 +5671,6 @@ def append_promulgation_bridge_resolution_failure_gap(
         }.items()
         if value
     }
-    deferred.append(
-        DeferredLookup(
-            interface="resolve_promulgated_law",
-            query=str(query or ""),
-            reason="Retry the strict congress-db promulgation bridge before treating the bill as not enacted or unavailable in MOLEG.",
-            source_type="law",
-            filters=filters,
-        )
-    )
 
 
 def append_requested_article_load_gap(

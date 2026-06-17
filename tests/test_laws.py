@@ -8478,5 +8478,20 @@ def test_load_legal_context_bundle_preserves_bridge_lag_candidates():
     assert bundle.ambiguities[0].candidates == bundle.candidates.laws
     assert bundle.gaps[0].kind == "source_lag_or_manual_review_required"
     assert bundle.gaps[0].recommended_interface == "resolve_promulgated_law"
+    bridge_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "resolve_promulgated_law" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in bridge_deferred] == [
+        (
+            "자동차관리법",
+            {
+                "prom_law_nm": "자동차관리법",
+                "prom_no": "21412",
+                "promulgation_dt": "2026-02-27",
+            },
+        )
+    ]
     assert source.calls[0] == ("search", "law", {"query": "자동차관리법", "display": 20})
     assert source.calls[1] == ("search", "law", {"query": "자동차관리법", "display": 2})

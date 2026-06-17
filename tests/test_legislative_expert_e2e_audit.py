@@ -129,9 +129,18 @@ def test_legislative_expert_e2e_audit_marks_blocking_guardrails():
 
     source_lag = by_scenario["promulgation_bridge_source_lag_guardrail"]
     assert source_lag.status == "blocked_for_manual_review"
+    assert source_lag.must_have["bridge_retry_deferred_preserved"] is True
     assert source_lag.evidence["ambiguity_kinds"] == ["promulgation_bridge_lag"]
     assert "source_lag_or_manual_review_required" in source_lag.evidence["gap_kinds"]
     assert source_lag.evidence["candidate_names"] == ["데이터기본법"]
+    assert source_lag.evidence["deferred_interfaces"] == ["resolve_promulgated_law"]
+    assert source_lag.evidence["deferred_filters"] == [
+        {
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "99999",
+            "promulgation_dt": "2025-02-01",
+        }
+    ]
     assert "do_not_treat_exact_bridge_miss_as_not_enacted" in source_lag.risk_flags
 
 
