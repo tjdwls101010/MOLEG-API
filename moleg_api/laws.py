@@ -4981,8 +4981,9 @@ def append_authority_article_mismatch_gaps(
     for source_type, interface, mismatch_reason_prefix, unverified_reason_prefix, reference_sets in authority_groups:
         if not reference_sets:
             continue
+        has_unverified = any(not references for references in reference_sets)
         structured_reference_sets = [references for references in reference_sets if references]
-        if not structured_reference_sets:
+        if has_unverified:
             gaps.append(
                 ContextGap(
                     kind="authority_article_unverified",
@@ -4995,12 +4996,20 @@ def append_authority_article_mismatch_gaps(
                     recommended_interface=interface,
                 )
             )
+        if not structured_reference_sets:
             continue
-        matched_targets = article_refs_matching_targets(structured_reference_sets, targets)
-        if matched_targets == targets:
-            continue
-        if matched_targets:
-            missing_targets = targets - matched_targets
+
+        has_mismatch = False
+        missing_targets: set[tuple[str, str]] = set()
+        for references in structured_reference_sets:
+            matched_targets = article_refs_matching_targets([references], targets)
+            if not matched_targets:
+                has_mismatch = True
+                continue
+            if matched_targets != targets:
+                missing_targets.update(targets - matched_targets)
+
+        if missing_targets:
             missing_target_label = article_ref_label(missing_targets)
             gaps.append(
                 ContextGap(
@@ -5014,6 +5023,7 @@ def append_authority_article_mismatch_gaps(
                     recommended_interface=interface,
                 )
             )
+        if not has_mismatch:
             continue
         gaps.append(
             ContextGap(

@@ -7083,6 +7083,80 @@ def test_load_authority_context_promotes_matching_current_authorities():
     ]
 
 
+def test_load_authority_context_preserves_mismatch_gap_when_one_loaded_authority_matches():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "116",
+                            "안건명": "개인정보 수집 이용 해석",
+                            "회신일자": "20250415",
+                        },
+                        {
+                            "법령해석례일련번호": "117",
+                            "안건명": "개인정보 제3자 제공 해석",
+                            "회신일자": "20250416",
+                        },
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "116",
+                    "안건명": "개인정보 수집 이용 해석",
+                    "회신일자": "20250415",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "수집ㆍ이용 동의 요건에 관한 회답",
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "117",
+                    "안건명": "개인정보 제3자 제공 해석",
+                    "회신일자": "20250416",
+                    "관련법령": "개인정보 보호법 제17조",
+                    "회답": "제3자 제공 요건에 관한 회답",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의",
+        budget="standard",
+    )
+
+    assert [item.identity.title for item in context.loaded.interpretations] == [
+        "개인정보 수집 이용 해석",
+        "개인정보 제3자 제공 해석",
+    ]
+    assert [item.identity.title for item in context.current_authorities.interpretations] == [
+        "개인정보 수집 이용 해석"
+    ]
+    mismatch_gaps = [gap for gap in context.gaps if gap.kind == "authority_article_mismatch"]
+    assert [gap.recommended_interface for gap in mismatch_gaps] == ["search_interpretations"]
+    assert [gap.query for gap in mismatch_gaps] == ["개인정보 보호법 제15조"]
+
+
 def test_load_authority_context_does_not_promote_partial_article_matches_as_current_authorities():
     identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
     source = FakeSource(
