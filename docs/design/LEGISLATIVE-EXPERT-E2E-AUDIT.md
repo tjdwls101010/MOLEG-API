@@ -42,6 +42,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Delegated-criteria after follow-ups | ready for reasoning | The selected administrative-rule body and administrative-rule annex/form body load through public follow-up interfaces before citation; candidate-only context is promoted only after source text is inspected. |
 | Delegated-criteria query candidate discovery | ready for reasoning | `load_delegated_criteria()` uses an explicit operational query to discover administrative-rule and annex/form candidates before loading selected detail bodies. |
 | Delegated-criteria moved-article query candidate discovery | ready for reasoning | `load_delegated_criteria()` follows moved requested statute articles and also searches destination-article operational queries before loading administrative-rule and annex/form detail bodies. |
+| Delegated-criteria ambiguous anchor guardrail | blocked for manual review | `load_delegated_criteria()` preserves explicit-query administrative-rule and annex candidates but does not load their bodies when the statute anchor resolves to multiple law identities. |
 | Low-confidence annex body | ready for reasoning | A selected annex body can be cited as loaded plain text while low-confidence structured rows stay unusable for threshold extraction; empty rows do not mean no criteria exist. |
 | Statute evolution | ready for reasoning | Article history includes post-change text, normalized promulgation number, and caller-supplied congress bill bridge ID. |
 | congress bill to current law | ready for reasoning | A promulgation bridge resolves into effective current-law context, while history/diff remain deferred until the affected article/date is known; companion prompt/answer-discipline gates forbid treating current text as the amendment delta. |
@@ -118,13 +119,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 67 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 68 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 60 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 61 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 62 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 63 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 

@@ -3968,6 +3968,112 @@ def test_load_delegated_criteria_uses_explicit_query_for_operational_candidate_d
     )
 
 
+def test_load_delegated_criteria_keeps_detail_deferred_when_statute_anchor_is_ambiguous():
+    class AmbiguousAnchorOperationalSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            query = params.get("query")
+            if target == "eflaw" and query == "데이터기본법":
+                return {
+                    "LawSearch": {
+                        "law": [
+                            {
+                                "법령ID": "111111",
+                                "법령명한글": "데이터기본법",
+                                "법령일련번호": "270001",
+                            },
+                            {
+                                "법령ID": "222222",
+                                "법령명한글": "데이터기본법",
+                                "법령일련번호": "270002",
+                            },
+                        ]
+                    }
+                }
+            if target == "admrul" and query == "데이터 처리 기준":
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙 일련번호": "2100000999999",
+                                "행정규칙명": "데이터 처리 기준 고시",
+                                "행정규칙종류": "고시",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "위임법령명": "데이터기본법",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and query == "데이터 처리 기준":
+                return {
+                    "licbyl": [
+                        {
+                            "licbyl id": "440000099",
+                            "별표명": "데이터 처리 기준",
+                            "관련법령명": "데이터기본법",
+                            "관련법령ID": "111111",
+                            "별표종류": "별표",
+                        }
+                    ]
+                }
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target} {params}")
+
+    source = AmbiguousAnchorOperationalSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000999999",
+                    "행정규칙명": "데이터 처리 기준 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "데이터기본법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "2",
+                                "조문제목": "처리 기준",
+                                "조문내용": "데이터 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            }
+        ],
+        text_payloads=["데이터 처리 기준 본문"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        "데이터기본법",
+        query="데이터 처리 기준",
+        budget="minimal",
+    )
+
+    assert bundle.ambiguities[0].kind == "statute_identity"
+    assert [identity.law_id for identity in bundle.candidates.laws] == ["111111", "222222"]
+    assert [candidate.identity.name for candidate in bundle.candidates.administrative_rules] == [
+        "데이터 처리 기준 고시"
+    ]
+    assert [candidate.identity.title for candidate in bundle.candidates.annex_forms] == [
+        "데이터 처리 기준"
+    ]
+    assert bundle.loaded.administrative_rules == []
+    assert bundle.loaded.annex_forms == []
+    assert any(gap.kind == "manual_review_required" for gap in bundle.gaps)
+    assert any(
+        item.interface == "get_administrative_rule" and item.filters.get("id") == "2100000999999"
+        for item in bundle.deferred
+    )
+    assert any(
+        item.interface == "get_annex_form_body" and item.filters.get("annex_id") == "440000099"
+        for item in bundle.deferred
+    )
+    assert all(call[0] != "service" or call[1] != "admrul" for call in source.calls)
+    assert all(call[0] != "post_text" for call in source.calls)
+
+
 def test_load_delegated_criteria_searches_moved_destination_for_operational_candidates():
     class DestinationOperationalSource(FakeSource):
         def search(self, target, params):

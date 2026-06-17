@@ -59,6 +59,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "delegated_criteria_after_followups",
         "delegated_criteria_query_candidate_discovery",
         "delegated_criteria_moved_article_query_candidate_discovery",
+        "delegated_criteria_ambiguous_anchor_guardrail",
         "delegated_criteria_administrative_rule_article_status_guardrail",
         "delegated_criteria_annex_source_mismatch_guardrail",
         "delegated_criteria_source_mismatch_guardrail",
@@ -1437,6 +1438,38 @@ def test_legislative_expert_e2e_audit_uses_moved_destination_query_for_delegated
     assert (
         "delegated_criteria_moved_article_uses_destination_query_for_operational_candidates"
         in loaded.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_blocks_delegated_criteria_detail_for_ambiguous_anchor():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    blocked = by_scenario["delegated_criteria_ambiguous_anchor_guardrail"]
+
+    assert blocked.status == "blocked_for_manual_review"
+    assert blocked.public_interfaces == ["load_delegated_criteria"]
+    assert blocked.must_have["statute_ambiguity_surfaced"] is True
+    assert blocked.must_have["candidate_laws_preserved"] is True
+    assert blocked.must_have["operational_candidates_preserved"] is True
+    assert blocked.must_have["no_operational_detail_loaded"] is True
+    assert blocked.must_have["detail_followups_preserved"] is True
+    assert blocked.must_have["detail_source_not_called"] is True
+    assert blocked.citations == []
+    assert blocked.evidence["candidate_law_ids"] == ["111111", "222222"]
+    assert blocked.evidence["administrative_rule_candidates"] == ["데이터 처리 기준 고시"]
+    assert blocked.evidence["annex_form_candidates"] == ["데이터 처리 기준"]
+    assert blocked.evidence["loaded_administrative_rules"] == 0
+    assert blocked.evidence["loaded_annex_forms"] == 0
+    assert "get_administrative_rule" in blocked.evidence["deferred_interfaces"]
+    assert "get_annex_form_body" in blocked.evidence["deferred_interfaces"]
+    assert blocked.evidence["service_call_targets"] == []
+    assert blocked.evidence["text_call_targets"] == []
+    assert (
+        "ambiguous_delegated_criteria_anchor_must_not_load_operational_detail"
+        in blocked.risk_flags
     )
 
 

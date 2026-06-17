@@ -133,6 +133,26 @@ def test_moved_destination_query_delegated_criteria_can_be_promoted_after_detail
     )
 
 
+def test_ambiguous_anchor_delegated_criteria_candidates_are_not_promoted_to_operational_criteria():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_ambiguous_anchor_guardrail"]
+
+    assert readiness.status == "blocked_for_manual_review"
+    assert readiness.citations == []
+    assert readiness.evidence["loaded_administrative_rules"] == 0
+    assert readiness.evidence["loaded_annex_forms"] == 0
+    assert readiness.evidence["service_call_targets"] == []
+    assert readiness.evidence["text_call_targets"] == []
+    assert "get_administrative_rule" in readiness.evidence["deferred_interfaces"]
+    assert "get_annex_form_body" in readiness.evidence["deferred_interfaces"]
+    assert (
+        "ambiguous_delegated_criteria_anchor_must_not_load_operational_detail"
+        in readiness.risk_flags
+    )
+
+
 def test_low_confidence_annex_rows_are_not_promoted_to_threshold_claims():
     readiness = {
         report.scenario: report

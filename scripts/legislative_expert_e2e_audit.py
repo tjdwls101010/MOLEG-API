@@ -142,6 +142,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_delegated_criteria_after_followups(),
             _audit_delegated_criteria_query_candidate_discovery(),
             _audit_delegated_criteria_moved_article_query_candidate_discovery(),
+            _audit_delegated_criteria_ambiguous_anchor_guardrail(),
             _audit_delegated_criteria_administrative_rule_article_status_guardrail(),
             _audit_delegated_criteria_annex_source_mismatch_guardrail(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
@@ -5048,6 +5049,135 @@ def _audit_delegated_criteria_moved_article_query_candidate_discovery() -> Legis
                 annex.identity.title for annex in bundle.loaded.annex_forms
             ],
             "call_targets": call_targets,
+        },
+    )
+
+
+def _audit_delegated_criteria_ambiguous_anchor_guardrail() -> LegislativeExpertScenarioReport:
+    class AmbiguousAnchorOperationalSource(ScenarioSource):
+        def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
+            self.calls.append(("search", target, params))
+            query = params.get("query")
+            if target == "eflaw" and query == "데이터기본법":
+                return {
+                    "LawSearch": {
+                        "law": [
+                            {
+                                "법령ID": "111111",
+                                "법령명한글": "데이터기본법",
+                                "법령일련번호": "270001",
+                            },
+                            {
+                                "법령ID": "222222",
+                                "법령명한글": "데이터기본법",
+                                "법령일련번호": "270002",
+                            },
+                        ]
+                    }
+                }
+            if target == "admrul" and query == "데이터 처리 기준":
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙 일련번호": "2100000999999",
+                                "행정규칙명": "데이터 처리 기준 고시",
+                                "행정규칙종류": "고시",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "위임법령명": "데이터기본법",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and query == "데이터 처리 기준":
+                return annex_search_payload(
+                    "440000099",
+                    "데이터 처리 기준",
+                    related_name="데이터기본법",
+                )
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target} {params}")
+
+    source = AmbiguousAnchorOperationalSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000999999",
+                    "행정규칙명": "데이터 처리 기준 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "데이터기본법",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "2",
+                                "조문제목": "처리 기준",
+                                "조문내용": "데이터 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            }
+        ],
+        text_payloads=["데이터 처리 기준 본문"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        "데이터기본법",
+        query="데이터 처리 기준",
+        budget="minimal",
+    )
+    service_call_targets = [target for kind, target, _ in source.calls if kind == "service"]
+    text_call_targets = [target for kind, target, _ in source.calls if kind == "post_text"]
+    deferred_interfaces = [item.interface for item in bundle.deferred]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_ambiguous_anchor_guardrail",
+        question="위임 기준 로더가 모호한 법령명 anchor에서 운영 기준 후보 detail을 자동 로드하지 않는가?",
+        status="blocked_for_manual_review",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "statute_ambiguity_surfaced": any(
+                item.kind == "statute_identity" for item in bundle.ambiguities
+            ),
+            "candidate_laws_preserved": [identity.law_id for identity in bundle.candidates.laws]
+            == ["111111", "222222"],
+            "operational_candidates_preserved": [
+                candidate.identity.name for candidate in bundle.candidates.administrative_rules
+            ]
+            == ["데이터 처리 기준 고시"]
+            and [candidate.identity.title for candidate in bundle.candidates.annex_forms]
+            == ["데이터 처리 기준"],
+            "no_operational_detail_loaded": not bundle.loaded.administrative_rules
+            and not bundle.loaded.annex_forms,
+            "detail_followups_preserved": {"get_administrative_rule", "get_annex_form_body"}.issubset(
+                set(deferred_interfaces)
+            ),
+            "detail_source_not_called": service_call_targets == [] and text_call_targets == [],
+        },
+        citations=[],
+        risk_flags=[
+            "ambiguous_delegated_criteria_anchor_must_not_load_operational_detail",
+            "delegated_criteria_requires_resolved_statute_anchor",
+        ],
+        next_actions=[
+            "Resolve the statute identity with search_laws() before treating administrative-rule or annex candidates as delegated operational criteria.",
+        ],
+        evidence={
+            "candidate_law_ids": [identity.law_id for identity in bundle.candidates.laws],
+            "administrative_rule_candidates": [
+                candidate.identity.name for candidate in bundle.candidates.administrative_rules
+            ],
+            "annex_form_candidates": [candidate.identity.title for candidate in bundle.candidates.annex_forms],
+            "loaded_administrative_rules": len(bundle.loaded.administrative_rules),
+            "loaded_annex_forms": len(bundle.loaded.annex_forms),
+            "ambiguity_kinds": [item.kind for item in bundle.ambiguities],
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "deferred_interfaces": deferred_interfaces,
+            "service_call_targets": service_call_targets,
+            "text_call_targets": text_call_targets,
         },
     )
 

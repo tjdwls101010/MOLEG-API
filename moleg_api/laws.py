@@ -2406,7 +2406,7 @@ class MolegApi:
             budget=budget,
             as_of=as_of,
         )
-        limits = delegated_criteria_load_limits(budget)
+        limits = dict(delegated_criteria_load_limits(budget))
         candidate_limits = bundle_limits(budget)
         explicit_queries = (
             delegated_criteria_query_search_queries(bundle, explicit_query)
@@ -2500,6 +2500,12 @@ class MolegApi:
                     *annex_form_candidates,
                 ]
             )[:annex_form_limit]
+
+        if any(item.kind == "statute_identity" for item in bundle.ambiguities):
+            limits = {key: 0 for key in limits}
+            source_notes.append(
+                "Delegated-criteria detail loading skipped until statute identity ambiguity is resolved."
+            )
 
         for candidate in ranked_candidates(
             administrative_candidates,
