@@ -811,7 +811,7 @@ class MolegApi:
         `get_administrative_rule` to search or load the lower rules themselves.
         """
         identity = identity_from_identifier(law_identifier, basis="effective")
-        params = identity_params(identity, as_of=None, basis="effective")
+        params = versioned_law_identity_params(identity)
         payload = self.source.service("lsDelegated", params)
         raw_delegation = unwrap_service_payload(payload, "lsDelegated")
         root_identity = maybe_identity(raw_delegation.get("법령정보"), basis="effective") or identity
@@ -843,7 +843,7 @@ class MolegApi:
         if depth < 0:
             raise UnsupportedFormatError("Law structure depth must be 0 or greater")
         identity = identity_from_identifier(law_identifier, basis="effective")
-        params = identity_params(identity, as_of=None, basis="effective")
+        params = versioned_law_identity_params(identity)
         payload = self.source.service("lsStmd", params)
         raw_structure = unwrap_service_payload(payload, "lsStmd")
         structure = normalize_law_structure(raw_structure, max_depth=depth)
@@ -2115,6 +2115,7 @@ class MolegApi:
                     try:
                         article_text = self.get_article(identity, article, as_of=reference_date)
                         loaded_articles.append(article_text)
+                        identity = prefer_versioned_law_identity(identity, article_text.identity)
                         append_not_effective_as_of_gap(
                             article_text.identity,
                             reference_date,
@@ -2699,6 +2700,10 @@ class MolegApi:
                     try:
                         article_text = self.get_article(primary_identity, article, as_of=reference_date)
                         loaded_articles.append(article_text)
+                        primary_identity = prefer_versioned_law_identity(
+                            primary_identity,
+                            article_text.identity,
+                        )
                         append_not_effective_as_of_gap(
                             article_text.identity,
                             reference_date,
@@ -3273,6 +3278,14 @@ def identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -
     return params
 
 
+def versioned_law_identity_params(identity: LawIdentity) -> dict[str, Any]:
+    if identity.mst:
+        return {"MST": identity.mst}
+    if identity.law_id:
+        return {"ID": identity.law_id}
+    raise NoResultError("Law identity has neither law_id nor mst")
+
+
 def law_text_identity_params(identity: LawIdentity, *, as_of: str | None, basis: Basis) -> dict[str, Any]:
     params: dict[str, Any] = {}
     if identity.mst:
@@ -3285,6 +3298,33 @@ def law_text_identity_params(identity: LawIdentity, *, as_of: str | None, basis:
     if basis == "effective" and as_of:
         params["efYd"] = compact_date(as_of)
     return params
+
+
+def prefer_versioned_law_identity(current: LawIdentity, loaded: LawIdentity) -> LawIdentity:
+    if not loaded.mst:
+        return current
+    if current.law_id and loaded.law_id and current.law_id != loaded.law_id:
+        return current
+    if (
+        current.name
+        and loaded.name
+        and current.name != current.law_id
+        and current.name != loaded.name
+    ):
+        return current
+    return LawIdentity(
+        law_id=loaded.law_id or current.law_id,
+        name=loaded.name or current.name,
+        basis=loaded.basis,
+        mst=loaded.mst,
+        lid=loaded.lid or current.lid,
+        promulgation_date=loaded.promulgation_date or current.promulgation_date,
+        effective_date=loaded.effective_date or current.effective_date,
+        promulgation_number=loaded.promulgation_number or current.promulgation_number,
+        law_type=loaded.law_type or current.law_type,
+        ministry=loaded.ministry or current.ministry,
+        raw_keys=loaded.raw_keys or current.raw_keys,
+    )
 
 
 def select_requested_articles(

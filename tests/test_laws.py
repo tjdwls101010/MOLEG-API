@@ -3503,6 +3503,55 @@ def test_load_institutional_system_marks_future_effective_statute_as_not_current
     assert source.calls[0] == ("service", "eflaw", {"MST": "300001", "efYd": "20260617"})
 
 
+def test_load_institutional_system_uses_article_version_for_delegation_followups():
+    identity = LawIdentity(law_id="100001", name="전자금융거래법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("전자금융거래법"),
+            institutional_interpretation_search_payload("전자금융거래법"),
+            institutional_case_search_payload("전자금융거래법"),
+            institutional_constitutional_search_payload("전자금융거래법"),
+            institutional_law_annex_payload("전자금융거래법"),
+            institutional_admin_annex_payload("전자금융거래법"),
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "100001",
+                        "법령명_한글": "전자금융거래법",
+                        "법령일련번호": "310001",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": {
+                            "조문번호": "21",
+                            "조문제목": "위임 기준",
+                            "조문내용": "제21조(위임 기준) 필요한 사항은 대통령령으로 정한다.",
+                        }
+                    },
+                }
+            },
+            institutional_structure_payload("100001", "전자금융거래법", "310001", "전자금융거래법 시행령"),
+            institutional_delegation_payload("100001", "전자금융거래법", "전자금융거래법 시행령"),
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system(
+        [identity],
+        articles=["제21조"],
+        budget="minimal",
+        as_of="2025-01-01",
+    )
+
+    assert bundle.loaded.articles[0].identity.mst == "310001"
+    assert source.calls[:3] == [
+        ("service", "eflawjosub", {"ID": "100001", "efYd": "20250101", "JO": "002100"}),
+        ("service", "lsStmd", {"MST": "310001"}),
+        ("service", "lsDelegated", {"MST": "310001"}),
+    ]
+
+
 def test_load_institutional_system_preserves_law_structure_load_failures():
     identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
     source = FakeSource(
@@ -5173,6 +5222,72 @@ def test_load_legal_context_bundle_statute_review_loads_requested_articles_first
     assert bundle.loaded.delegations[0].rules[0].source_article == "제26조"
     assert bundle.request.budget == "minimal"
     assert source.calls[0] == ("service", "eflawjosub", {"ID": "001234", "JO": "002600"})
+
+
+def test_load_legal_context_bundle_uses_article_version_for_delegation_followup():
+    identity = LawIdentity(law_id="001234", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001234",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270777",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": {
+                            "조문번호": "26",
+                            "조문제목": "자동차의 강제처리",
+                            "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                        }
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "001234",
+                            "법령명": "자동차관리법",
+                            "법령일련번호": "270777",
+                        },
+                        "위임조문정보": [
+                            {
+                                "조정보": {"조문번호": "26"},
+                                "위임정보": {"위임법령제목": "자동차관리법 시행령"},
+                            }
+                        ],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제26조 하위 기준",
+        law_identifier=identity,
+        articles=["제26조"],
+        mode="statute_review",
+        budget="minimal",
+        as_of="2025-01-01",
+    )
+
+    assert bundle.loaded.articles[0].identity.mst == "270777"
+    assert bundle.loaded.delegations[0].identity.mst == "270777"
+    assert source.calls[:2] == [
+        ("service", "eflawjosub", {"ID": "001234", "efYd": "20250101", "JO": "002600"}),
+        ("service", "lsDelegated", {"MST": "270777"}),
+    ]
 
 
 def test_load_legal_context_bundle_marks_eager_authority_article_mismatches():

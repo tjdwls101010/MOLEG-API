@@ -135,6 +135,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_delegated_criteria_after_followups(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
             _audit_low_confidence_annex_body(),
+            _audit_as_of_delegation_uses_loaded_article_version(),
             _audit_historical_repealed_article_as_of(),
             _audit_future_effective_administrative_rule_after_followup(),
             _audit_future_effective_promulgated_law(),
@@ -3780,6 +3781,99 @@ def _audit_low_confidence_annex_body() -> LegislativeExpertScenarioReport:
             "structured_notes": structured.notes if structured else [],
             "plain_text_contains_threshold": "10만원" in annex_body.text,
             "call_targets": [target for _, target, _ in source.calls],
+        },
+    )
+
+
+def _audit_as_of_delegation_uses_loaded_article_version() -> LegislativeExpertScenarioReport:
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = ScenarioSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270777",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 필요한 사항은 대통령령으로 정한다.",
+                        "조문시행일자": "20250101",
+                    },
+                }
+            },
+            delegation_payload("자동차관리법", "자동차관리법 시행령", law_id="001747", article="26"),
+        ],
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제26조 기준일 위임관계",
+        law_identifier=identity,
+        articles=["제26조"],
+        mode="statute_review",
+        budget="minimal",
+        as_of="2025-01-01",
+    )
+    service_calls = [call for call in source.calls if call[0] == "service"]
+
+    return LegislativeExpertScenarioReport(
+        scenario="as_of_delegation_uses_loaded_article_version_guardrail",
+        question="기준일 조문을 로드한 뒤 위임관계도 같은 법령일련번호 버전으로 조회하는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "reference_date_preserved": bundle.request.as_of == "20250101",
+            "article_version_mst_preserved": bundle.loaded.articles[0].identity.mst == "270777",
+            "delegation_version_mst_preserved": bundle.loaded.delegations[0].identity.mst == "270777",
+            "delegation_lookup_used_loaded_article_mst": service_calls[1] == (
+                "service",
+                "lsDelegated",
+                {"MST": "270777"},
+            ),
+        },
+        citations=[
+            SourceCitation(
+                "law",
+                "eflawjosub",
+                "자동차관리법",
+                "제26조",
+                "article loaded as of 2025-01-01",
+            ),
+            SourceCitation(
+                "delegation",
+                "lsDelegated",
+                "자동차관리법 시행령",
+                "제26조",
+                "delegation graph loaded from same MST as article",
+            ),
+        ],
+        risk_flags=[
+            "as_of_article_and_delegation_must_share_version_mst",
+            "delegation_graph_without_efyd_requires_mst_from_loaded_article",
+        ],
+        next_actions=[
+            "Use selected lower-rule detail loaders only after the version-matched delegation graph is loaded.",
+            "Do not mix an as-of article with a current-ID delegation graph when answering historical or reference-date questions.",
+        ],
+        evidence={
+            "as_of": bundle.request.as_of,
+            "article_mst": bundle.loaded.articles[0].identity.mst,
+            "delegation_mst": bundle.loaded.delegations[0].identity.mst,
+            "service_calls": [
+                {"kind": kind, "target": target, "params": params}
+                for kind, target, params in service_calls
+            ],
         },
     )
 

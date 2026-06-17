@@ -52,6 +52,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "delegated_criteria_after_followups",
         "delegated_criteria_source_mismatch_guardrail",
         "low_confidence_annex_body_guardrail",
+        "as_of_delegation_uses_loaded_article_version_guardrail",
         "historical_article_as_of_guardrail",
         "future_effective_administrative_rule_guardrail",
         "future_effective_promulgated_law_guardrail",
@@ -1180,6 +1181,28 @@ def test_legislative_expert_e2e_audit_marks_low_confidence_annex_rows_as_plain_t
     assert annex.evidence["plain_text_contains_threshold"] is True
     assert "annex_structured_rows_low_confidence" in annex.risk_flags
     assert "empty_structured_rows_do_not_mean_no_annex_criteria" in annex.risk_flags
+
+
+def test_legislative_expert_e2e_audit_uses_as_of_article_mst_for_delegations():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    versioned = by_scenario["as_of_delegation_uses_loaded_article_version_guardrail"]
+
+    assert versioned.status == "ready_for_reasoning"
+    assert versioned.public_interfaces == ["load_legal_context_bundle"]
+    assert versioned.must_have["reference_date_preserved"] is True
+    assert versioned.must_have["article_version_mst_preserved"] is True
+    assert versioned.must_have["delegation_version_mst_preserved"] is True
+    assert versioned.must_have["delegation_lookup_used_loaded_article_mst"] is True
+    assert versioned.evidence["service_calls"][1] == {
+        "kind": "service",
+        "target": "lsDelegated",
+        "params": {"MST": "270777"},
+    }
+    assert "as_of_article_and_delegation_must_share_version_mst" in versioned.risk_flags
 
 
 def test_legislative_expert_e2e_audit_marks_future_effective_promulgated_law():
