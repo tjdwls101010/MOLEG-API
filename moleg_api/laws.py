@@ -4970,6 +4970,7 @@ def build_follow_up_searches(
             query=query,
             reason="Find current-law candidates before loading legal text.",
             source_type="law",
+            filters={"basis": "effective"},
         ),
         FollowUpSearch(
             interface="search_administrative_rules",
@@ -5021,16 +5022,20 @@ def build_follow_up_searches(
                 query=term.term,
                 reason="Use an expanded legal or everyday term as a law-search candidate.",
                 source_type=term.source_type,
+                filters={"basis": "effective"},
             )
         )
     for law in related_laws[:5]:
+        filters = {"article": law.article} if law.article else {}
+        if law.source_type == "law":
+            filters = {"basis": "effective", **filters}
         searches.append(
             FollowUpSearch(
                 interface="search_laws" if law.source_type == "law" else "search_administrative_rules",
                 query=law.name,
                 reason="Follow a related law candidate discovered by query expansion.",
                 source_type=law.source_type,
-                filters={"article": law.article} if law.article else {},
+                filters=filters,
             )
         )
     if include_websearch_hint:

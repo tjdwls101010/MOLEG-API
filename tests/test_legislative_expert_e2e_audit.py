@@ -339,6 +339,11 @@ def test_legislative_expert_e2e_audit_keeps_query_expansion_as_planning_context(
     assert expansion.must_have["term_candidate_preserved"] is True
     assert expansion.must_have["related_article_candidate_preserved"] is True
     assert expansion.must_have["followups_preserved"] is True
+    assert expansion.must_have["effective_search_filters_preserved"] is True
+    assert all(
+        filters.get("basis") == "effective"
+        for filters in expansion.evidence["search_laws_followup_filters"]
+    )
     assert expansion.evidence["citations_loaded"] == 0
     assert expansion.citations == []
     assert "query_expansion_is_not_final_authority" in expansion.risk_flags

@@ -938,6 +938,9 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
 
     expansion = MolegApi(source).expand_legal_query(query)
     follow_up_interfaces = [search.interface for search in expansion.follow_up_searches]
+    law_search_followups = [
+        search for search in expansion.follow_up_searches if search.interface == "search_laws"
+    ]
 
     return LegislativeExpertScenarioReport(
         scenario="query_expansion_candidate_authority_guardrail",
@@ -950,6 +953,10 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
             "related_article_candidate_preserved": expansion.related_articles[0].article == "제26조",
             "followups_preserved": {"search_laws", "get_law", "websearch"}.issubset(
                 set(follow_up_interfaces)
+            ),
+            "effective_search_filters_preserved": all(
+                search.filters.get("basis") == "effective"
+                for search in law_search_followups
             ),
             "no_citable_source_loaded": True,
         },
@@ -976,6 +983,9 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
                 for candidate in expansion.related_articles
             ],
             "follow_up_interfaces": follow_up_interfaces,
+            "search_laws_followup_filters": [
+                search.filters for search in law_search_followups
+            ],
             "citations_loaded": 0,
             "call_targets": [target for _, target, _ in source.calls],
         },

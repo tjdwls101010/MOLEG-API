@@ -3226,6 +3226,10 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
     assert expansion.related_articles[0].article == "제26조"
     assert expansion.related_laws[0].name == "자동차관리법"
     assert expansion.related_laws[1].name == "자동차손해배상 보장법"
+    law_searches = [
+        search for search in expansion.follow_up_searches if search.interface == "search_laws"
+    ]
+    assert all(search.filters.get("basis") == "effective" for search in law_searches)
     annex_search = next(
         search for search in expansion.follow_up_searches if search.interface == "search_annex_forms"
     )
