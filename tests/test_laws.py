@@ -8427,6 +8427,20 @@ def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():
     assert [candidate.law_id for candidate in bundle.ambiguities[0].candidates] == ["1", "2"]
     assert [candidate.mst for candidate in bundle.ambiguities[0].candidates] == ["100001", "100002"]
     assert bundle.gaps[0].kind == "manual_review_required"
+    bridge_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "resolve_promulgated_law" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in bridge_deferred] == [
+        (
+            "데이터기본법",
+            {
+                "prom_law_nm": "데이터기본법",
+                "prom_no": "1",
+            },
+        )
+    ]
 
 
 def test_load_legal_context_bundle_preserves_bridge_lag_candidates():

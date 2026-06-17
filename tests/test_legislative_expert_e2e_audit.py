@@ -74,6 +74,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "institutional_system_future_effective_guardrail",
         "proposed_bill_without_promulgation_bridge_guardrail",
         "ambiguous_statute_identity_guardrail",
+        "promulgation_bridge_ambiguity_guardrail",
         "promulgation_bridge_source_lag_guardrail",
         "interpretation_authority_distinction",
     ]
@@ -103,6 +104,24 @@ def test_legislative_expert_e2e_audit_marks_blocking_guardrails():
     assert ambiguous.evidence["deferred_interfaces"] == ["search_laws"]
     assert ambiguous.evidence["deferred_filters"] == [{"basis": "effective"}]
     assert "ambiguous_law_name_must_not_be_silently_selected" in ambiguous.risk_flags
+
+    bridge_ambiguity = by_scenario["promulgation_bridge_ambiguity_guardrail"]
+    assert bridge_ambiguity.status == "blocked_for_manual_review"
+    assert bridge_ambiguity.must_have["bridge_retry_deferred_preserved"] is True
+    assert bridge_ambiguity.evidence["ambiguity_kinds"] == ["promulgation_bridge"]
+    assert bridge_ambiguity.evidence["candidate_law_ids"] == ["111111", "222222"]
+    assert bridge_ambiguity.evidence["deferred_interfaces"] == ["resolve_promulgated_law"]
+    assert bridge_ambiguity.evidence["deferred_filters"] == [
+        {
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "2025-01-01",
+        }
+    ]
+    assert (
+        "ambiguous_promulgation_bridge_must_not_be_silently_selected"
+        in bridge_ambiguity.risk_flags
+    )
 
     ambiguous_question = by_scenario["context_bundle_ambiguous_question_law_candidate_guardrail"]
     assert ambiguous_question.status == "blocked_for_manual_review"

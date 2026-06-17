@@ -164,6 +164,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_institutional_system_future_effective_law(),
             _audit_proposed_bill_without_promulgation_bridge(),
             _audit_ambiguous_statute_set(),
+            _audit_promulgation_bridge_ambiguity(),
             _audit_promulgation_bridge_source_lag(),
             _audit_interpretation_authority_distinction(),
         ]
@@ -6313,6 +6314,96 @@ def _audit_ambiguous_statute_set() -> LegislativeExpertScenarioReport:
             "loaded_laws": len(bundle.loaded.laws),
             "deferred_interfaces": [item.interface for item in search_deferred],
             "deferred_filters": [item.filters for item in search_deferred],
+        },
+    )
+
+
+def _audit_promulgation_bridge_ambiguity() -> LegislativeExpertScenarioReport:
+    source = ScenarioSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "260001",
+                            "공포번호": "20000",
+                            "공포일자": "20250101",
+                        },
+                        {
+                            "법령ID": "222222",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "260002",
+                            "공포번호": "20000",
+                            "공포일자": "20250101",
+                        },
+                    ]
+                }
+            }
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "2025-01-01",
+        },
+        mode="promulgated_bill",
+        budget="minimal",
+    )
+    bridge_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "resolve_promulgated_law" and item.source_type == "law"
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="promulgation_bridge_ambiguity_guardrail",
+        question="국회 공포 bridge가 여러 MOLEG 법령에 매칭될 때 첫 번째 후보를 현행 법령처럼 고르지 않는가?",
+        status="blocked_for_manual_review",
+        public_interfaces=["load_legal_context_bundle", "resolve_promulgated_law"],
+        must_have={
+            "bridge_ambiguity_surfaced": any(
+                item.kind == "promulgation_bridge" for item in bundle.ambiguities
+            ),
+            "manual_review_gap_preserved": any(
+                gap.kind == "manual_review_required" for gap in bundle.gaps
+            ),
+            "bridge_retry_deferred_preserved": [
+                (item.query, item.filters) for item in bridge_deferred
+            ] == [
+                (
+                    "데이터기본법",
+                    {
+                        "prom_law_nm": "데이터기본법",
+                        "prom_no": "20000",
+                        "promulgation_dt": "2025-01-01",
+                    },
+                )
+            ],
+            "candidate_count_preserved": (
+                len(bundle.ambiguities[0].candidates) if bundle.ambiguities else 0
+            )
+            == 2,
+            "no_current_law_loaded": not bundle.loaded.laws,
+        },
+        risk_flags=["ambiguous_promulgation_bridge_must_not_be_silently_selected"],
+        next_actions=[
+            "Resolve the bridge ambiguity against congress-db and MOLEG candidate metadata before current-law reasoning.",
+        ],
+        evidence={
+            "ambiguity_kinds": [item.kind for item in bundle.ambiguities],
+            "candidate_law_ids": [
+                candidate.law_id
+                for ambiguity in bundle.ambiguities
+                for candidate in ambiguity.candidates
+            ],
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "deferred_interfaces": [item.interface for item in bridge_deferred],
+            "deferred_filters": [item.filters for item in bridge_deferred],
+            "loaded_laws": len(bundle.loaded.laws),
         },
     )
 

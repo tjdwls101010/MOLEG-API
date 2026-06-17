@@ -2887,6 +2887,22 @@ class MolegApi:
                         recommended_interface="resolve_promulgated_law",
                     )
                 )
+                deferred.append(
+                    DeferredLookup(
+                        interface="resolve_promulgated_law",
+                        query=prom_law_nm or "",
+                        reason=(
+                            "Resolve the ambiguous congress-db promulgation bridge before "
+                            "loading current-law context for this bill."
+                        ),
+                        source_type="law",
+                        filters=promulgation_bridge_filters(
+                            prom_law_nm=prom_law_nm,
+                            prom_no=prom_no,
+                            promulgation_dt=promulgation_dt,
+                        ),
+                    )
+                )
             except NoResultError as exc:
                 candidate_hits: list[LawHit] = []
                 if prom_law_nm:
