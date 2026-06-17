@@ -347,6 +347,226 @@ class MolegApi:
     def __init__(self, source: MolegSource | None = None) -> None:
         self.source = source or LawGoKrClient()
 
+    def load_followup(self, lookup: DeferredLookup | FollowUpSearch) -> Any:
+        """Execute one staged follow-up lookup through the public interface.
+
+        Use when: the skill receives a `DeferredLookup` or `FollowUpSearch`
+        from query expansion or a context bundle and wants MOLEG-API to turn it
+        into the right task-level loader without exposing source target names,
+        `ID`/`MST` rules, or article formatting.
+        Returns: the same value returned by the routed public method, such as a
+        law text, article text, search-hit list, or context bundle.
+        Raises: `UnsupportedFormatError` for WebSearch handoffs or unknown
+        interfaces; routed method errors propagate unchanged.
+        Related: `expand_legal_query`, `load_legal_context_bundle`, and
+        `load_institutional_system` produce follow-up records this method can
+        execute.
+        """
+        interface = followup_interface(lookup)
+        filters = followup_filters(lookup)
+        query = followup_query(lookup)
+
+        if interface == "websearch":
+            raise UnsupportedFormatError(
+                "websearch follow-up is outside MOLEG-API; use WebSearch for latest or non-MOLEG facts."
+            )
+        if interface == "expand_legal_query":
+            return self.expand_legal_query(
+                query,
+                display=followup_int(filters, "display", 5),
+                include_websearch_hint=followup_bool(filters, "include_websearch_hint", True),
+            )
+        if interface == "find_comparable_mechanisms":
+            return self.find_comparable_mechanisms(query, display=followup_int(filters, "display", 5))
+        if interface == "resolve_promulgated_law":
+            return self.resolve_promulgated_law(
+                prom_law_nm=followup_str(filters, "prom_law_nm", "law_name") or query,
+                prom_no=followup_str(filters, "prom_no", "promulgation_number"),
+                promulgation_dt=followup_str(filters, "promulgation_dt", "promulgation_date"),
+            )
+        if interface == "search_laws":
+            return self.search_laws(
+                query,
+                as_of=followup_str(filters, "as_of"),
+                basis=followup_basis(filters),
+                law_type=followup_str(filters, "law_type"),
+                ministry=followup_str(filters, "ministry"),
+                display=followup_int(filters, "display", 20),
+            )
+        if interface == "get_law":
+            basis = followup_basis(filters)
+            return self.get_law(
+                followup_law_identity(lookup, filters, basis=basis),
+                as_of=followup_str(filters, "as_of"),
+                basis=basis,
+                articles=followup_articles(filters),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+            )
+        if interface == "get_article":
+            basis = followup_basis(filters)
+            return self.get_article(
+                followup_law_identity(lookup, filters, basis=basis),
+                followup_article(filters, query),
+                as_of=followup_str(filters, "as_of"),
+                basis=basis,
+            )
+        if interface == "load_article_context":
+            basis = followup_basis(filters)
+            return self.load_article_context(
+                followup_law_identity(lookup, filters, basis=basis),
+                followup_article(filters, query),
+                as_of=followup_str(filters, "as_of"),
+                basis=basis,
+                follow_moved=followup_bool(filters, "follow_moved", True),
+            )
+        if interface == "trace_law_history":
+            return self.trace_law_history(
+                followup_law_identity(lookup, filters, basis="effective"),
+                date_range=followup_date_range(filters),
+                article=followup_optional_article(filters, query),
+                promulgation_bridge=followup_promulgation_bridge(filters),
+            )
+        if interface == "compare_law_versions":
+            return self.compare_law_versions(
+                followup_law_identity(lookup, filters, basis="effective"),
+                before=followup_str(filters, "before"),
+                after=followup_str(filters, "after"),
+                article=followup_optional_article(filters, query),
+            )
+        if interface == "find_delegated_rules":
+            return self.find_delegated_rules(
+                followup_law_identity(lookup, filters, basis="effective"),
+                article=followup_optional_article(filters, query),
+            )
+        if interface == "get_law_structure":
+            return self.get_law_structure(
+                followup_law_identity(lookup, filters, basis="effective"),
+                depth=followup_int(filters, "depth", 0),
+            )
+        if interface == "search_administrative_rules":
+            return self.search_administrative_rules(
+                query,
+                ministry=followup_str(filters, "ministry"),
+                rule_type=followup_str(filters, "rule_type"),
+                issued_on=followup_str(filters, "issued_on"),
+                include_history=followup_bool(filters, "include_history", False),
+                display=followup_int(filters, "display", 20),
+            )
+        if interface == "get_administrative_rule":
+            return self.get_administrative_rule(
+                followup_administrative_rule_identity(lookup, filters),
+                articles=followup_articles(filters),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+            )
+        if interface == "load_administrative_rule_context":
+            return self.load_administrative_rule_context(
+                followup_administrative_rule_identity(lookup, filters),
+                articles=followup_articles(filters),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+                follow_moved=followup_bool(filters, "follow_moved", True),
+            )
+        if interface == "search_annex_forms":
+            hits: list[AnnexFormHit] = []
+            for source in followup_annex_sources(filters):
+                hits.extend(
+                    self.search_annex_forms(
+                        query,
+                        source=source,
+                        search_scope=followup_annex_search_scope(filters),
+                        annex_type=followup_str(filters, "annex_type"),
+                        ministry=followup_str(filters, "ministry"),
+                        display=followup_int(filters, "display", 20),
+                    )
+                )
+            return hits
+        if interface == "get_annex_form_body":
+            source = followup_annex_source(filters)
+            return self.get_annex_form_body(
+                followup_annex_form_identity(lookup, filters, source=source),
+                source=source,
+                title=followup_str(filters, "title"),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+                attempt_structuring=followup_bool(filters, "attempt_structuring", True),
+            )
+        if interface == "search_interpretations":
+            return self.search_interpretations(
+                query,
+                source=followup_interpretation_source(filters),
+                ministry=followup_str(filters, "ministry"),
+                search_body=followup_bool(filters, "search_body", False),
+                interpreted_on=followup_str(filters, "interpreted_on"),
+                display=followup_int(filters, "display", 20),
+            )
+        if interface == "get_interpretation":
+            return self.get_interpretation(
+                followup_detail_id(lookup, filters, "interpretation_id", "id"),
+                source=followup_str(filters, "source"),
+                ministry=followup_str(filters, "ministry"),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+            )
+        if interface == "search_cases":
+            return self.search_cases(
+                query,
+                court=followup_case_court(filters),
+                court_name=followup_str(filters, "court_name"),
+                search_body=followup_bool(filters, "search_body", False),
+                decided_on=followup_str(filters, "decided_on"),
+                case_number=followup_str(filters, "case_number"),
+                display=followup_int(filters, "display", 20),
+            )
+        if interface == "get_case":
+            return self.get_case(
+                followup_detail_id(lookup, filters, "decision_id", "case_id", "id"),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+            )
+        if interface == "search_constitutional_decisions":
+            return self.search_constitutional_decisions(
+                query,
+                search_body=followup_bool(filters, "search_body", False),
+                decided_on=followup_str(filters, "decided_on"),
+                case_number=followup_str(filters, "case_number"),
+                display=followup_int(filters, "display", 20),
+            )
+        if interface == "get_constitutional_decision":
+            return self.get_constitutional_decision(
+                followup_detail_id(lookup, filters, "decision_id", "case_id", "id"),
+                include_metadata=followup_bool(filters, "include_metadata", True),
+            )
+        if interface == "load_authority_context":
+            return self.load_authority_context(
+                followup_law_identity(lookup, filters, basis="effective"),
+                articles=followup_required_articles(filters),
+                query=followup_str(filters, "authority_query") or query or None,
+                budget=followup_budget(filters),
+                as_of=followup_str(filters, "as_of"),
+            )
+        if interface == "load_legal_context_bundle":
+            return self.load_legal_context_bundle(
+                query or None,
+                promulgation_bridge=followup_promulgation_bridge(filters),
+                law_identifier=followup_optional_law_identity(lookup, filters),
+                articles=followup_articles(filters),
+                mode=followup_bundle_mode(filters),
+                budget=followup_budget(filters),
+                as_of=followup_str(filters, "as_of"),
+            )
+        if interface == "load_institutional_system":
+            return self.load_institutional_system(
+                followup_statute_identifiers(lookup, filters),
+                articles=followup_articles(filters),
+                budget=followup_budget(filters),
+                as_of=followup_str(filters, "as_of"),
+            )
+        if interface == "load_delegated_criteria":
+            return self.load_delegated_criteria(
+                followup_law_identity(lookup, filters, basis="effective"),
+                articles=followup_articles(filters),
+                query=followup_str(filters, "criteria_query") or query or None,
+                budget=followup_budget(filters),
+                as_of=followup_str(filters, "as_of"),
+            )
+        raise UnsupportedFormatError(f"Unsupported follow-up interface: {interface}")
+
     def search_laws(
         self,
         query: str,
@@ -5521,6 +5741,298 @@ def string_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def followup_interface(lookup: DeferredLookup | FollowUpSearch) -> str:
+    interface = string_value(getattr(lookup, "interface", None))
+    interface = interface.strip() if interface else None
+    if not interface:
+        raise UnsupportedFormatError("follow-up lookup interface is required")
+    return interface
+
+
+def followup_query(lookup: DeferredLookup | FollowUpSearch) -> str:
+    query = string_value(getattr(lookup, "query", None))
+    return query.strip() if query else ""
+
+
+def followup_filters(lookup: DeferredLookup | FollowUpSearch) -> dict[str, Any]:
+    filters = getattr(lookup, "filters", None) or {}
+    if not isinstance(filters, dict):
+        raise UnsupportedFormatError("follow-up lookup filters must be a mapping")
+    return dict(filters)
+
+
+def followup_str(filters: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = string_value(filters.get(key))
+        value = value.strip() if value else None
+        if value:
+            return value
+    return None
+
+
+def followup_int(filters: dict[str, Any], key: str, default: int) -> int:
+    value = filters.get(key)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise UnsupportedFormatError(f"follow-up filter {key!r} must be an integer") from exc
+
+
+def followup_bool(filters: dict[str, Any], key: str, default: bool) -> bool:
+    value = filters.get(key)
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y"}:
+            return True
+        if normalized in {"false", "0", "no", "n"}:
+            return False
+    return bool(value)
+
+
+def followup_basis(filters: dict[str, Any], default: Basis = "effective") -> Basis:
+    basis = followup_str(filters, "basis") or default
+    validate_choice("basis", basis, BASIS_VALUES)
+    return basis  # type: ignore[return-value]
+
+
+def followup_budget(filters: dict[str, Any]) -> BundleBudget:
+    budget = followup_str(filters, "budget") or "standard"
+    validate_choice("budget", budget, BUNDLE_BUDGET_VALUES)
+    return budget  # type: ignore[return-value]
+
+
+def followup_bundle_mode(filters: dict[str, Any]) -> BundleMode:
+    mode = followup_str(filters, "mode")
+    if mode:
+        validate_choice("mode", mode, BUNDLE_MODE_VALUES)
+        return mode  # type: ignore[return-value]
+    if followup_promulgation_bridge(filters):
+        return "promulgated_bill"
+    if followup_law_source_id(filters):
+        return "statute_review"
+    return "question"
+
+
+def followup_law_source_id(filters: dict[str, Any]) -> str | None:
+    return followup_str(filters, "law_id", "id", "mst")
+
+
+def followup_law_identity(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+    *,
+    basis: Basis,
+) -> LawIdentity:
+    law_id = followup_str(filters, "law_id", "id")
+    mst = followup_str(filters, "mst")
+    name = (
+        followup_str(filters, "law_name", "name")
+        or followup_query(lookup)
+        or law_id
+        or mst
+    )
+    if not name:
+        raise NoResultError("follow-up law identity requires law_id, mst, law_name, or query")
+    return LawIdentity(
+        law_id=law_id,
+        name=name,
+        basis=basis,
+        mst=mst,
+        lid=followup_str(filters, "lid"),
+        promulgation_date=followup_str(filters, "promulgation_date", "promulgation_dt"),
+        effective_date=followup_str(filters, "effective_date", "as_of"),
+        promulgation_number=followup_str(filters, "promulgation_number", "prom_no"),
+        law_type=followup_str(filters, "law_type"),
+        ministry=followup_str(filters, "ministry"),
+    )
+
+
+def followup_optional_law_identity(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+) -> LawIdentity | None:
+    if not followup_law_source_id(filters):
+        return None
+    return followup_law_identity(lookup, filters, basis=followup_basis(filters))
+
+
+def followup_article(filters: dict[str, Any], query: str) -> str | int:
+    article = followup_str(filters, "article", "jo")
+    if article:
+        return article
+    article = article_from_query(query)
+    if article:
+        return article
+    raise NoResultError("follow-up article lookup requires an article filter")
+
+
+def followup_optional_article(filters: dict[str, Any], query: str) -> str | int | None:
+    article = followup_str(filters, "article", "jo")
+    if article:
+        return article
+    return article_from_query(query)
+
+
+def article_from_query(query: str) -> str | None:
+    match = re.search(r"제\s*\d+\s*조(?:\s*의\s*\d+)?|\d+\s*조(?:\s*의\s*\d+)?", query)
+    if not match:
+        return None
+    return article_label_for_filter(match.group(0))
+
+
+def followup_articles(filters: dict[str, Any]) -> list[str | int] | None:
+    articles = filters.get("articles")
+    if isinstance(articles, (list, tuple, set)):
+        return list(articles)
+    if articles not in (None, ""):
+        return [articles]
+    article = followup_str(filters, "article", "jo")
+    return [article] if article else None
+
+
+def followup_required_articles(filters: dict[str, Any]) -> list[str | int]:
+    articles = followup_articles(filters)
+    if not articles:
+        raise NoResultError("follow-up lookup requires articles")
+    return articles
+
+
+def followup_date_range(filters: dict[str, Any]) -> tuple[str, str] | None:
+    date_range = filters.get("date_range")
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        return (str(date_range[0]), str(date_range[1]))
+    start = followup_str(filters, "start", "from", "from_date")
+    end = followup_str(filters, "end", "to", "to_date")
+    if start or end:
+        if not start or not end:
+            raise NoResultError("follow-up date_range requires both start and end")
+        return (start, end)
+    return None
+
+
+def followup_promulgation_bridge(filters: dict[str, Any]) -> dict[str, Any] | None:
+    bridge = filters.get("promulgation_bridge")
+    if isinstance(bridge, dict):
+        return dict(bridge)
+    if not any(followup_str(filters, key) for key in ("prom_law_nm", "prom_no", "promulgation_dt")):
+        return None
+    values = {
+        "prom_law_nm": followup_str(filters, "prom_law_nm"),
+        "prom_no": followup_str(filters, "prom_no", "promulgation_number"),
+        "promulgation_dt": followup_str(filters, "promulgation_dt", "promulgation_date"),
+    }
+    return {key: value for key, value in values.items() if value} or None
+
+
+def followup_administrative_rule_identity(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+) -> AdministrativeRuleIdentity:
+    serial_id = followup_str(filters, "serial_id", "id")
+    rule_id = followup_str(filters, "rule_id", "lid")
+    name = (
+        followup_str(filters, "rule_name", "name")
+        or followup_query(lookup)
+        or serial_id
+        or rule_id
+    )
+    if not name:
+        raise NoResultError("follow-up administrative-rule identity requires an ID, LID, name, or query")
+    return AdministrativeRuleIdentity(serial_id=serial_id, name=name, rule_id=rule_id)
+
+
+def followup_annex_source(filters: dict[str, Any]) -> AnnexFormSource:
+    source = followup_str(filters, "source") or "law"
+    validate_choice("source", source, ANNEX_SOURCE_VALUES)
+    return source  # type: ignore[return-value]
+
+
+def followup_annex_sources(filters: dict[str, Any]) -> list[AnnexFormSource]:
+    raw_sources = filters.get("sources")
+    if isinstance(raw_sources, (list, tuple, set)):
+        sources = [str(source) for source in raw_sources if string_value(source)]
+    elif raw_sources not in (None, ""):
+        sources = [str(raw_sources)]
+    else:
+        sources = [followup_annex_source(filters)]
+    for source in sources:
+        validate_choice("source", source, ANNEX_SOURCE_VALUES)
+    return sources  # type: ignore[return-value]
+
+
+def followup_annex_search_scope(filters: dict[str, Any]) -> AnnexSearchScope:
+    search_scope = followup_str(filters, "search_scope") or "source"
+    validate_choice("search_scope", search_scope, ANNEX_SEARCH_SCOPE_VALUES)
+    return search_scope  # type: ignore[return-value]
+
+
+def followup_annex_form_identity(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+    *,
+    source: AnnexFormSource,
+) -> AnnexFormIdentity | str:
+    annex_id = followup_str(filters, "annex_id", "id")
+    title = followup_str(filters, "title") or followup_query(lookup) or annex_id
+    if annex_id:
+        source_type = annex_source_type(source)
+        return AnnexFormIdentity(
+            annex_id=annex_id,
+            title=title or annex_id,
+            source_type=source_type,
+            source_target=annex_target_for(source_type),
+            related_name=followup_str(filters, "related_name"),
+        )
+    return title or followup_query(lookup)
+
+
+def followup_interpretation_source(filters: dict[str, Any]) -> InterpretationSearchSource:
+    source = followup_str(filters, "source") or "moleg"
+    validate_choice("source", source, INTERPRETATION_SOURCE_VALUES)
+    return source  # type: ignore[return-value]
+
+
+def followup_case_court(filters: dict[str, Any]) -> CaseCourt:
+    court = followup_str(filters, "court") or "all"
+    validate_choice("court", court, COURT_VALUES)
+    return court  # type: ignore[return-value]
+
+
+def followup_detail_id(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+    *keys: str,
+) -> str:
+    identifier = followup_str(filters, *keys) or followup_query(lookup)
+    if not identifier:
+        raise NoResultError("follow-up detail lookup requires a source ID")
+    return identifier
+
+
+def followup_statute_identifiers(
+    lookup: DeferredLookup | FollowUpSearch,
+    filters: dict[str, Any],
+) -> list[str | LawIdentity | LawHit]:
+    identifiers = filters.get("statute_identifiers") or filters.get("statute_ids")
+    if isinstance(identifiers, (list, tuple, set)):
+        return list(identifiers)
+    if identifiers not in (None, ""):
+        return [identifiers]
+    identity = followup_optional_law_identity(lookup, filters)
+    if identity:
+        return [identity]
+    query = followup_query(lookup)
+    if query:
+        return [query]
+    raise NoResultError("follow-up institutional-system lookup requires statute identifiers")
 
 
 def statute_identifier_label(identifier: str | LawIdentity | LawHit) -> str:

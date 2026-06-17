@@ -94,6 +94,7 @@ These are implemented public `MolegApi` methods. Type-level details live in code
 - `get_constitutional_decision(identifier, *, include_metadata=True)`
 - `load_authority_context(law_identifier, *, articles, query=None, budget="standard", as_of=None)`
 - `expand_legal_query(query, *, display=5, include_websearch_hint=True)`
+- `load_followup(lookup)`
 - `find_comparable_mechanisms(concept, *, display=5)`
 - `load_legal_context_bundle(query=None, *, promulgation_bridge=None, law_identifier=None, articles=None, mode="question", budget="standard", as_of=None)`
 - `load_institutional_system(statute_identifiers, *, articles=None, budget="standard", as_of=None)`

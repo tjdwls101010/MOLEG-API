@@ -166,6 +166,7 @@ These interfaces are implemented as the skill-facing contract. The future skill 
 - `MolegApi.get_constitutional_decision()`
 - `MolegApi.load_authority_context()`
 - `MolegApi.expand_legal_query()`
+- `MolegApi.load_followup()`
 - `MolegApi.find_comparable_mechanisms()`
 - `MolegApi.load_legal_context_bundle()`
 - `MolegApi.load_institutional_system()`

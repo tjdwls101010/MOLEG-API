@@ -30,6 +30,7 @@ CORE_METHODS = [
     "search_constitutional_decisions",
     "get_constitutional_decision",
     "expand_legal_query",
+    "load_followup",
     "find_comparable_mechanisms",
     "load_institutional_system",
     "load_legal_context_bundle",

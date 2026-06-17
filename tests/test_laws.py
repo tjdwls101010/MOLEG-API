@@ -3,7 +3,14 @@ import pytest
 from moleg_api import AmbiguousLawError, MolegApi, NoResultError
 from moleg_api.errors import ParseFailureError, RateLimitError, UnsupportedFormatError
 from moleg_api.laws import MINISTRY_INTERPRETATION_SOURCES
-from moleg_api.models import AnnexFormIdentity, JudicialDecisionIdentity, LawIdentity, StructuredTableData
+from moleg_api.models import (
+    AnnexFormIdentity,
+    DeferredLookup,
+    FollowUpSearch,
+    JudicialDecisionIdentity,
+    LawIdentity,
+    StructuredTableData,
+)
 from moleg_api.normalization import format_article_jo
 
 
@@ -112,6 +119,75 @@ def test_resolve_promulgated_law_requires_law_name_anchor_before_source_call():
         MolegApi(source).resolve_promulgated_law(prom_law_nm="   ", prom_no="20100")
 
     assert source.calls == []
+
+
+def test_load_followup_executes_get_law_follow_up_with_mst_identity():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령명_한글": "데이터기본법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20260101",
+                    },
+                    "조문": {"조문단위": []},
+                }
+            }
+        ]
+    )
+    followup = FollowUpSearch(
+        interface="get_law",
+        query="데이터기본법",
+        reason="Load current law text.",
+        source_type="law",
+        filters={"basis": "effective", "mst": "270001"},
+    )
+
+    law = MolegApi(source).load_followup(followup)
+
+    assert law.identity.name == "데이터기본법"
+    assert source.calls == [("service", "eflaw", {"MST": "270001"})]
+
+
+def test_load_followup_executes_deferred_article_lookup_with_source_identity():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문내용": "개인정보처리자는 개인정보를 수집할 수 있다.",
+                    }
+                }
+            }
+        ]
+    )
+    lookup = DeferredLookup(
+        interface="get_article",
+        query="개인정보 보호법 제15조",
+        reason="Load article text.",
+        source_type="law_article",
+        filters={"law_id": "009999", "article": "제15조", "basis": "effective"},
+    )
+
+    article = MolegApi(source).load_followup(lookup)
+
+    assert article.article == "제15조"
+    assert article.title == "개인정보의 수집ㆍ이용"
+    assert source.calls == [("service", "eflawjosub", {"ID": "009999", "JO": "001500"})]
+
+
+def test_load_followup_rejects_websearch_handoff():
+    lookup = FollowUpSearch(
+        interface="websearch",
+        query="최신 교통사고 통계",
+        reason="Use WebSearch for latest social facts.",
+    )
+
+    with pytest.raises(UnsupportedFormatError, match="outside MOLEG-API"):
+        MolegApi(FakeSource()).load_followup(lookup)
 
 
 def test_resolve_promulgated_law_matches_formatted_promulgation_numbers():
