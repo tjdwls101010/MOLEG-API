@@ -137,6 +137,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_context_bundle_authority_after_reference_date_guardrail(),
             _audit_law_structure_hierarchy_candidate_guardrail(),
             _audit_institutional_system_law_structure_not_loaded_guardrail(),
+            _audit_institutional_system_empty_delegation_graph_guardrail(),
             _audit_empty_delegation_graph_absence_guardrail(),
             _audit_administrative_rule_search_candidate_detail_guardrail(),
             _audit_administrative_rule_name_ambiguity_guardrail(),
@@ -3859,6 +3860,101 @@ def _audit_institutional_system_law_structure_not_loaded_guardrail() -> Legislat
             "law_structure_deferred_filters": [item.filters for item in structure_deferred],
             "loaded_law_structures": len(bundle.loaded.law_structures),
             "loaded_delegations": len(bundle.loaded.delegations),
+            "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
+        },
+    )
+
+
+def _audit_institutional_system_empty_delegation_graph_guardrail() -> LegislativeExpertScenarioReport:
+    law_name = "전자금융거래법 시행령"
+    identity = LawIdentity(law_id="100002", mst="300002", name=law_name, basis="effective")
+    source = ScenarioSource(
+        search_payloads=[
+            administrative_rule_search_payload(f"{law_name} 고시"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            annex_search_payload("440002", f"{law_name} 별표", related_name=law_name),
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            law_text_payload(law_name, "100002", "300002", article="제21조", title="안전성 확보"),
+            law_structure_payload(law_name, "100002", "300002", "전자금융거래법 시행규칙"),
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "100002",
+                            "법령명": law_name,
+                            "법령일련번호": "300002",
+                        },
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_institutional_system([identity], budget="minimal")
+    empty_delegation_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "empty_delegation_graph"
+    ]
+    administrative_search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_administrative_rules"
+        and item.source_type == "administrative_rule"
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="institutional_system_empty_delegation_graph_guardrail",
+        question="제도 bundle이 빈 위임조회 결과를 하위규정 없음으로 승격하지 않는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_institutional_system"],
+        must_have={
+            "law_text_loaded": bool(bundle.loaded.laws),
+            "law_structure_loaded": bool(bundle.loaded.law_structures),
+            "empty_delegation_graph_preserved": (
+                len(bundle.loaded.delegations) == 1
+                and bundle.loaded.delegations[0].rules == []
+            ),
+            "empty_delegation_gap_preserved": [
+                (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
+            ]
+            == [(law_name, "search_administrative_rules")],
+            "administrative_rule_followup_preserved": [
+                (item.query, item.filters) for item in administrative_search_deferred
+            ]
+            == [(law_name, {"law_id": "100002"})],
+            "no_delegation_absence_claim": True,
+        },
+        citations=[
+            SourceCitation("law", "eflaw", law_name, "제21조", "current statute"),
+            SourceCitation("law_structure", "lsStmd", law_name, authority="law hierarchy"),
+        ],
+        risk_flags=[
+            "empty_institutional_system_delegation_graph_is_not_absence_of_delegated_rules",
+            "institutional_system_empty_delegation_requires_lower_rule_followup",
+        ],
+        next_actions=[
+            "Disclose that the institutional-system delegation lookup returned zero rows for this statute.",
+            "Use loaded hierarchy and lower-rule candidates, then load selected lower-rule detail before any no-delegated-rule claim.",
+        ],
+        evidence={
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "loaded_law_structures": len(bundle.loaded.law_structures),
+            "loaded_delegation_rule_counts": [
+                len(graph.rules) for graph in bundle.loaded.delegations
+            ],
+            "administrative_rule_deferred_filters": [
+                item.filters for item in administrative_search_deferred
+            ],
+            "candidate_counts": {
+                "administrative_rules": len(bundle.candidates.administrative_rules),
+                "annex_forms": len(bundle.candidates.annex_forms),
+            },
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
         },
     )

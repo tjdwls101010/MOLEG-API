@@ -3657,7 +3657,26 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
     ]
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
-    assert all(gap.kind == "websearch_required" for gap in bundle.gaps)
+    empty_delegation_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "empty_delegation_graph"
+    ]
+    assert [
+        (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
+    ] == [("전자금융거래법 시행령", "search_administrative_rules")]
+    administrative_search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_administrative_rules"
+        and item.source_type == "administrative_rule"
+    ]
+    assert [(item.query, item.filters) for item in administrative_search_deferred] == [
+        ("전자금융거래법 시행령", {"law_id": "100002"})
+    ]
+    assert [gap.kind for gap in bundle.gaps] == [
+        "websearch_required",
+        "empty_delegation_graph",
+        "websearch_required",
+    ]
 
 
 def test_load_institutional_system_marks_future_effective_statute_as_not_current_as_of():

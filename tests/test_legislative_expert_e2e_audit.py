@@ -47,6 +47,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_authority_after_reference_date_guardrail",
         "law_structure_hierarchy_candidate_guardrail",
         "institutional_system_law_structure_not_loaded_guardrail",
+        "institutional_system_empty_delegation_graph_guardrail",
         "empty_delegation_graph_absence_guardrail",
         "administrative_rule_search_candidate_detail_guardrail",
         "administrative_rule_name_ambiguity_guardrail",
@@ -401,6 +402,43 @@ def test_legislative_expert_e2e_audit_marks_institutional_law_structure_not_load
     assert missing_structure.evidence["loaded_law_structures"] == 0
     assert "lsStmd" in missing_structure.evidence["service_call_targets"]
     assert "law_structure_not_loaded_is_not_no_lower_instrument" in missing_structure.risk_flags
+
+
+def test_legislative_expert_e2e_audit_marks_institutional_system_empty_delegation_graph():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    empty_delegation = by_scenario["institutional_system_empty_delegation_graph_guardrail"]
+
+    assert empty_delegation.status == "needs_more_source_loading"
+    assert empty_delegation.public_interfaces == ["load_institutional_system"]
+    assert empty_delegation.must_have["law_text_loaded"] is True
+    assert empty_delegation.must_have["law_structure_loaded"] is True
+    assert empty_delegation.must_have["empty_delegation_graph_preserved"] is True
+    assert empty_delegation.must_have["empty_delegation_gap_preserved"] is True
+    assert empty_delegation.must_have["administrative_rule_followup_preserved"] is True
+    assert empty_delegation.must_have["no_delegation_absence_claim"] is True
+    assert {citation.source_type for citation in empty_delegation.citations} == {
+        "law",
+        "law_structure",
+    }
+    assert "empty_delegation_graph" in empty_delegation.evidence["gap_kinds"]
+    assert empty_delegation.evidence["loaded_law_structures"] == 1
+    assert empty_delegation.evidence["loaded_delegation_rule_counts"] == [0]
+    assert empty_delegation.evidence["administrative_rule_deferred_filters"] == [
+        {"law_id": "100002"}
+    ]
+    assert empty_delegation.evidence["candidate_counts"] == {
+        "administrative_rules": 1,
+        "annex_forms": 1,
+    }
+    assert "lsDelegated" in empty_delegation.evidence["service_call_targets"]
+    assert (
+        "empty_institutional_system_delegation_graph_is_not_absence_of_delegated_rules"
+        in empty_delegation.risk_flags
+    )
 
 
 def test_legislative_expert_e2e_audit_treats_empty_delegation_graph_as_scoped_not_absence():

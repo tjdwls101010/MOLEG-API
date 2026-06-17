@@ -2258,6 +2258,18 @@ class MolegApi:
                 loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
             except NoResultError:
                 loaded_delegations.append(DelegationGraph(identity=identity, rules=[], raw={}))
+                append_empty_delegation_lookup_gap(
+                    identity,
+                    gaps,
+                    deferred,
+                    recommended_interface="search_administrative_rules",
+                    deferred_interface="search_administrative_rules",
+                    deferred_source_type="administrative_rule",
+                    deferred_reason=(
+                        "Search lower-rule candidates with alternate terms before making "
+                        "any no-delegated-rule or no-delegated-criteria claim."
+                    ),
+                )
             except MolegApiError as exc:
                 source_notes.append(f"Delegation lookup skipped for {identity.name}: {exc}")
                 append_delegation_lookup_failure_gap(
@@ -5690,6 +5702,11 @@ def append_empty_delegation_lookup_gap(
     identity: LawIdentity,
     gaps: list[ContextGap],
     deferred: list[DeferredLookup],
+    *,
+    recommended_interface: str = "get_law_structure",
+    deferred_interface: str | None = "get_law_structure",
+    deferred_source_type: str | None = "law_structure",
+    deferred_reason: str | None = None,
 ) -> None:
     gaps.append(
         ContextGap(
@@ -5700,9 +5717,11 @@ def append_empty_delegation_lookup_gap(
                 "subordinate source, notice, annex, or delegated criteria exists."
             ),
             query=identity.name,
-            recommended_interface="get_law_structure",
+            recommended_interface=recommended_interface,
         )
     )
+    if deferred_interface is None:
+        return
     filters: dict[str, Any] = {}
     if identity.law_id:
         filters["law_id"] = identity.law_id
@@ -5712,13 +5731,13 @@ def append_empty_delegation_lookup_gap(
         filters["law_name"] = identity.name
     deferred.append(
         DeferredLookup(
-            interface="get_law_structure",
+            interface=deferred_interface,
             query=identity.name,
-            reason=(
+            reason=deferred_reason or (
                 "Load law hierarchy or alternate lower-rule paths before making "
                 "any no-delegated-rule or no-delegated-criteria claim."
             ),
-            source_type="law_structure",
+            source_type=deferred_source_type,
             filters=filters,
         )
     )
