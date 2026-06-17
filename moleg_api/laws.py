@@ -5880,6 +5880,14 @@ def deferred_lookup_filters(identity: Any, source_id: Any) -> dict[str, Any]:
         filters["source_target"] = identity.source_target
         if identity.related_name:
             filters["related_name"] = identity.related_name
+    elif isinstance(identity, InterpretationIdentity):
+        filters["source"] = identity.source_type
+        filters["source_target"] = identity.source_target
+        if identity.ministry:
+            filters["ministry"] = identity.ministry
+    elif isinstance(identity, JudicialDecisionIdentity):
+        filters["source"] = identity.source_type
+        filters["source_target"] = identity.source_target
     return filters
 
 

@@ -5419,6 +5419,36 @@ def test_load_legal_context_bundle_stages_question_context():
             },
         ),
     ]
+    interpretation_deferred = [
+        item for item in bundle.deferred if item.interface == "get_interpretation"
+    ]
+    case_deferred = [
+        item for item in bundle.deferred if item.interface == "get_case"
+    ]
+    constitutional_deferred = [
+        item for item in bundle.deferred if item.interface == "get_constitutional_decision"
+    ]
+    assert [(item.query, item.source_type, item.filters) for item in interpretation_deferred] == [
+        (
+            "자동차 방치 관련 법령해석례",
+            "moleg",
+            {"id": "330471", "source": "moleg", "source_target": "expc"},
+        )
+    ]
+    assert [(item.query, item.source_type, item.filters) for item in case_deferred] == [
+        (
+            "자동차 인도청구",
+            "case",
+            {"id": "228541", "source": "case", "source_target": "prec"},
+        )
+    ]
+    assert [(item.query, item.source_type, item.filters) for item in constitutional_deferred] == [
+        (
+            "자동차관리법제26조등위헌확인",
+            "constitutional",
+            {"id": "58400", "source": "constitutional", "source_target": "detc"},
+        )
+    ]
     assert bundle.gaps[0].kind == "websearch_required"
     assert bundle.gaps[0].recommended_interface == "websearch"
 
