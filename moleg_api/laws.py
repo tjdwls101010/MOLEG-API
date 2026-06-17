@@ -5016,7 +5016,7 @@ def build_follow_up_searches(
                 query=identity.name,
                 reason="Load the current effective text for a candidate law.",
                 source_type="law",
-                filters={"law_id": identity.law_id, "basis": "effective"},
+                filters=law_identity_followup_filters(identity),
             )
         )
     for term in term_candidates[:5]:
@@ -5054,6 +5054,17 @@ def build_follow_up_searches(
             )
         )
     return searches
+
+
+def law_identity_followup_filters(identity: LawIdentity) -> dict[str, str]:
+    filters = {"basis": identity.basis}
+    if identity.law_id:
+        filters["law_id"] = identity.law_id
+    elif identity.mst:
+        filters["mst"] = identity.mst
+    else:
+        filters["law_name"] = identity.name
+    return filters
 
 
 def bundle_limits(budget: BundleBudget) -> dict[str, int]:

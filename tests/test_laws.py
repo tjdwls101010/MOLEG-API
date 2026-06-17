@@ -3274,6 +3274,42 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
     ]
 
 
+def test_expand_legal_query_get_law_followup_uses_mst_when_law_id_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "270001",
+                            "시행일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("데이터기본법", include_websearch_hint=False)
+
+    get_law_followups = [
+        search for search in expansion.follow_up_searches if search.interface == "get_law"
+    ]
+    assert [(search.query, search.filters) for search in get_law_followups] == [
+        ("데이터기본법", {"basis": "effective", "mst": "270001"})
+    ]
+
+
 def test_expand_legal_query_records_empty_sources_without_failing():
     source = FakeSource(
         search_payloads=[
