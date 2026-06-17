@@ -29,6 +29,7 @@ from .models import (
     AnnexType,
     ArticleContext,
     ArticleText,
+    AuthorityContext,
     Basis,
     BundleBudget,
     BundleMode,
@@ -158,6 +159,12 @@ DELEGATED_CRITERIA_LOAD_LIMITS: dict[str, dict[str, int]] = {
     "minimal": {"administrative_rules": 1, "annex_forms": 1},
     "standard": {"administrative_rules": 2, "annex_forms": 2},
     "broad": {"administrative_rules": 3, "annex_forms": 3},
+}
+
+AUTHORITY_LOAD_LIMITS: dict[str, dict[str, int]] = {
+    "minimal": {"interpretations": 1, "cases": 1, "constitutional_decisions": 1},
+    "standard": {"interpretations": 2, "cases": 2, "constitutional_decisions": 2},
+    "broad": {"interpretations": 5, "cases": 5, "constitutional_decisions": 5},
 }
 
 BUNDLE_EAGER_TEXT_CHAR_LIMITS = {
@@ -1469,6 +1476,261 @@ class MolegApi:
             reviewed_articles=text.reviewed_articles,
             text=text.text,
             raw={},
+        )
+
+    def load_authority_context(
+        self,
+        law_identifier: LawIdentity | LawHit | str,
+        *,
+        articles: list[str | int],
+        query: str | None = None,
+        budget: BundleBudget = "standard",
+        as_of: str | None = None,
+    ) -> AuthorityContext:
+        """Load article-scoped interpretations, cases, and decisions.
+
+        Use when: the skill needs authority context for specific statute
+        articles and should not treat mismatched, undated, or pre-amendment
+        authority as current target-article support.
+        Returns: `AuthorityContext` with target articles, loaded authority
+        details, `current_authorities` filtered to dated structured article matches,
+        candidates, gaps, deferred lookups, and source notes.
+        Raises: `NoResultError` for empty article lists or blank supplied
+        queries; source failures from target article loading are preserved as
+        gaps when possible.
+        Related: use `search_interpretations`, `search_cases`, and
+        `search_constitutional_decisions` for candidate discovery only, or
+        `load_legal_context_bundle` for a broader first pass.
+        """
+        if not articles:
+            raise NoResultError("articles must contain at least one article")
+        limits = authority_load_limits(budget)
+        reference_date = compact_date(as_of) if as_of else None
+        ranking_query = require_query(query) if query is not None else None
+        identity = identity_from_identifier(law_identifier, basis="effective")
+        requested_articles = list(articles)
+        search_query = ranking_query or f"{identity.name} {' '.join(article_label_for_filter(item) for item in articles)}"
+        request = BundleRequest(
+            query=search_query,
+            mode="statute_review",
+            budget=budget,
+            articles=requested_articles,
+            law_identifier=law_identifier,
+            as_of=reference_date,
+        )
+        source_notes: list[str] = [
+            "AuthorityContext is scoped source context for Claude inspection, not a legal conclusion."
+        ]
+        gaps: list[ContextGap] = []
+        deferred: list[DeferredLookup] = []
+        target_articles: list[ArticleText] = []
+        loaded_article_rows: list[ArticleText] = []
+
+        for article in requested_articles:
+            try:
+                article_context = self.load_article_context(
+                    identity,
+                    article,
+                    as_of=reference_date,
+                    basis="effective",
+                )
+            except MolegApiError as exc:
+                append_requested_article_load_gap(
+                    exc,
+                    identity,
+                    article,
+                    gaps,
+                    deferred,
+                    as_of=reference_date,
+                )
+                continue
+            loaded_article_rows.extend(article_context.loaded_articles)
+            gaps.extend(article_context.gaps)
+            deferred.extend(article_context.deferred)
+            source_notes.extend(article_context.source_notes)
+            if article_context.current_article is not None:
+                target_articles.append(article_context.current_article)
+
+        interpretation_candidates = safe_list(
+            lambda: self.search_interpretations(
+                search_query,
+                display=limits["interpretations"],
+            ),
+            source_notes,
+            "Authority interpretation search",
+            gaps=gaps,
+            query=search_query,
+            recommended_interface="search_interpretations",
+        )
+        case_candidates = safe_list(
+            lambda: self.search_cases(search_query, display=limits["cases"]),
+            source_notes,
+            "Authority case search",
+            gaps=gaps,
+            query=search_query,
+            recommended_interface="search_cases",
+        )
+        constitutional_candidates = safe_list(
+            lambda: self.search_constitutional_decisions(
+                search_query,
+                display=limits["constitutional_decisions"],
+            ),
+            source_notes,
+            "Authority Constitutional Court search",
+            gaps=gaps,
+            query=search_query,
+            recommended_interface="search_constitutional_decisions",
+        )
+
+        loaded_interpretations: list[InterpretationText] = []
+        loaded_cases: list[JudicialDecisionText] = []
+        loaded_constitutional_decisions: list[JudicialDecisionText] = []
+        loaded_detail_keys: set[tuple[str | None, str]] = set()
+
+        for candidate in ranked_candidates(
+            interpretation_candidates,
+            search_query,
+            limit=limits["interpretations"],
+        ):
+            try:
+                text = self.get_interpretation(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Authority interpretation detail load skipped: {exc}")
+                append_eager_detail_failure_gap(
+                    exc,
+                    gaps,
+                    candidate=candidate,
+                    recommended_interface="get_interpretation",
+                    source_label="Authority interpretation detail load",
+                )
+                continue
+            loaded_interpretations.append(text)
+            loaded_detail_keys.add(candidate_identity_key(candidate))
+
+        for candidate in ranked_candidates(case_candidates, search_query, limit=limits["cases"]):
+            try:
+                text = self.get_case(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Authority case detail load skipped: {exc}")
+                append_eager_detail_failure_gap(
+                    exc,
+                    gaps,
+                    candidate=candidate,
+                    recommended_interface="get_case",
+                    source_label="Authority case detail load",
+                )
+                continue
+            loaded_cases.append(text)
+            loaded_detail_keys.add(candidate_identity_key(candidate))
+
+        for candidate in ranked_candidates(
+            constitutional_candidates,
+            search_query,
+            limit=limits["constitutional_decisions"],
+        ):
+            try:
+                text = self.get_constitutional_decision(candidate.identity, include_metadata=False)
+            except MolegApiError as exc:
+                source_notes.append(f"Authority constitutional detail load skipped: {exc}")
+                append_eager_detail_failure_gap(
+                    exc,
+                    gaps,
+                    candidate=candidate,
+                    recommended_interface="get_constitutional_decision",
+                    source_label="Authority constitutional detail load",
+                )
+                continue
+            loaded_constitutional_decisions.append(text)
+            loaded_detail_keys.add(candidate_identity_key(candidate))
+
+        append_authority_article_mismatch_gaps(
+            target_article_refs_from_loaded_articles(target_articles),
+            interpretations=loaded_interpretations,
+            cases=loaded_cases,
+            constitutional_decisions=loaded_constitutional_decisions,
+            gaps=gaps,
+        )
+        append_authority_temporal_mismatch_gaps(
+            target_articles,
+            interpretations=loaded_interpretations,
+            cases=loaded_cases,
+            constitutional_decisions=loaded_constitutional_decisions,
+            gaps=gaps,
+            deferred=deferred,
+        )
+
+        current_interpretations = [
+            item
+            for item in loaded_interpretations
+            if authority_references_current_targets(
+                item.referenced_articles,
+                item.identity.interpretation_date,
+                target_articles,
+            )
+        ]
+        current_cases = [
+            item
+            for item in loaded_cases
+            if authority_references_current_targets(
+                item.referenced_articles,
+                item.identity.decision_date,
+                target_articles,
+            )
+        ]
+        current_constitutional_decisions = [
+            item
+            for item in loaded_constitutional_decisions
+            if authority_references_current_targets(
+                item.reviewed_articles,
+                item.identity.decision_date,
+                target_articles,
+            )
+        ]
+
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(interpretation_candidates, loaded_detail_keys),
+                "get_interpretation",
+                "interpretation",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(case_candidates, loaded_detail_keys),
+                "get_case",
+                "case",
+            )
+        )
+        deferred.extend(
+            deferred_from_candidates(
+                unloaded_candidates(constitutional_candidates, loaded_detail_keys),
+                "get_constitutional_decision",
+                "constitutional",
+            )
+        )
+
+        return AuthorityContext(
+            request=request,
+            target_articles=target_articles,
+            loaded=LoadedContext(
+                articles=loaded_article_rows,
+                interpretations=loaded_interpretations,
+                cases=loaded_cases,
+                constitutional_decisions=loaded_constitutional_decisions,
+            ),
+            current_authorities=LoadedContext(
+                interpretations=current_interpretations,
+                cases=current_cases,
+                constitutional_decisions=current_constitutional_decisions,
+            ),
+            candidates=CandidateContext(
+                interpretations=interpretation_candidates,
+                cases=case_candidates,
+                constitutional_decisions=constitutional_candidates,
+            ),
+            deferred=deferred,
+            gaps=gaps,
+            source_notes=source_notes,
         )
 
     def expand_legal_query(
@@ -3836,6 +4098,11 @@ def delegated_criteria_load_limits(budget: BundleBudget) -> dict[str, int]:
     return DELEGATED_CRITERIA_LOAD_LIMITS[budget]
 
 
+def authority_load_limits(budget: BundleBudget) -> dict[str, int]:
+    validate_choice("budget", budget, BUNDLE_BUDGET_VALUES)
+    return AUTHORITY_LOAD_LIMITS[budget]
+
+
 def bundle_eager_detail_limits(
     query: str | None,
     *,
@@ -4028,12 +4295,50 @@ def append_authority_temporal_mismatch_gaps(
     for source_type, authority_items in authority_groups:
         for authority_date_value, references in authority_items:
             authority_date = compact_date(authority_date_value)
-            if not is_compact_ymd(authority_date):
-                continue
             for reference in references:
                 target = (reference.law_name, reference.article)
                 effective_date = target_effective_dates.get(target)
-                if not effective_date or authority_date >= effective_date:
+                if not effective_date:
+                    continue
+                if not is_compact_ymd(authority_date):
+                    key = (source_type, target, "unverified")
+                    if key in emitted:
+                        continue
+                    emitted.add(key)
+                    target_label = article_ref_label({target})
+                    gaps.append(
+                        ContextGap(
+                            kind="authority_temporal_mismatch",
+                            reason=(
+                                f"Eager-loaded {source_type} detail for {target_label} has a missing "
+                                f"or unparseable authority date, while the loaded article effective date is "
+                                f"{effective_date}; run trace_law_history or inspect the authority-date "
+                                "source before treating it as current target-article authority."
+                            ),
+                            query=target_label,
+                            recommended_interface="trace_law_history",
+                        )
+                    )
+                    deferred.append(
+                        DeferredLookup(
+                            interface="trace_law_history",
+                            query=target_label,
+                            reason=(
+                                f"Check whether {target_label} changed before citing undated {source_type} "
+                                f"authority against current effective date {effective_date}."
+                            ),
+                            source_type="authority_temporal_mismatch",
+                            filters={
+                                "law_name": target[0],
+                                "article": target[1],
+                                "authority_source_type": source_type,
+                                "authority_date": None,
+                                "current_article_effective_date": effective_date,
+                            },
+                        )
+                    )
+                    continue
+                if authority_date >= effective_date:
                     continue
                 key = (source_type, target, authority_date)
                 if key in emitted:
@@ -4071,6 +4376,37 @@ def append_authority_temporal_mismatch_gaps(
                         },
                     )
                 )
+
+
+def authority_references_current_targets(
+    references: list[Any],
+    authority_date_value: str | None,
+    target_articles: list[ArticleText],
+) -> bool:
+    if not references or not target_articles:
+        return False
+    target_effective_dates = {
+        (article.identity.name, article.article): compact_date(
+            article.effective_date or article.identity.effective_date
+        )
+        for article in target_articles
+        if article.identity.name and article.article
+    }
+    target_refs = set(target_effective_dates)
+    authority_date = compact_date(authority_date_value)
+    matched_targets = [
+        (reference.law_name, reference.article)
+        for reference in references
+        if (reference.law_name, reference.article) in target_refs
+    ]
+    if not matched_targets:
+        return False
+    if not is_compact_ymd(authority_date):
+        return not any(is_compact_ymd(target_effective_dates[target]) for target in matched_targets)
+    return all(
+        not is_compact_ymd(target_effective_dates[target]) or authority_date >= target_effective_dates[target]
+        for target in matched_targets
+    )
 
 
 def string_value(value: Any) -> str | None:

@@ -360,11 +360,7 @@ def test_answer_discipline_refuses_mismatched_loaded_authority_as_target_authori
 
     assert report.status == "must_load_more_sources"
     assert report.citations == []
-    assert {
-        "search_interpretations",
-        "search_cases",
-        "search_constitutional_decisions",
-    }.issubset(report.required_followups)
+    assert "load_authority_context" in report.required_followups
     assert report.evidence["target_article"] == {
         "law_name": "개인정보 보호법",
         "article": "제15조",

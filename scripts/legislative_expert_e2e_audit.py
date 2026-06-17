@@ -114,6 +114,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_empty_case_search_absence_guardrail(),
             _audit_constitutional_search_candidate_detail_guardrail(),
             _audit_empty_constitutional_search_absence_guardrail(),
+            _audit_authority_context_matching_current_authorities(),
             _audit_loaded_authority_article_mismatch_guardrail(),
             _audit_context_bundle_authority_article_mismatch_guardrail(),
             _audit_context_bundle_authority_article_unverified_guardrail(),
@@ -1703,6 +1704,155 @@ def _audit_empty_constitutional_search_absence_guardrail() -> LegislativeExpertS
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
             "service_call_targets": service_call_targets,
             "citations_loaded": 0,
+        },
+    )
+
+
+def _audit_authority_context_matching_current_authorities() -> LegislativeExpertScenarioReport:
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = ScenarioSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "330510",
+                            "안건명": "개인정보 동의 관련 법령해석례",
+                            "회신일자": "20250415",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "228610",
+                            "사건명": "개인정보수집이용동의처분취소",
+                            "선고일자": "20250510",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "58460",
+                            "사건명": "개인정보자기결정권위헌확인",
+                            "종국일자": "20250627",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "009999",
+                        "법령명_한글": "개인정보 보호법",
+                    },
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    },
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "330510",
+                    "안건명": "개인정보 동의 관련 법령해석례",
+                    "안건번호": "25-0001",
+                    "회신일자": "20250415",
+                    "해석기관명": "법제처",
+                    "질의요지": "동의 요건은 어떻게 보아야 하는가?",
+                    "회답": "개인정보 보호법 제15조의 요건을 기준으로 보아야 한다.",
+                    "관련법령": "개인정보 보호법 제15조",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "228610",
+                    "사건명": "개인정보수집이용동의처분취소",
+                    "사건번호": "2024두61000",
+                    "선고일자": "20250510",
+                    "법원명": "대법원",
+                    "판시사항": "개인정보 수집ㆍ이용 동의의 적용 기준",
+                    "판결요지": "개인정보 보호법 제15조의 요건을 중심으로 판단한다.",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "판결 전문",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "58460",
+                    "사건명": "개인정보자기결정권위헌확인",
+                    "사건번호": "2024헌마510",
+                    "종국일자": "20250627",
+                    "판시사항": "개인정보 수집ㆍ이용 조항의 위헌 여부",
+                    "결정요지": "개인정보 보호법 제15조는 과잉금지원칙에 위반되지 않는다.",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "결정 전문",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        budget="minimal",
+    )
+
+    return LegislativeExpertScenarioReport(
+        scenario="authority_context_matching_current_authorities",
+        question="대상 조문과 구조적으로 일치하고 현행 조문 시행일 이후인 권위자료를 task-level interface로 구분해 인용할 수 있는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_authority_context"],
+        must_have={
+            "target_article_loaded": [article.article for article in context.target_articles] == ["제15조"],
+            "interpretation_promoted": len(context.current_authorities.interpretations) == 1
+            and context.current_authorities.interpretations[0].identity.title == "개인정보 동의 관련 법령해석례",
+            "case_promoted": len(context.current_authorities.cases) == 1
+            and context.current_authorities.cases[0].identity.title == "개인정보수집이용동의처분취소",
+            "constitutional_promoted": len(context.current_authorities.constitutional_decisions) == 1
+            and context.current_authorities.constitutional_decisions[0].identity.title == "개인정보자기결정권위헌확인",
+            "no_authority_mismatch_or_temporal_gap": not any(
+                gap.kind.startswith("authority_") for gap in context.gaps
+            ),
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", "개인정보 보호법", "제15조", "current target article"),
+            SourceCitation("interpretation", "expc", "개인정보 동의 관련 법령해석례", "제15조", "matching current interpretation"),
+            SourceCitation("case", "prec", "개인정보수집이용동의처분취소", "제15조", "matching current court case"),
+            SourceCitation("constitutional", "detc", "개인정보자기결정권위헌확인", "제15조", "matching current Constitutional Court decision"),
+        ],
+        risk_flags=["authority_context_is_bounded_not_exhaustive_authority_survey"],
+        next_actions=[
+            "Use current_authorities for target-article authority claims and loaded authority details only with their structured article-reference limits.",
+            "Run broader searches if the answer requires exhaustive authority coverage.",
+        ],
+        evidence={
+            "target_articles": [article.article for article in context.target_articles],
+            "current_interpretations": [
+                item.identity.title for item in context.current_authorities.interpretations
+            ],
+            "current_cases": [item.identity.title for item in context.current_authorities.cases],
+            "current_constitutional_decisions": [
+                item.identity.title for item in context.current_authorities.constitutional_decisions
+            ],
+            "loaded_authority_counts": {
+                "interpretations": len(context.loaded.interpretations),
+                "cases": len(context.loaded.cases),
+                "constitutional_decisions": len(context.loaded.constitutional_decisions),
+            },
+            "gap_kinds": [gap.kind for gap in context.gaps],
+            "deferred_interfaces": [item.interface for item in context.deferred],
+            "call_targets": [target for _, target, _ in source.calls],
         },
     )
 

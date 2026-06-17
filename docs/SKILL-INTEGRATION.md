@@ -41,7 +41,7 @@ Use WebSearch for facts outside MOLEG's legal corpus:
 Use MOLEG-API in layers instead of asking one call to load everything:
 
 1. Start with candidate/planning interfaces such as `search_laws()`, `expand_legal_query()`, `find_comparable_mechanisms()`, `search_administrative_rules()`, `search_annex_forms()`, `search_interpretations()`, and judicial searches.
-2. Load full text only for sources that are likely to matter: `get_law()`, `get_article()`, `load_article_context()`, `get_administrative_rule()`, `load_administrative_rule_context()`, `get_annex_form_body()`, `get_interpretation()`, `get_case()`, or `get_constitutional_decision()`.
+2. Load full text only for sources that are likely to matter: `get_law()`, `get_article()`, `load_article_context()`, `get_administrative_rule()`, `load_administrative_rule_context()`, `get_annex_form_body()`, `get_interpretation()`, `get_case()`, `get_constitutional_decision()`, or `load_authority_context()`.
 3. Use `load_legal_context_bundle()` as a staged first pass when the question is broad or under-specified. Treat its candidates and deferred lookups as the next menu, not as proof that every relevant source body has been inspected.
 4. Use `load_institutional_system()` after the skill has an explicit statute set for one 제도. It composes those statutes into one staged bundle; it does not discover the set or decide which statute is primary.
 
@@ -162,6 +162,7 @@ These interfaces are implemented as the skill-facing contract. The future skill 
 - `MolegApi.get_case()`
 - `MolegApi.search_constitutional_decisions()`
 - `MolegApi.get_constitutional_decision()`
+- `MolegApi.load_authority_context()`
 - `MolegApi.expand_legal_query()`
 - `MolegApi.find_comparable_mechanisms()`
 - `MolegApi.load_legal_context_bundle()`
@@ -185,6 +186,7 @@ Administrative-rule back-references are deliberately conservative. MOLEG-API can
 - Use `ArticleText.text` / `AdministrativeRuleArticleText.text` for article substance. Do not summarize definitions, exceptions, application targets, or requirements from `조문제목` or top-level `조문내용` alone, because nested 항, 호, and 목 can carry the operative text.
 - Check `is_deleted`, `revision_type`, `moved_from`, `moved_to`, and `has_changes` before treating a loaded article as operative current text. A deleted article can be cited as deleted source state, not as a current rule. A moved article can be cited as movement source state; use `load_article_context()` to load the destination article before current-substance claims.
 - Check `AdministrativeRuleArticleText.is_deleted`, `revision_type`, and `moved_to` before treating administrative-rule article text as current operational criteria. A deleted administrative-rule article is source status; a moved article needs `load_administrative_rule_context().current_articles` before destination criteria can be cited.
+- Use `load_authority_context()` when the prompt asks for interpretation, case, or Constitutional Court authority for specific statute articles. Cite `current_authorities`, not merely `loaded`, for current target-article authority claims.
 - Use `referenced_articles` and `reviewed_articles` on interpretation, case, and Constitutional Court detail results to filter by article before spending reasoning budget on full free-text review.
 - Do not cite a loaded interpretation, court case, or Constitutional Court decision as authority for the user's target article unless its structured `referenced_articles` or `reviewed_articles` match that law/article. If loaded authority details point to different articles, disclose that mismatch and run follow-up authority searches scoped to the target article before making a target-article authority claim.
 - Do not cite Constitutional Court holdings, summaries, reviewed statutes, referenced statutes, or full text from `search_constitutional_decisions()` alone; use `get_constitutional_decision()` for the selected decision first.
@@ -201,7 +203,7 @@ Administrative-rule back-references are deliberately conservative. MOLEG-API can
 - When `load_legal_context_bundle()` emits `authority_article_mismatch` gaps, treat eager-loaded authority details as follow-up search context, not target-article authority. Only the loaded target article text can be cited until scoped authority searches match `referenced_articles` or `reviewed_articles` to the target article.
 - When `load_legal_context_bundle()` emits `authority_article_unverified` gaps, treat missing structured article references as unknown source state, not an implicit match. Run scoped authority searches or inspect selected detail references before citing eager-loaded authority detail for the target article.
 - When `load_legal_context_bundle()` emits `authority_article_partial_match` gaps, treat eager-loaded authority details as authority only for the requested articles they structurally reference or review. Run scoped follow-up authority searches for the missing requested articles before citing those details for them.
-- When `load_legal_context_bundle()` emits `authority_temporal_mismatch` gaps, treat matching `referenced_articles` or `reviewed_articles` as historical context, not current-authority proof. Run `trace_law_history()` or load the target article as of the authority date before saying the authority reflects current wording.
+- When `load_legal_context_bundle()` or `load_authority_context()` emits `authority_temporal_mismatch` gaps, treat matching `referenced_articles` or `reviewed_articles` as historical or date-unverified context, not current-authority proof. Run `trace_law_history()` or load the target article as of the authority date before saying the authority reflects current wording.
 - Treat `load_institutional_system()` as composition over a statute set Claude already chose. If the statute set is uncertain, run `search_laws()` / `expand_legal_query()` first and surface ambiguity instead of asking MOLEG-API to infer the 제도. Do not call the returned statute set exhaustive unless separate discovery was run and disclosed. If the question is current-force scoped, pass `as_of` and disclose any `not_effective_as_of` gap for individual statutes.
 - Treat `get_law_structure()` output as hierarchy source context only. It may support a statement that an enforcement decree/rule or administrative rule appears under a statute, but not that a specific article delegates to it or that its body/operational criteria were inspected.
 - Treat empty `find_delegated_rules()` / `NoResultError` states as scoped law/article evidence only. Do not answer that no delegated rule, subordinate rule, notice, annex, or delegated criteria exists until law structure, alternate article scopes, administrative-rule sources, or annex/forms have been checked and disclosed.

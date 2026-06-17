@@ -444,36 +444,12 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
             planned_steps=[
                 PromptWorkflowStep(
                     "moleg-api",
-                    "get_interpretation",
-                    "Load or inspect selected interpretation detail and compare referenced_articles to the target law/article.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "get_case",
-                    "Load or inspect selected court-case detail and compare referenced_articles to the target law/article.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "get_constitutional_decision",
-                    "Load or inspect selected Constitutional Court detail and compare reviewed_articles to the target law/article.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "search_interpretations",
-                    "Search interpretations scoped to the target law/article when loaded references point elsewhere.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "search_cases",
-                    "Search court cases scoped to the target law/article when loaded references point elsewhere.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "search_constitutional_decisions",
-                    "Search Constitutional Court decisions scoped to the target law/article when loaded reviewed articles point elsewhere.",
+                    "load_authority_context",
+                    "Load target-article interpretation, case, and Constitutional Court context and cite only current_authorities.",
                 ),
             ],
             guardrails=[
+                "load_authority_context.current_authorities is the citable target-article authority set.",
                 "Loaded interpretations and court cases are target-article authority only when referenced_articles match the requested law/article.",
                 "Loaded Constitutional Court decisions are target-article authority only when reviewed_articles match the requested law/article.",
                 "Mismatched loaded authority details may guide follow-up search terms, but they are not citations for the target article.",
@@ -618,11 +594,11 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
             ],
             guardrails=[
                 "A matching referenced_articles or reviewed_articles value is not enough when authority_temporal_mismatch gaps exist.",
-                "Authority dated before the loaded target article's effective date may support historical context, not current target-article authority.",
+                "Authority dated before the loaded target article's effective date, or missing a parseable authority date, may support historical or follow-up context, not current target-article authority.",
                 "Current-authority claims require history or as-of article loading across the authority date and current effective date.",
             ],
             forbidden_actions=[
-                "Do not cite older eager-loaded authority as current target-article authority merely because it references the same article.",
+                "Do not cite older or date-unverified eager-loaded authority as current target-article authority merely because it references the same article.",
                 "Do not ignore authority_temporal_mismatch gaps because referenced_articles or reviewed_articles match.",
                 "Do not say the authority reflects current wording before checking article history or as-of article text.",
             ],

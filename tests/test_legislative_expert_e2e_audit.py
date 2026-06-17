@@ -31,6 +31,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "empty_case_search_absence_guardrail",
         "constitutional_search_candidate_detail_guardrail",
         "empty_constitutional_search_absence_guardrail",
+        "authority_context_matching_current_authorities",
         "loaded_authority_article_mismatch_guardrail",
         "context_bundle_authority_article_mismatch_guardrail",
         "context_bundle_authority_article_unverified_guardrail",
@@ -599,6 +600,33 @@ def test_legislative_expert_e2e_audit_treats_empty_constitutional_search_as_scop
         "empty_constitutional_search_is_not_absence_of_constitutional_authority"
         in empty_constitutional.risk_flags
     )
+
+
+def test_legislative_expert_e2e_audit_loads_matching_authority_context():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    authority = by_scenario["authority_context_matching_current_authorities"]
+
+    assert authority.status == "ready_for_reasoning"
+    assert authority.public_interfaces == ["load_authority_context"]
+    assert authority.must_have["target_article_loaded"] is True
+    assert authority.must_have["interpretation_promoted"] is True
+    assert authority.must_have["case_promoted"] is True
+    assert authority.must_have["constitutional_promoted"] is True
+    assert authority.must_have["no_authority_mismatch_or_temporal_gap"] is True
+    assert {citation.source_type for citation in authority.citations} == {
+        "law",
+        "interpretation",
+        "case",
+        "constitutional",
+    }
+    assert authority.evidence["target_articles"] == ["제15조"]
+    assert authority.evidence["gap_kinds"] == []
+    assert authority.evidence["deferred_interfaces"] == []
+    assert "authority_context_is_bounded_not_exhaustive_authority_survey" in authority.risk_flags
 
 
 def test_legislative_expert_e2e_audit_blocks_mismatched_loaded_authority_articles():

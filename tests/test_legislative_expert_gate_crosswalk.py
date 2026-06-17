@@ -325,14 +325,7 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
         for step in authority_mismatch_prompt.planned_steps
         if step.required_before_answer
     }
-    assert {
-        "get_interpretation",
-        "get_case",
-        "get_constitutional_decision",
-        "search_interpretations",
-        "search_cases",
-        "search_constitutional_decisions",
-    }.issubset(authority_mismatch_required_interfaces)
+    assert authority_mismatch_required_interfaces == {"load_authority_context"}
     assert authority_mismatch_readiness.evidence["authority_article_matches"] == {
         "interpretation": False,
         "case": False,
@@ -341,6 +334,10 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
     assert (
         "loaded_authority_reference_mismatch_not_target_article_authority"
         in authority_mismatch_readiness.risk_flags
+    )
+    assert any(
+        "current_authorities" in guardrail
+        for guardrail in authority_mismatch_prompt.guardrails
     )
     assert any(
         "referenced_articles" in guardrail

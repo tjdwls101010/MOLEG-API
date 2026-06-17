@@ -5151,6 +5151,276 @@ def test_load_legal_context_bundle_marks_eager_authority_article_mismatches():
     assert all("개인정보 보호법 제15조" in gap.reason for gap in mismatch_gaps)
 
 
+def test_load_authority_context_promotes_matching_current_authorities():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "110",
+                            "안건명": "개인정보 동의 해석",
+                            "회신일자": "20250415",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "210",
+                            "사건명": "개인정보 동의 사건",
+                            "선고일자": "20250510",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "310",
+                            "사건명": "개인정보 자기결정권 사건",
+                            "종국일자": "20250627",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "110",
+                    "안건명": "개인정보 동의 해석",
+                    "회신일자": "20250415",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "현행 동의 요건에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "210",
+                    "사건명": "개인정보 동의 사건",
+                    "선고일자": "20250510",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "현행 동의 요건에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "310",
+                    "사건명": "개인정보 자기결정권 사건",
+                    "종국일자": "20250627",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "현행 조문에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의",
+        budget="minimal",
+    )
+
+    assert [article.article for article in context.target_articles] == ["제15조"]
+    assert [item.identity.title for item in context.loaded.interpretations] == ["개인정보 동의 해석"]
+    assert [item.identity.title for item in context.current_authorities.interpretations] == [
+        "개인정보 동의 해석"
+    ]
+    assert [item.identity.title for item in context.current_authorities.cases] == [
+        "개인정보 동의 사건"
+    ]
+    assert [item.identity.title for item in context.current_authorities.constitutional_decisions] == [
+        "개인정보 자기결정권 사건"
+    ]
+    assert not [gap for gap in context.gaps if gap.kind.startswith("authority_")]
+    assert context.deferred == []
+    assert [call[1] for call in source.calls] == [
+        "eflawjosub",
+        "expc",
+        "prec",
+        "detc",
+        "expc",
+        "prec",
+        "detc",
+    ]
+
+
+def test_load_authority_context_keeps_undated_authority_out_of_current_authorities():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "112",
+                            "안건명": "개인정보 동의 날짜 없는 해석",
+                        }
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "112",
+                    "안건명": "개인정보 동의 날짜 없는 해석",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "동의 요건에 관한 회답",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의",
+        budget="minimal",
+    )
+
+    assert [item.identity.title for item in context.loaded.interpretations] == [
+        "개인정보 동의 날짜 없는 해석"
+    ]
+    assert context.current_authorities.interpretations == []
+    assert [gap.kind for gap in context.gaps] == ["authority_temporal_mismatch"]
+    assert "missing or unparseable authority date" in context.gaps[0].reason
+    assert [item.interface for item in context.deferred] == ["trace_law_history"]
+    assert context.deferred[0].filters["authority_date"] is None
+
+
+def test_load_authority_context_keeps_mismatched_and_old_authorities_out_of_current_authorities():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "111",
+                            "안건명": "개인정보 제3자 제공 해석",
+                            "회신일자": "20250415",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "211",
+                            "사건명": "개인정보 동의 사건",
+                            "선고일자": "20210215",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "311",
+                            "사건명": "개인정보 자기결정권 사건",
+                            "종국일자": "20210315",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20250101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "111",
+                    "안건명": "개인정보 제3자 제공 해석",
+                    "회신일자": "20250415",
+                    "관련법령": "개인정보 보호법 제17조",
+                    "회답": "제3자 제공 요건에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "211",
+                    "사건명": "개인정보 동의 사건",
+                    "선고일자": "20210215",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "개정 전 동의 요건에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "311",
+                    "사건명": "개인정보 자기결정권 사건",
+                    "종국일자": "20210315",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "개정 전 조문에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의",
+        budget="minimal",
+    )
+
+    assert [item.identity.title for item in context.loaded.interpretations] == [
+        "개인정보 제3자 제공 해석"
+    ]
+    assert context.current_authorities.interpretations == []
+    assert context.current_authorities.cases == []
+    assert context.current_authorities.constitutional_decisions == []
+    assert [gap.kind for gap in context.gaps] == [
+        "authority_article_mismatch",
+        "authority_temporal_mismatch",
+        "authority_temporal_mismatch",
+    ]
+    assert [item.interface for item in context.deferred] == [
+        "trace_law_history",
+        "trace_law_history",
+    ]
+    assert all(item.query == "개인정보 보호법 제15조" for item in context.deferred)
+
+
 def test_load_legal_context_bundle_marks_eager_authority_without_article_refs_as_unverified():
     identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
     source = FakeSource(

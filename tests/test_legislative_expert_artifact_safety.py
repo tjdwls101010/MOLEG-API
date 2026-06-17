@@ -578,9 +578,7 @@ def test_mismatched_loaded_authorities_are_not_promoted_to_target_article_citati
     )
     assert discipline.status == "must_load_more_sources"
     assert discipline.citations == []
-    assert "search_interpretations" in discipline.required_followups
-    assert "search_cases" in discipline.required_followups
-    assert "search_constitutional_decisions" in discipline.required_followups
+    assert "load_authority_context" in discipline.required_followups
     assert any("target article" in claim for claim in discipline.forbidden_claims)
 
 

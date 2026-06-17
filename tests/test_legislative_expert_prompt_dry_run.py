@@ -418,14 +418,8 @@ def test_prompt_dry_run_requires_authority_article_reference_match_before_citati
     }
 
     assert report.status == "needs_more_source_loading"
-    assert {
-        "get_interpretation",
-        "get_case",
-        "get_constitutional_decision",
-        "search_interpretations",
-        "search_cases",
-        "search_constitutional_decisions",
-    }.issubset(required_interfaces)
+    assert required_interfaces == {"load_authority_context"}
+    assert any("current_authorities" in guardrail for guardrail in report.guardrails)
     assert any("referenced_articles" in guardrail for guardrail in report.guardrails)
     assert any("reviewed_articles" in guardrail for guardrail in report.guardrails)
     assert any("different article" in action for action in report.forbidden_actions)

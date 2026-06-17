@@ -718,4 +718,18 @@ class LegalContextBundle:
     source_notes: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class AuthorityContext:
+    """Authority lookup context scoped to loaded target articles."""
+
+    request: BundleRequest
+    target_articles: list[ArticleText] = field(default_factory=list)
+    loaded: LoadedContext = field(default_factory=LoadedContext)
+    current_authorities: LoadedContext = field(default_factory=LoadedContext)
+    candidates: CandidateContext = field(default_factory=CandidateContext)
+    deferred: list[DeferredLookup] = field(default_factory=list)
+    gaps: list[ContextGap] = field(default_factory=list)
+    source_notes: list[str] = field(default_factory=list)
+
+
 _install_serialization_methods()
