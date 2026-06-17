@@ -5277,6 +5277,7 @@ def test_load_legal_context_bundle_follows_moved_requested_article_to_destinatio
     source = FakeSource(
         search_payloads=[
             {"AdmRulSearch": {"admrul": []}},
+            {"AdmRulSearch": {"admrul": []}},
             {"ExpcSearch": {"expc": []}},
             {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
@@ -5284,6 +5285,8 @@ def test_load_legal_context_bundle_follows_moved_requested_article_to_destinatio
             {"DetcSearch": {"detc": []}},
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
+            {"licbyl": []},
+            {"admbyl": []},
             {"admbyl": []},
         ],
         service_payloads=[
@@ -5494,6 +5497,136 @@ def test_load_legal_context_bundle_searches_moved_destination_for_eager_authorit
     ]
     assert "자동차관리법 제9조 의무의 의미와 위헌 위험" in search_queries
     assert "자동차관리법 제12조 의무의 의미와 위헌 위험" in search_queries
+
+
+def test_load_legal_context_bundle_searches_moved_destination_for_admin_and_annex_candidates():
+    class DestinationOperationalSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            query = params.get("query", "")
+            if target == "admrul" and "제12조" in query:
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙일련번호": "2100000123456",
+                                "행정규칙명": "자동차등록 운영규정",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "소관부처명": "국토교통부",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and "제12조" in query:
+                return {
+                    "licbyl": [
+                        {
+                            "licbyl id": "220000012",
+                            "별표명": "자동차등록 기준",
+                            "관련법령명": "자동차관리법",
+                            "별표종류": "별표",
+                        }
+                    ]
+                }
+            if target == "admbyl" and "제12조" in query:
+                return {
+                    "admbyl": [
+                        {
+                            "admrulbyl id": "330000012",
+                            "별표명": "자동차등록 신청서",
+                            "관련행정규칙명": "자동차등록 운영규정",
+                            "별표종류": "서식",
+                        }
+                    ]
+                }
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = DestinationOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제9조 등록 운영기준",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        articles=["제9조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+
+    assert [article.article for article in bundle.loaded.articles] == ["제9조", "제12조"]
+    assert [item.identity.name for item in bundle.candidates.administrative_rules] == [
+        "자동차등록 운영규정"
+    ]
+    assert [item.identity.title for item in bundle.candidates.annex_forms] == [
+        "자동차등록 기준",
+        "자동차등록 신청서",
+    ]
+    admin_deferred = [
+        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+    ]
+    annex_deferred = [
+        item for item in bundle.deferred if item.interface == "get_annex_form_body"
+    ]
+    assert [item.query for item in admin_deferred] == ["자동차등록 운영규정"]
+    assert [item.query for item in annex_deferred] == ["자동차등록 기준", "자동차등록 신청서"]
+    search_queries = [
+        params["query"]
+        for kind, _, params in source.calls
+        if kind == "search"
+    ]
+    assert "자동차관리법 제9조 등록 운영기준" in search_queries
+    assert "자동차관리법 제12조 등록 운영기준" in search_queries
 
 
 def test_load_legal_context_bundle_marks_whole_law_deleted_and_moved_articles_as_source_state():

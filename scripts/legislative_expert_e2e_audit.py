@@ -112,6 +112,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_context_bundle_article_status_guardrail(),
             _audit_context_bundle_whole_law_article_status_guardrail(),
             _audit_context_bundle_moved_article_destination_authority_search(),
+            _audit_context_bundle_moved_article_destination_candidate_search(),
             _audit_context_bundle_delegation_lookup_failure_guardrail(),
             _audit_case_search_candidate_detail_guardrail(),
             _audit_empty_case_search_absence_guardrail(),
@@ -1408,6 +1409,7 @@ def _audit_context_bundle_article_status_guardrail() -> LegislativeExpertScenari
     source = ScenarioSource(
         search_payloads=[
             {"AdmRulSearch": {"admrul": []}},
+            {"AdmRulSearch": {"admrul": []}},
             {"ExpcSearch": {"expc": []}},
             {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
@@ -1415,6 +1417,8 @@ def _audit_context_bundle_article_status_guardrail() -> LegislativeExpertScenari
             {"DetcSearch": {"detc": []}},
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
+            {"licbyl": []},
+            {"admbyl": []},
             {"admbyl": []},
         ],
         service_payloads=[
@@ -1817,6 +1821,164 @@ def _audit_context_bundle_moved_article_destination_authority_search() -> Legisl
                 item.identity.title for item in bundle.loaded.constitutional_decisions
             ],
             "gap_kinds": [gap.kind for gap in bundle.gaps],
+        },
+    )
+
+
+def _audit_context_bundle_moved_article_destination_candidate_search() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+
+    class DestinationOperationalSource(ScenarioSource):
+        def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
+            self.calls.append(("search", target, dict(params)))
+            query = str(params.get("query", ""))
+            if target == "admrul" and "제12조" in query:
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙일련번호": "2100000123456",
+                                "행정규칙명": "자동차등록 운영규정",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "소관부처명": "국토교통부",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and "제12조" in query:
+                return {
+                    "licbyl": [
+                        {
+                            "licbyl id": "220000012",
+                            "별표명": "자동차등록 기준",
+                            "관련법령명": law_name,
+                            "별표종류": "별표",
+                        }
+                    ]
+                }
+            if target == "admbyl" and "제12조" in query:
+                return {
+                    "admbyl": [
+                        {
+                            "admrulbyl id": "330000012",
+                            "별표명": "자동차등록 신청서",
+                            "관련행정규칙명": "자동차등록 운영규정",
+                            "별표종류": "서식",
+                        }
+                    ]
+                }
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = DestinationOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": law_name},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        f"{law_name} 제9조 등록 운영기준",
+        law_identifier=LawIdentity(law_id="001747", name=law_name, basis="effective"),
+        articles=["제9조"],
+        mode="statute_review",
+        budget="minimal",
+    )
+    search_queries = [
+        params["query"]
+        for kind, _, params in source.calls
+        if kind == "search"
+    ]
+    deferred_interfaces = [item.interface for item in bundle.deferred]
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_moved_article_destination_candidate_search",
+        question="context bundle이 이동된 요청 조문의 현행 목적지로 행정규칙/별표 후보를 찾되, detail 없이 운영기준으로 인용하지 않는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "requested_moved_article_loaded": bundle.loaded.articles[0].article == "제9조"
+            and bundle.loaded.articles[0].moved_to == "제12조",
+            "destination_article_loaded": bundle.loaded.articles[1].article == "제12조",
+            "destination_candidate_search_performed": f"{law_name} 제12조 등록 운영기준"
+            in search_queries,
+            "administrative_rule_candidate_found": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ]
+            == ["자동차등록 운영규정"],
+            "annex_form_candidates_found": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ]
+            == ["자동차등록 기준", "자동차등록 신청서"],
+            "candidate_detail_deferred": "get_administrative_rule" in deferred_interfaces
+            and "get_annex_form_body" in deferred_interfaces,
+            "no_operational_detail_loaded": not bundle.loaded.administrative_rules
+            and not bundle.loaded.annex_forms,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", law_name, "제12조", "current destination article"),
+        ],
+        risk_flags=[
+            "context_bundle_moved_article_searches_destination_operational_candidates",
+            "administrative_rule_and_annex_candidates_not_loaded_operational_criteria",
+        ],
+        next_actions=[
+            "Load selected administrative-rule detail before citing operational criteria.",
+            "Load selected annex/form body before citing attached criteria, tables, or forms.",
+        ],
+        evidence={
+            "loaded_articles": [article.article for article in bundle.loaded.articles],
+            "search_queries": search_queries,
+            "administrative_rule_candidates": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ],
+            "annex_form_candidates": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ],
+            "deferred_interfaces": deferred_interfaces,
+            "loaded_administrative_rules": len(bundle.loaded.administrative_rules),
+            "loaded_annex_forms": len(bundle.loaded.annex_forms),
         },
     )
 

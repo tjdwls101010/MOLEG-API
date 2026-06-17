@@ -1548,7 +1548,7 @@ class MolegApi:
             if article_context.current_article is not None:
                 target_articles.append(article_context.current_article)
 
-        search_queries = authority_context_search_queries(
+        search_queries = article_target_search_queries(
             identity,
             requested_articles,
             target_articles,
@@ -2856,30 +2856,36 @@ class MolegApi:
                     )
                 )
 
+        article_target_queries = [search_query] if search_query else []
         if search_query:
-            administrative_candidates = safe_list(
-                lambda: self.search_administrative_rules(
-                    search_query,
-                    display=limits["administrative_rules"],
-                ),
-                source_notes,
-                "Administrative-rule search",
-                gaps=gaps,
-                query=search_query,
-                recommended_interface="search_administrative_rules",
-            )
-            authority_search_queries = [search_query]
             if primary_identity is not None:
-                authority_search_queries = authority_context_search_queries(
+                article_target_queries = article_target_search_queries(
                     primary_identity,
                     list(articles or []),
                     authority_target_articles,
                     ranking_query=search_query,
                 )
+            administrative_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in article_target_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_administrative_rules(
+                            candidate_query,
+                            display=limits["administrative_rules"],
+                        ),
+                        source_notes,
+                        "Administrative-rule search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_administrative_rules",
+                    )
+                ]
+            )[: limits["administrative_rules"]]
             interpretation_candidates = dedupe_candidates(
                 [
                     candidate
-                    for candidate_query in authority_search_queries
+                    for candidate_query in article_target_queries
                     for candidate in safe_list(
                         lambda candidate_query=candidate_query: self.search_interpretations(
                             candidate_query,
@@ -2896,7 +2902,7 @@ class MolegApi:
             case_candidates = dedupe_candidates(
                 [
                     candidate
-                    for candidate_query in authority_search_queries
+                    for candidate_query in article_target_queries
                     for candidate in safe_list(
                         lambda candidate_query=candidate_query: self.search_cases(
                             candidate_query,
@@ -2913,7 +2919,7 @@ class MolegApi:
             constitutional_candidates = dedupe_candidates(
                 [
                     candidate
-                    for candidate_query in authority_search_queries
+                    for candidate_query in article_target_queries
                     for candidate in safe_list(
                         lambda candidate_query=candidate_query: self.search_constitutional_decisions(
                             candidate_query,
@@ -2931,36 +2937,48 @@ class MolegApi:
             law_annex_limit = (annex_form_limit + 1) // 2
             admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
             annex_form_candidates = [
-                *safe_list(
-                    lambda: self.search_annex_forms(
-                        search_query,
-                        source="law",
-                        search_scope="source",
-                        display=law_annex_limit,
-                    ),
-                    source_notes,
-                    "Law annex/form search",
-                    gaps=gaps,
-                    query=search_query,
-                    recommended_interface="search_annex_forms",
-                ),
-                *safe_list(
-                    lambda: self.search_annex_forms(
-                        search_query,
-                        source="administrative_rule",
-                        search_scope="source",
-                        display=admin_annex_limit,
-                    ),
-                    source_notes,
-                    "Administrative-rule annex/form search",
-                    gaps=gaps,
-                    query=search_query,
-                    recommended_interface="search_annex_forms",
-                ),
+                *dedupe_candidates(
+                    [
+                        candidate
+                        for candidate_query in article_target_queries
+                        for candidate in safe_list(
+                            lambda candidate_query=candidate_query: self.search_annex_forms(
+                                candidate_query,
+                                source="law",
+                                search_scope="source",
+                                display=law_annex_limit,
+                            ),
+                            source_notes,
+                            "Law annex/form search",
+                            gaps=gaps,
+                            query=candidate_query,
+                            recommended_interface="search_annex_forms",
+                        )
+                    ]
+                )[:law_annex_limit],
+                *dedupe_candidates(
+                    [
+                        candidate
+                        for candidate_query in article_target_queries
+                        for candidate in safe_list(
+                            lambda candidate_query=candidate_query: self.search_annex_forms(
+                                candidate_query,
+                                source="administrative_rule",
+                                search_scope="source",
+                                display=admin_annex_limit,
+                            ),
+                            source_notes,
+                            "Administrative-rule annex/form search",
+                            gaps=gaps,
+                            query=candidate_query,
+                            recommended_interface="search_annex_forms",
+                        )
+                    ]
+                )[:admin_annex_limit],
             ][:annex_form_limit]
 
         eager_detail_limits = bundle_eager_detail_limits(search_query, mode=mode, budget=budget)
-        authority_ranking_query = " ".join(authority_search_queries) if search_query else search_query
+        authority_ranking_query = " ".join(article_target_queries) if search_query else search_query
         eager_text_budget = BUNDLE_EAGER_TEXT_CHAR_LIMITS[budget]
         eager_text_used = 0
         if any(eager_detail_limits.values()):
@@ -5398,7 +5416,7 @@ def dedupe_candidates(candidates: list[Any]) -> list[Any]:
     return unique
 
 
-def authority_context_search_queries(
+def article_target_search_queries(
     identity: LawIdentity,
     requested_articles: list[str | int],
     target_articles: list[ArticleText],
@@ -5414,7 +5432,7 @@ def authority_context_search_queries(
         if not article.article or article.article in requested_set:
             continue
         queries.append(
-            authority_context_destination_query(
+            article_target_destination_query(
                 identity,
                 article.article,
                 ranking_query=ranking_query,
@@ -5429,7 +5447,7 @@ def authority_context_search_queries(
     return deduped_queries
 
 
-def authority_context_destination_query(
+def article_target_destination_query(
     identity: LawIdentity,
     destination_article: str,
     *,

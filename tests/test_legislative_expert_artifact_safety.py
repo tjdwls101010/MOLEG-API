@@ -402,6 +402,26 @@ def test_context_bundle_moved_authority_uses_destination_article_citations():
     assert "context_bundle_moved_article_searches_destination_authority" in readiness.risk_flags
 
 
+def test_context_bundle_moved_operational_candidates_require_detail_loading():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["context_bundle_moved_article_destination_candidate_search"]
+
+    assert readiness.status == "needs_more_source_loading"
+    assert readiness.evidence["administrative_rule_candidates"] == ["자동차등록 운영규정"]
+    assert readiness.evidence["annex_form_candidates"] == ["자동차등록 기준", "자동차등록 신청서"]
+    assert readiness.evidence["loaded_administrative_rules"] == 0
+    assert readiness.evidence["loaded_annex_forms"] == 0
+    assert {citation.source_type for citation in readiness.citations} == {"law"}
+    assert "get_administrative_rule" in readiness.evidence["deferred_interfaces"]
+    assert "get_annex_form_body" in readiness.evidence["deferred_interfaces"]
+    assert (
+        "administrative_rule_and_annex_candidates_not_loaded_operational_criteria"
+        in readiness.risk_flags
+    )
+
+
 def test_query_expansion_candidates_are_not_promoted_to_source_citations():
     readiness = {
         report.scenario: report

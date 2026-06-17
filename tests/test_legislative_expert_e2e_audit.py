@@ -29,6 +29,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_article_status_guardrail",
         "context_bundle_whole_law_article_status_guardrail",
         "context_bundle_moved_article_destination_authority_search",
+        "context_bundle_moved_article_destination_candidate_search",
         "context_bundle_delegation_lookup_failure_guardrail",
         "case_search_candidate_detail_guardrail",
         "empty_case_search_absence_guardrail",
@@ -545,6 +546,38 @@ def test_legislative_expert_e2e_audit_searches_moved_bundle_destination_authorit
     assert not [kind for kind in status.evidence["gap_kinds"] if kind.startswith("authority_")]
     assert {citation.article for citation in status.citations} == {"제12조"}
     assert "context_bundle_moved_article_searches_destination_authority" in status.risk_flags
+
+
+def test_legislative_expert_e2e_audit_searches_moved_bundle_destination_candidates():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    status = by_scenario["context_bundle_moved_article_destination_candidate_search"]
+
+    assert status.status == "needs_more_source_loading"
+    assert status.public_interfaces == ["load_legal_context_bundle"]
+    assert status.must_have["requested_moved_article_loaded"] is True
+    assert status.must_have["destination_article_loaded"] is True
+    assert status.must_have["destination_candidate_search_performed"] is True
+    assert status.must_have["administrative_rule_candidate_found"] is True
+    assert status.must_have["annex_form_candidates_found"] is True
+    assert status.must_have["candidate_detail_deferred"] is True
+    assert status.must_have["no_operational_detail_loaded"] is True
+    assert status.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert "자동차관리법 제12조 등록 운영기준" in status.evidence["search_queries"]
+    assert status.evidence["administrative_rule_candidates"] == ["자동차등록 운영규정"]
+    assert status.evidence["annex_form_candidates"] == ["자동차등록 기준", "자동차등록 신청서"]
+    assert "get_administrative_rule" in status.evidence["deferred_interfaces"]
+    assert "get_annex_form_body" in status.evidence["deferred_interfaces"]
+    assert status.evidence["loaded_administrative_rules"] == 0
+    assert status.evidence["loaded_annex_forms"] == 0
+    assert {citation.article for citation in status.citations} == {"제12조"}
+    assert (
+        "context_bundle_moved_article_searches_destination_operational_candidates"
+        in status.risk_flags
+    )
 
 
 def test_legislative_expert_e2e_audit_marks_requested_law_not_loaded():
