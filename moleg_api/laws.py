@@ -3530,6 +3530,12 @@ def annex_form_identity_from_identifier(
     text = str(identifier).strip()
     if not text:
         raise NoResultError("Annex/form identifier is required")
+    if not text[0].isdigit():
+        raise NoResultError(
+            f"Identifier {text!r} looks like an annex/form title, not a source ID. "
+            f"Call `search_annex_forms({text!r})` to find the annex/form identity, "
+            "then pass the result or its `annex_id` to this method."
+        )
     normalized_title = title.strip() if title else text
     if not normalized_title:
         normalized_title = text
