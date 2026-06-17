@@ -34,6 +34,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "constitutional_search_candidate_detail_guardrail",
         "empty_constitutional_search_absence_guardrail",
         "authority_context_matching_current_authorities",
+        "authority_context_moved_article_destination_search",
         "loaded_authority_article_mismatch_guardrail",
         "context_bundle_authority_article_mismatch_guardrail",
         "context_bundle_authority_article_unverified_guardrail",
@@ -705,6 +706,30 @@ def test_legislative_expert_e2e_audit_loads_matching_authority_context():
     assert authority.evidence["gap_kinds"] == []
     assert authority.evidence["deferred_interfaces"] == []
     assert "authority_context_is_bounded_not_exhaustive_authority_survey" in authority.risk_flags
+
+
+def test_legislative_expert_e2e_audit_searches_moved_authority_destination_article():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    authority = by_scenario["authority_context_moved_article_destination_search"]
+
+    assert authority.status == "ready_for_reasoning"
+    assert authority.public_interfaces == ["load_authority_context"]
+    assert authority.must_have["requested_moved_article_loaded"] is True
+    assert authority.must_have["destination_target_loaded"] is True
+    assert authority.must_have["destination_search_performed"] is True
+    assert authority.must_have["interpretation_promoted"] is True
+    assert authority.must_have["case_promoted"] is True
+    assert authority.must_have["constitutional_promoted"] is True
+    assert authority.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert authority.evidence["target_articles"] == ["제12조"]
+    assert "자동차관리법 제9조" in authority.evidence["search_queries"]
+    assert "자동차관리법 제12조" in authority.evidence["search_queries"]
+    assert {citation.article for citation in authority.citations} == {"제12조"}
+    assert "authority_context_moved_article_searches_destination_article" in authority.risk_flags
 
 
 def test_legislative_expert_e2e_audit_blocks_mismatched_loaded_authority_articles():

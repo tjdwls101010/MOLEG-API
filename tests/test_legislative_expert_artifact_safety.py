@@ -595,6 +595,20 @@ def test_empty_constitutional_search_is_not_promoted_to_no_constitutional_risk_c
     assert any("one scoped Constitutional Court search" in disclosure for disclosure in discipline.required_disclosures)
 
 
+def test_moved_authority_context_uses_destination_article_citations():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["authority_context_moved_article_destination_search"]
+
+    assert readiness.status == "ready_for_reasoning"
+    assert readiness.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert readiness.evidence["target_articles"] == ["제12조"]
+    assert "자동차관리법 제12조" in readiness.evidence["search_queries"]
+    assert {citation.article for citation in readiness.citations} == {"제12조"}
+    assert "authority_context_moved_article_searches_destination_article" in readiness.risk_flags
+
+
 def test_mismatched_loaded_authorities_are_not_promoted_to_target_article_citations():
     readiness = {
         report.scenario: report

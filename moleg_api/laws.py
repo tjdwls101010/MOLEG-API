@@ -1548,35 +1548,64 @@ class MolegApi:
             if article_context.current_article is not None:
                 target_articles.append(article_context.current_article)
 
-        interpretation_candidates = safe_list(
-            lambda: self.search_interpretations(
-                search_query,
-                display=limits["interpretations"],
-            ),
-            source_notes,
-            "Authority interpretation search",
-            gaps=gaps,
-            query=search_query,
-            recommended_interface="search_interpretations",
+        search_queries = authority_context_search_queries(
+            identity,
+            requested_articles,
+            target_articles,
+            ranking_query=ranking_query,
         )
-        case_candidates = safe_list(
-            lambda: self.search_cases(search_query, display=limits["cases"]),
-            source_notes,
-            "Authority case search",
-            gaps=gaps,
-            query=search_query,
-            recommended_interface="search_cases",
+        authority_ranking_query = " ".join(search_queries)
+
+        interpretation_candidates = dedupe_candidates(
+            [
+                candidate
+                for candidate_query in search_queries
+                for candidate in safe_list(
+                    lambda candidate_query=candidate_query: self.search_interpretations(
+                        candidate_query,
+                        display=limits["interpretations"],
+                    ),
+                    source_notes,
+                    "Authority interpretation search",
+                    gaps=gaps,
+                    query=candidate_query,
+                    recommended_interface="search_interpretations",
+                )
+            ]
         )
-        constitutional_candidates = safe_list(
-            lambda: self.search_constitutional_decisions(
-                search_query,
-                display=limits["constitutional_decisions"],
-            ),
-            source_notes,
-            "Authority Constitutional Court search",
-            gaps=gaps,
-            query=search_query,
-            recommended_interface="search_constitutional_decisions",
+        case_candidates = dedupe_candidates(
+            [
+                candidate
+                for candidate_query in search_queries
+                for candidate in safe_list(
+                    lambda candidate_query=candidate_query: self.search_cases(
+                        candidate_query,
+                        display=limits["cases"],
+                    ),
+                    source_notes,
+                    "Authority case search",
+                    gaps=gaps,
+                    query=candidate_query,
+                    recommended_interface="search_cases",
+                )
+            ]
+        )
+        constitutional_candidates = dedupe_candidates(
+            [
+                candidate
+                for candidate_query in search_queries
+                for candidate in safe_list(
+                    lambda candidate_query=candidate_query: self.search_constitutional_decisions(
+                        candidate_query,
+                        display=limits["constitutional_decisions"],
+                    ),
+                    source_notes,
+                    "Authority Constitutional Court search",
+                    gaps=gaps,
+                    query=candidate_query,
+                    recommended_interface="search_constitutional_decisions",
+                )
+            ]
         )
 
         loaded_interpretations: list[InterpretationText] = []
@@ -1586,7 +1615,7 @@ class MolegApi:
 
         for candidate in ranked_candidates(
             interpretation_candidates,
-            search_query,
+            authority_ranking_query,
             limit=limits["interpretations"],
         ):
             try:
@@ -1604,7 +1633,11 @@ class MolegApi:
             loaded_interpretations.append(text)
             loaded_detail_keys.add(candidate_identity_key(candidate))
 
-        for candidate in ranked_candidates(case_candidates, search_query, limit=limits["cases"]):
+        for candidate in ranked_candidates(
+            case_candidates,
+            authority_ranking_query,
+            limit=limits["cases"],
+        ):
             try:
                 text = self.get_case(candidate.identity, include_metadata=False)
             except MolegApiError as exc:
@@ -1622,7 +1655,7 @@ class MolegApi:
 
         for candidate in ranked_candidates(
             constitutional_candidates,
-            search_query,
+            authority_ranking_query,
             limit=limits["constitutional_decisions"],
         ):
             try:
@@ -5321,6 +5354,69 @@ def ranked_candidates(candidates: list[Any], query: str | None, *, limit: int) -
     ]
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [candidate for _, _, candidate in scored[:limit]]
+
+
+def dedupe_candidates(candidates: list[Any]) -> list[Any]:
+    seen: set[tuple[str | None, str]] = set()
+    unique: list[Any] = []
+    for candidate in candidates:
+        key = candidate_identity_key(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def authority_context_search_queries(
+    identity: LawIdentity,
+    requested_articles: list[str | int],
+    target_articles: list[ArticleText],
+    *,
+    ranking_query: str | None,
+) -> list[str]:
+    requested_labels = [article_label_for_filter(item) for item in requested_articles]
+    base_query = ranking_query or f"{identity.name} {' '.join(requested_labels)}"
+    queries = [base_query.strip()]
+    requested_set = set(requested_labels)
+
+    for article in target_articles:
+        if not article.article or article.article in requested_set:
+            continue
+        queries.append(
+            authority_context_destination_query(
+                identity,
+                article.article,
+                ranking_query=ranking_query,
+                requested_labels=requested_labels,
+            )
+        )
+
+    deduped_queries: list[str] = []
+    for query in queries:
+        if query and query not in deduped_queries:
+            deduped_queries.append(query)
+    return deduped_queries
+
+
+def authority_context_destination_query(
+    identity: LawIdentity,
+    destination_article: str,
+    *,
+    ranking_query: str | None,
+    requested_labels: list[str],
+) -> str:
+    if ranking_query:
+        query = ranking_query
+        replaced = False
+        for requested_label in requested_labels:
+            if requested_label and requested_label in query:
+                query = query.replace(requested_label, destination_article)
+                replaced = True
+        if replaced or destination_article in query:
+            return query.strip()
+        return f"{query} {destination_article}".strip()
+    return f"{identity.name} {destination_article}".strip()
 
 
 def significant_query_terms(query: str | None) -> list[str]:

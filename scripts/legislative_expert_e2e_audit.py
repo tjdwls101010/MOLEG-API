@@ -117,6 +117,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_constitutional_search_candidate_detail_guardrail(),
             _audit_empty_constitutional_search_absence_guardrail(),
             _audit_authority_context_matching_current_authorities(),
+            _audit_authority_context_moved_article_destination_search(),
             _audit_loaded_authority_article_mismatch_guardrail(),
             _audit_context_bundle_authority_article_mismatch_guardrail(),
             _audit_context_bundle_authority_article_unverified_guardrail(),
@@ -2094,6 +2095,174 @@ def _audit_authority_context_matching_current_authorities() -> LegislativeExpert
             "gap_kinds": [gap.kind for gap in context.gaps],
             "deferred_interfaces": [item.interface for item in context.deferred],
             "call_targets": [target for _, target, _ in source.calls],
+        },
+    )
+
+
+def _audit_authority_context_moved_article_destination_search() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    source = ScenarioSource(
+        search_payloads=[
+            {"ExpcSearch": {"expc": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "120",
+                            "안건명": "자동차등록 의무 해석",
+                            "회신일자": "20250415",
+                        }
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "220",
+                            "사건명": "자동차등록 의무 사건",
+                            "선고일자": "20250510",
+                        }
+                    ]
+                }
+            },
+            {"DetcSearch": {"detc": []}},
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "320",
+                            "사건명": "자동차등록 의무 헌재 사건",
+                            "종국일자": "20250627",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "120",
+                    "안건명": "자동차등록 의무 해석",
+                    "회신일자": "20250415",
+                    "관련법령": f"{law_name} 제12조",
+                    "회답": "현행 등록 의무에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "220",
+                    "사건명": "자동차등록 의무 사건",
+                    "선고일자": "20250510",
+                    "참조조문": f"{law_name} 제12조",
+                    "판례내용": "현행 등록 의무에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "320",
+                    "사건명": "자동차등록 의무 헌재 사건",
+                    "종국일자": "20250627",
+                    "심판대상조문": f"{law_name} 제12조",
+                    "전문": "현행 등록 의무에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        LawIdentity(law_id="001747", name=law_name, basis="effective"),
+        articles=["제9조"],
+        budget="minimal",
+    )
+    search_queries = [
+        params["query"]
+        for kind, _, params in source.calls
+        if kind == "search"
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="authority_context_moved_article_destination_search",
+        question="이동된 조문에 대한 authority context가 현행 목적지 조문으로도 권위자료를 검색하는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_authority_context"],
+        must_have={
+            "requested_moved_article_loaded": context.loaded.articles[0].article == "제9조"
+            and context.loaded.articles[0].moved_to == "제12조",
+            "destination_target_loaded": [article.article for article in context.target_articles]
+            == ["제12조"],
+            "destination_search_performed": f"{law_name} 제12조" in search_queries,
+            "interpretation_promoted": len(context.current_authorities.interpretations) == 1,
+            "case_promoted": len(context.current_authorities.cases) == 1,
+            "constitutional_promoted": len(context.current_authorities.constitutional_decisions) == 1,
+        },
+        citations=[
+            SourceCitation(
+                "interpretation",
+                "expc",
+                "자동차등록 의무 해석",
+                "제12조",
+                "MOLEG interpretation",
+            ),
+            SourceCitation(
+                "case",
+                "prec",
+                "자동차등록 의무 사건",
+                "제12조",
+                "Supreme Court/court case",
+            ),
+            SourceCitation(
+                "constitutional",
+                "detc",
+                "자동차등록 의무 헌재 사건",
+                "제12조",
+                "Constitutional Court decision",
+            ),
+        ],
+        risk_flags=[
+            "authority_context_moved_article_searches_destination_article",
+            "moved_source_article_not_used_as_current_authority_anchor",
+        ],
+        next_actions=[
+            "Use current_authorities tied to the loaded destination article for current authority claims.",
+            "Disclose the originally requested article as a moved source state when relevant.",
+        ],
+        evidence={
+            "loaded_articles": [article.article for article in context.loaded.articles],
+            "target_articles": [article.article for article in context.target_articles],
+            "search_queries": search_queries,
+            "current_interpretations": [
+                item.identity.title for item in context.current_authorities.interpretations
+            ],
+            "current_cases": [item.identity.title for item in context.current_authorities.cases],
+            "current_constitutional_decisions": [
+                item.identity.title for item in context.current_authorities.constitutional_decisions
+            ],
+            "gap_kinds": [gap.kind for gap in context.gaps],
         },
     )
 

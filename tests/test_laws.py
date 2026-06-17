@@ -6064,6 +6064,137 @@ def test_load_authority_context_promotes_matching_current_authorities():
     ]
 
 
+def test_load_authority_context_searches_moved_destination_article_for_current_authorities():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"ExpcSearch": {"expc": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "120",
+                            "안건명": "자동차등록 의무 해석",
+                            "회신일자": "20250415",
+                        }
+                    ]
+                }
+            },
+            {"PrecSearch": {"prec": []}},
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "220",
+                            "사건명": "자동차등록 의무 사건",
+                            "선고일자": "20250510",
+                        }
+                    ]
+                }
+            },
+            {"DetcSearch": {"detc": []}},
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "320",
+                            "사건명": "자동차등록 의무 헌재 사건",
+                            "종국일자": "20250627",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "120",
+                    "안건명": "자동차등록 의무 해석",
+                    "회신일자": "20250415",
+                    "관련법령": "자동차관리법 제12조",
+                    "회답": "현행 등록 의무에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "220",
+                    "사건명": "자동차등록 의무 사건",
+                    "선고일자": "20250510",
+                    "참조조문": "자동차관리법 제12조",
+                    "판례내용": "현행 등록 의무에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "320",
+                    "사건명": "자동차등록 의무 헌재 사건",
+                    "종국일자": "20250627",
+                    "심판대상조문": "자동차관리법 제12조",
+                    "전문": "현행 등록 의무에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제9조"],
+        budget="minimal",
+    )
+
+    assert [article.article for article in context.loaded.articles] == ["제9조", "제12조"]
+    assert [article.article for article in context.target_articles] == ["제12조"]
+    assert [item.identity.title for item in context.current_authorities.interpretations] == [
+        "자동차등록 의무 해석"
+    ]
+    assert [item.identity.title for item in context.current_authorities.cases] == [
+        "자동차등록 의무 사건"
+    ]
+    assert [item.identity.title for item in context.current_authorities.constitutional_decisions] == [
+        "자동차등록 의무 헌재 사건"
+    ]
+    search_calls = [call for call in source.calls if call[0] == "search"]
+    assert [(target, params["query"]) for _, target, params in search_calls] == [
+        ("expc", "자동차관리법 제9조"),
+        ("expc", "자동차관리법 제12조"),
+        ("prec", "자동차관리법 제9조"),
+        ("prec", "자동차관리법 제12조"),
+        ("detc", "자동차관리법 제9조"),
+        ("detc", "자동차관리법 제12조"),
+    ]
+    assert not [gap for gap in context.gaps if gap.kind.startswith("authority_")]
+    assert context.deferred == []
+
+
 def test_load_authority_context_keeps_undated_authority_out_of_current_authorities():
     identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
     source = FakeSource(

@@ -65,6 +65,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Empty case-search absence guardrail | needs more source loading | A zero-hit scoped court-case search can be disclosed with query/court/body scope, but cannot become a claim that no relevant precedent, court case, judicial authority, or legal reasoning exists. |
 | Constitutional-search candidate detail guardrail | needs more source loading | Constitutional Court search hits remain candidate metadata; no holding, summary, reviewed-statute reasoning, referenced-statute reasoning, or full text is citable until `get_constitutional_decision()` loads selected detail. |
 | Empty Constitutional Court-search absence guardrail | needs more source loading | A zero-hit scoped Constitutional Court free-text search can be disclosed with query/body scope, but cannot become a claim that no constitutional decision, constitutional authority, or constitutional risk exists. |
+| Authority context moved-article destination search | ready for reasoning | `load_authority_context()` follows a moved target article to the destination article and searches authority sources for that destination before promoting current authorities. |
 | Loaded authority article mismatch guardrail | needs more source loading | Loaded interpretation, court-case, and Constitutional Court details preserve structured article references, but none become target-article citations when `referenced_articles` / `reviewed_articles` do not match the requested law/article. |
 | Context bundle authority article mismatch guardrail | needs more source loading | `load_legal_context_bundle()` loads target article text and eager authority details but emits `authority_article_mismatch` gaps when the details reference or review other articles; only the target article citation is usable until follow-up authority searches match referenced/reviewed articles. |
 | Context bundle authority article unverified guardrail | needs more source loading | `load_legal_context_bundle()` loads target article text and eager authority details but emits `authority_article_unverified` gaps when the details have no structured `referenced_articles` / `reviewed_articles`; missing references are unknown source state, not an implicit target-article match. |
@@ -111,13 +112,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 60 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 61 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 54 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 55 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 55 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 56 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 
