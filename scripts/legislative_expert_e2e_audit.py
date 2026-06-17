@@ -17,7 +17,14 @@ from typing import Any, Literal
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from moleg_api import AnnexFormIdentity, LawIdentity, MolegApi, NoResultError, RateLimitError
+from moleg_api import (
+    AmbiguousLawError,
+    AnnexFormIdentity,
+    LawIdentity,
+    MolegApi,
+    NoResultError,
+    RateLimitError,
+)
 from scripts.fake_skill_tracer_bullet import (
     ScenarioSource,
     administrative_rule_search_payload,
@@ -131,6 +138,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_institutional_system_law_structure_not_loaded_guardrail(),
             _audit_empty_delegation_graph_absence_guardrail(),
             _audit_administrative_rule_search_candidate_detail_guardrail(),
+            _audit_administrative_rule_name_ambiguity_guardrail(),
             _audit_administrative_rule_issued_on_not_effective_as_of_guardrail(),
             _audit_administrative_rule_article_status_guardrail(),
             _audit_administrative_rule_supplementary_transition_context(),
@@ -4016,6 +4024,77 @@ def _audit_administrative_rule_search_candidate_detail_guardrail() -> Legislativ
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
             "service_call_targets": service_call_targets,
             "citations_loaded": 0,
+        },
+    )
+
+
+def _audit_administrative_rule_name_ambiguity_guardrail() -> LegislativeExpertScenarioReport:
+    rule_name = "데이터 처리 기준"
+    source = ScenarioSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000111111",
+                            "행정규칙명": rule_name,
+                            "행정규칙종류": "고시",
+                        },
+                        {
+                            "행정규칙 일련번호": "2100000222222",
+                            "행정규칙명": rule_name,
+                            "행정규칙종류": "훈령",
+                        },
+                    ]
+                }
+            }
+        ],
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000111111",
+                    "행정규칙명": rule_name,
+                    "조문내용": "모호한 이름에서 바로 로드되면 안 되는 detail",
+                }
+            }
+        ],
+    )
+
+    loaded_rule = None
+    error_kind = None
+    candidate_ids: list[str | None] = []
+    try:
+        loaded_rule = MolegApi(source).get_administrative_rule(rule_name)
+    except AmbiguousLawError as exc:
+        error_kind = exc.kind
+        candidate_ids = [candidate.serial_id for candidate in exc.candidates]
+
+    service_call_targets = [target for kind, target, _ in source.calls if kind == "service"]
+
+    return LegislativeExpertScenarioReport(
+        scenario="administrative_rule_name_ambiguity_guardrail",
+        question="행정규칙 이름이 여러 identity와 일치할 때 첫 detail을 자동 로드하지 않는가?",
+        status="blocked_for_manual_review",
+        public_interfaces=["get_administrative_rule", "search_administrative_rules"],
+        must_have={
+            "administrative_rule_name_ambiguity_surfaced": error_kind == "administrative_rule_identity",
+            "candidate_ids_preserved": candidate_ids == ["2100000111111", "2100000222222"],
+            "no_rule_detail_loaded": loaded_rule is None and service_call_targets == [],
+        },
+        citations=[],
+        risk_flags=[
+            "administrative_rule_name_must_not_be_silently_selected",
+            "get_administrative_rule_name_requires_unique_search_identity",
+        ],
+        next_actions=[
+            "Use search_administrative_rules() result metadata to select one administrative-rule identity before loading detail.",
+        ],
+        evidence={
+            "query": rule_name,
+            "error_kind": error_kind,
+            "candidate_ids": candidate_ids,
+            "service_call_targets": service_call_targets,
+            "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
         },
     )
 

@@ -48,6 +48,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "institutional_system_law_structure_not_loaded_guardrail",
         "empty_delegation_graph_absence_guardrail",
         "administrative_rule_search_candidate_detail_guardrail",
+        "administrative_rule_name_ambiguity_guardrail",
         "administrative_rule_issued_on_not_effective_as_of_guardrail",
         "administrative_rule_article_status_guardrail",
         "administrative_rule_supplementary_transition_guardrail",
@@ -1176,6 +1177,25 @@ def test_legislative_expert_e2e_audit_keeps_administrative_rule_search_hits_as_c
         "administrative_rule_search_hit_requires_get_administrative_rule_detail"
         in administrative_rule.risk_flags
     )
+
+
+def test_legislative_expert_e2e_audit_blocks_ambiguous_administrative_rule_name_detail_load():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    ambiguous = by_scenario["administrative_rule_name_ambiguity_guardrail"]
+
+    assert ambiguous.status == "blocked_for_manual_review"
+    assert ambiguous.public_interfaces == ["get_administrative_rule", "search_administrative_rules"]
+    assert ambiguous.must_have["administrative_rule_name_ambiguity_surfaced"] is True
+    assert ambiguous.must_have["candidate_ids_preserved"] is True
+    assert ambiguous.must_have["no_rule_detail_loaded"] is True
+    assert ambiguous.citations == []
+    assert ambiguous.evidence["candidate_ids"] == ["2100000111111", "2100000222222"]
+    assert ambiguous.evidence["service_call_targets"] == []
+    assert "administrative_rule_name_must_not_be_silently_selected" in ambiguous.risk_flags
 
 
 def test_legislative_expert_e2e_audit_keeps_administrative_rule_issued_on_out_of_as_of_claims():

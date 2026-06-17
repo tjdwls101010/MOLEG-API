@@ -2385,9 +2385,24 @@ def test_get_administrative_rule_reads_source_reference_from_service_wrapper_top
 
 def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
     source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000999999",
+                            "행정규칙명": "데이터기반행정 활성화 규정",
+                            "행정규칙종류": "고시",
+                            "발령일자": "20240115",
+                        }
+                    ]
+                }
+            }
+        ],
         service_payloads=[
             {
                 "admrul": {
+                    "행정규칙 일련번호": "2100000999999",
                     "행정규칙명": "데이터기반행정 활성화 규정",
                     "행정규칙종류": "고시",
                     "발령일자": "20240115",
@@ -2398,7 +2413,7 @@ def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
         ]
     )
 
-    text = MolegApi(source).get_administrative_rule("데이터기반행정 활성화 규정")
+    text = MolegApi(source).get_administrative_rule("  데이터기반행정 활성화 규정  ")
 
     assert text.identity.name == "데이터기반행정 활성화 규정"
     assert text.identity.rule_type == "고시"
@@ -2410,10 +2425,60 @@ def test_get_administrative_rule_can_use_exact_name_and_preserves_flat_text():
     assert text.articles[0].source_law_name == "데이터기반행정 활성화에 관한 법률"
     assert text.articles[0].source_article == "제20조제1항"
     assert source.calls[0] == (
+        "search",
+        "admrul",
+        {"query": "데이터기반행정 활성화 규정", "display": 20, "nw": 1},
+    )
+    assert source.calls[1] == (
         "service",
         "admrul",
-        {"LM": "데이터기반행정 활성화 규정"},
+        {"ID": "2100000999999"},
     )
+
+
+def test_get_administrative_rule_rejects_ambiguous_exact_name_before_detail_call():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙 일련번호": "2100000111111",
+                            "행정규칙명": "데이터 처리 기준",
+                            "행정규칙종류": "고시",
+                        },
+                        {
+                            "행정규칙 일련번호": "2100000222222",
+                            "행정규칙명": "데이터 처리 기준",
+                            "행정규칙종류": "훈령",
+                        },
+                    ]
+                }
+            }
+        ],
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000111111",
+                    "행정규칙명": "데이터 처리 기준",
+                    "조문내용": "잘못 로드되면 안 되는 detail",
+                }
+            }
+        ],
+    )
+
+    with pytest.raises(AmbiguousLawError) as exc_info:
+        MolegApi(source).get_administrative_rule("데이터 처리 기준")
+
+    error = exc_info.value
+    assert error.kind == "administrative_rule_identity"
+    assert [candidate.serial_id for candidate in error.candidates] == [
+        "2100000111111",
+        "2100000222222",
+    ]
+    assert source.calls == [
+        ("search", "admrul", {"query": "데이터 처리 기준", "display": 20, "nw": 1})
+    ]
 
 
 def test_search_interpretations_defaults_to_official_moleg_source():

@@ -81,6 +81,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Law-structure hierarchy candidate guardrail | needs more source loading | `get_law_structure()` can cite the existence and hierarchy of lower instruments, but cannot become article-level delegation, lower-rule body text, or operational-criteria proof without `find_delegated_rules()` and selected detail loading. |
 | Empty delegation-graph absence guardrail | needs more source loading | A zero-rule `find_delegated_rules()` / `NoResultError` state can be disclosed with searched law/article scope, but cannot become a claim that no delegated rule, subordinate rule, notice, annex, or delegated criteria exists. |
 | Administrative-rule-search candidate detail guardrail | needs more source loading | Administrative-rule search hits remain candidate metadata; no article text, criteria, supplementary provisions, or current operational criteria are citable until `get_administrative_rule()` loads selected detail. |
+| Administrative-rule name ambiguity guardrail | blocked for manual review | `get_administrative_rule("name")` resolves the name through search first; if multiple exact administrative-rule identities match, no detail text is loaded until one identity is selected. |
 | Administrative-rule issued-on/as-of guardrail | needs more source loading | `search_administrative_rules(issued_on=...)` preserves a 발령일자 filter and candidate effective-date metadata, but it is not an as-of current-effect lookup; current operational criteria require selected detail loading and effective-date comparison. |
 | Administrative-rule article status guardrail | needs more source loading | Loaded administrative-rule articles marked deleted or moved remain source state; deleted markers cannot become current operational criteria and moved markers require destination article loading before current operational criteria. |
 | Administrative-rule supplementary transition guardrail | ready for reasoning | Loaded administrative-rule articles, rule-level effective date, and loaded administrative-rule supplementary provisions stay separate so 시행일, 적용례, and 경과조치 claims can cite rule 부칙 directly. |
@@ -119,13 +120,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 68 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 69 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 61 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 62 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 63 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 64 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 

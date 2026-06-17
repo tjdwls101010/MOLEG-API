@@ -1023,7 +1023,7 @@ class MolegApi:
         if articles is not None and not articles:
             raise NoResultError("articles must contain at least one article when provided")
 
-        identity_hint = administrative_rule_identity_from_identifier(identifier)
+        identity_hint = self._resolve_administrative_rule_identifier(identifier)
         params = administrative_rule_identity_params(identity_hint)
         payload = self.source.service("admrul", params)
         raw_rule = unwrap_service_payload(payload, "admrul")
@@ -1042,6 +1042,41 @@ class MolegApi:
             supplementary_provisions=supplementary_provisions,
             raw=raw_rule if include_metadata else {},
         )
+
+    def _resolve_administrative_rule_identifier(
+        self,
+        identifier: AdministrativeRuleIdentity | AdministrativeRuleHit | str,
+    ) -> AdministrativeRuleIdentity:
+        identity = administrative_rule_identity_from_identifier(identifier)
+        if identity.serial_id or identity.rule_id:
+            return identity
+        if not identity.name:
+            raise NoResultError("Administrative-rule identity has neither ID, LID, nor exact name")
+
+        hits = self.search_administrative_rules(identity.name)
+        exact = [
+            hit.identity
+            for hit in hits
+            if hit.identity.name == identity.name
+        ]
+        unique: list[AdministrativeRuleIdentity] = []
+        seen: set[tuple[str | None, str | None, str]] = set()
+        for item in exact:
+            key = (item.serial_id, item.rule_id, item.name)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+
+        if len(unique) == 1:
+            return unique[0]
+        if len(unique) > 1:
+            raise AmbiguousLawError(
+                f"Administrative-rule name {identity.name!r} matched multiple identities",
+                kind="administrative_rule_identity",
+                candidates=unique,
+            )
+        raise NoResultError(f"No administrative-rule identity matched exact name: {identity.name}")
 
     def load_administrative_rule_context(
         self,
@@ -4366,7 +4401,9 @@ def administrative_rule_identity_from_identifier(
         return identifier.identity
     if isinstance(identifier, AdministrativeRuleIdentity):
         return identifier
-    text = str(identifier)
+    text = str(identifier).strip()
+    if not text:
+        raise NoResultError("Administrative-rule identifier is required")
     if text.isdigit():
         return AdministrativeRuleIdentity(serial_id=text, name=text)
     return AdministrativeRuleIdentity(serial_id=None, name=text)

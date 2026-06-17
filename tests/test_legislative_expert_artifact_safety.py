@@ -1004,6 +1004,19 @@ def test_administrative_rule_search_candidates_are_not_promoted_to_rule_text_cit
     assert any("metadata" in claim for claim in discipline.forbidden_claims)
 
 
+def test_ambiguous_administrative_rule_name_is_not_promoted_to_rule_text_citation():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["administrative_rule_name_ambiguity_guardrail"]
+
+    assert readiness.status == "blocked_for_manual_review"
+    assert readiness.citations == []
+    assert readiness.evidence["candidate_ids"] == ["2100000111111", "2100000222222"]
+    assert readiness.evidence["service_call_targets"] == []
+    assert "administrative_rule_name_must_not_be_silently_selected" in readiness.risk_flags
+
+
 def test_administrative_rule_issued_on_filter_is_not_promoted_to_as_of_current_effect():
     readiness = {
         report.scenario: report
