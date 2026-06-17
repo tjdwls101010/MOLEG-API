@@ -418,7 +418,8 @@ def test_legislative_expert_e2e_audit_marks_institutional_system_empty_delegatio
     assert empty_delegation.must_have["law_structure_loaded"] is True
     assert empty_delegation.must_have["empty_delegation_graph_preserved"] is True
     assert empty_delegation.must_have["empty_delegation_gap_preserved"] is True
-    assert empty_delegation.must_have["administrative_rule_followup_preserved"] is True
+    assert empty_delegation.must_have["no_redundant_administrative_rule_search_deferred"] is True
+    assert empty_delegation.must_have["administrative_rule_detail_followup_preserved"] is True
     assert empty_delegation.must_have["no_delegation_absence_claim"] is True
     assert {citation.source_type for citation in empty_delegation.citations} == {
         "law",
@@ -427,8 +428,9 @@ def test_legislative_expert_e2e_audit_marks_institutional_system_empty_delegatio
     assert "empty_delegation_graph" in empty_delegation.evidence["gap_kinds"]
     assert empty_delegation.evidence["loaded_law_structures"] == 1
     assert empty_delegation.evidence["loaded_delegation_rule_counts"] == [0]
-    assert empty_delegation.evidence["administrative_rule_deferred_filters"] == [
-        {"law_id": "100002"}
+    assert empty_delegation.evidence["redundant_search_deferred_interfaces"] == []
+    assert empty_delegation.evidence["administrative_rule_detail_deferred_filters"] == [
+        {"id": "2100000248758"}
     ]
     assert empty_delegation.evidence["candidate_counts"] == {
         "administrative_rules": 1,

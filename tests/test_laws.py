@@ -3663,15 +3663,13 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
     assert [
         (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
     ] == [("전자금융거래법 시행령", "search_administrative_rules")]
-    administrative_search_deferred = [
+    redundant_search_deferred = [
         item
         for item in bundle.deferred
         if item.interface == "search_administrative_rules"
         and item.source_type == "administrative_rule"
     ]
-    assert [(item.query, item.filters) for item in administrative_search_deferred] == [
-        ("전자금융거래법 시행령", {"law_id": "100002"})
-    ]
+    assert redundant_search_deferred == []
     assert [gap.kind for gap in bundle.gaps] == [
         "websearch_required",
         "empty_delegation_graph",

@@ -2263,12 +2263,7 @@ class MolegApi:
                     gaps,
                     deferred,
                     recommended_interface="search_administrative_rules",
-                    deferred_interface="search_administrative_rules",
-                    deferred_source_type="administrative_rule",
-                    deferred_reason=(
-                        "Search lower-rule candidates with alternate terms before making "
-                        "any no-delegated-rule or no-delegated-criteria claim."
-                    ),
+                    deferred_interface=None,
                 )
             except MolegApiError as exc:
                 source_notes.append(f"Delegation lookup skipped for {identity.name}: {exc}")

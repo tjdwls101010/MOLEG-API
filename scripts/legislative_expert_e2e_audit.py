@@ -3901,10 +3901,16 @@ def _audit_institutional_system_empty_delegation_graph_guardrail() -> Legislativ
         for gap in bundle.gaps
         if gap.kind == "empty_delegation_graph"
     ]
-    administrative_search_deferred = [
+    redundant_search_deferred = [
         item
         for item in bundle.deferred
         if item.interface == "search_administrative_rules"
+        and item.source_type == "administrative_rule"
+    ]
+    administrative_detail_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_administrative_rule"
         and item.source_type == "administrative_rule"
     ]
 
@@ -3924,10 +3930,11 @@ def _audit_institutional_system_empty_delegation_graph_guardrail() -> Legislativ
                 (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
             ]
             == [(law_name, "search_administrative_rules")],
-            "administrative_rule_followup_preserved": [
-                (item.query, item.filters) for item in administrative_search_deferred
+            "no_redundant_administrative_rule_search_deferred": redundant_search_deferred == [],
+            "administrative_rule_detail_followup_preserved": [
+                (item.query, item.filters) for item in administrative_detail_deferred
             ]
-            == [(law_name, {"law_id": "100002"})],
+            == [(f"{law_name} 고시", {"id": "2100000248758"})],
             "no_delegation_absence_claim": True,
         },
         citations=[
@@ -3948,8 +3955,11 @@ def _audit_institutional_system_empty_delegation_graph_guardrail() -> Legislativ
             "loaded_delegation_rule_counts": [
                 len(graph.rules) for graph in bundle.loaded.delegations
             ],
-            "administrative_rule_deferred_filters": [
-                item.filters for item in administrative_search_deferred
+            "redundant_search_deferred_interfaces": [
+                item.interface for item in redundant_search_deferred
+            ],
+            "administrative_rule_detail_deferred_filters": [
+                item.filters for item in administrative_detail_deferred
             ],
             "candidate_counts": {
                 "administrative_rules": len(bundle.candidates.administrative_rules),
