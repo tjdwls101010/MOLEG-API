@@ -111,6 +111,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_context_bundle_requested_article_not_loaded_guardrail(),
             _audit_context_bundle_article_status_guardrail(),
             _audit_context_bundle_whole_law_article_status_guardrail(),
+            _audit_context_bundle_moved_article_destination_authority_search(),
             _audit_context_bundle_delegation_lookup_failure_guardrail(),
             _audit_case_search_candidate_detail_guardrail(),
             _audit_empty_case_search_absence_guardrail(),
@@ -1408,7 +1409,10 @@ def _audit_context_bundle_article_status_guardrail() -> LegislativeExpertScenari
         search_payloads=[
             {"AdmRulSearch": {"admrul": []}},
             {"ExpcSearch": {"expc": []}},
+            {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
@@ -1633,6 +1637,186 @@ def _audit_context_bundle_whole_law_article_status_guardrail() -> LegislativeExp
             ],
             "source_notes": bundle.source_notes,
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
+        },
+    )
+
+
+def _audit_context_bundle_moved_article_destination_authority_search() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+
+    class DestinationAuthoritySource(ScenarioSource):
+        def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
+            self.calls.append(("search", target, dict(params)))
+            query = str(params.get("query", ""))
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            if target == "expc" and "제12조" in query:
+                return {
+                    "ExpcSearch": {
+                        "expc": [
+                            {
+                                "법령해석례일련번호": "120",
+                                "안건명": "자동차등록 의무 해석",
+                                "회신일자": "20250415",
+                            }
+                        ]
+                    }
+                }
+            if target == "prec" and "제12조" in query:
+                return {
+                    "PrecSearch": {
+                        "prec": [
+                            {
+                                "판례일련번호": "220",
+                                "사건명": "자동차등록 의무 사건",
+                                "선고일자": "20250510",
+                            }
+                        ]
+                    }
+                }
+            if target == "detc" and "제12조" in query:
+                return {
+                    "DetcSearch": {
+                        "detc": [
+                            {
+                                "헌재결정례일련번호": "320",
+                                "사건명": "자동차등록 의무 헌재 사건",
+                                "종국일자": "20250627",
+                            }
+                        ]
+                    }
+                }
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = DestinationAuthoritySource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {"법령ID": "001747", "법령명_한글": law_name},
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": law_name},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "120",
+                    "안건명": "자동차등록 의무 해석",
+                    "회신일자": "20250415",
+                    "관련법령": f"{law_name} 제12조",
+                    "회답": "현행 등록 의무에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "220",
+                    "사건명": "자동차등록 의무 사건",
+                    "선고일자": "20250510",
+                    "참조조문": f"{law_name} 제12조",
+                    "판례내용": "현행 등록 의무에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "320",
+                    "사건명": "자동차등록 의무 헌재 사건",
+                    "종국일자": "20250627",
+                    "심판대상조문": f"{law_name} 제12조",
+                    "전문": "현행 등록 의무에 관한 결정",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        f"{law_name} 제9조 의무의 의미와 위헌 위험",
+        law_identifier=LawIdentity(law_id="001747", name=law_name, basis="effective"),
+        articles=["제9조"],
+        mode="statute_review",
+        budget="standard",
+    )
+    search_queries = [
+        params["query"]
+        for kind, _, params in source.calls
+        if kind == "search"
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_moved_article_destination_authority_search",
+        question="context bundle이 이동된 요청 조문의 현행 목적지 조문으로 eager authority를 검색하는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "requested_moved_article_loaded": bundle.loaded.articles[0].article == "제9조"
+            and bundle.loaded.articles[0].moved_to == "제12조",
+            "destination_article_loaded": bundle.loaded.articles[1].article == "제12조",
+            "destination_authority_search_performed": f"{law_name} 제12조 의무의 의미와 위헌 위험"
+            in search_queries,
+            "interpretation_loaded": len(bundle.loaded.interpretations) == 1,
+            "case_loaded": len(bundle.loaded.cases) == 1,
+            "constitutional_loaded": len(bundle.loaded.constitutional_decisions) == 1,
+            "no_authority_gap_for_moved_marker": not any(
+                gap.kind.startswith("authority_") for gap in bundle.gaps
+            ),
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", law_name, "제12조", "current destination article"),
+            SourceCitation("interpretation", "expc", "자동차등록 의무 해석", "제12조", "matching current interpretation"),
+            SourceCitation("case", "prec", "자동차등록 의무 사건", "제12조", "matching current court case"),
+            SourceCitation("constitutional", "detc", "자동차등록 의무 헌재 사건", "제12조", "matching current Constitutional Court decision"),
+        ],
+        risk_flags=[
+            "context_bundle_moved_article_searches_destination_authority",
+            "context_bundle_moved_marker_not_authority_target",
+        ],
+        next_actions=[
+            "Use destination-article authority citations for current-substance claims.",
+            "Disclose the originally requested article as a moved source state when relevant.",
+        ],
+        evidence={
+            "loaded_articles": [article.article for article in bundle.loaded.articles],
+            "search_queries": search_queries,
+            "loaded_interpretations": [
+                item.identity.title for item in bundle.loaded.interpretations
+            ],
+            "loaded_cases": [item.identity.title for item in bundle.loaded.cases],
+            "loaded_constitutional_decisions": [
+                item.identity.title for item in bundle.loaded.constitutional_decisions
+            ],
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
         },
     )
 

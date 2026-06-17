@@ -2612,6 +2612,7 @@ class MolegApi:
         deferred: list[DeferredLookup] = []
         loaded_laws: list[LawText] = []
         loaded_articles: list[ArticleText] = []
+        authority_target_articles: list[ArticleText] = []
         loaded_delegations: list[DelegationGraph] = []
         loaded_interpretations: list[InterpretationText] = []
         loaded_cases: list[JudicialDecisionText] = []
@@ -2767,6 +2768,8 @@ class MolegApi:
                         gaps.extend(article_context.gaps)
                         deferred.extend(article_context.deferred)
                         source_notes.extend(article_context.source_notes)
+                        if article_context.current_article is not None:
+                            authority_target_articles.append(article_context.current_article)
                         for article_text in article_context.loaded_articles:
                             primary_identity = prefer_versioned_law_identity(
                                 primary_identity,
@@ -2865,38 +2868,64 @@ class MolegApi:
                 query=search_query,
                 recommended_interface="search_administrative_rules",
             )
-            interpretation_candidates = safe_list(
-                lambda: self.search_interpretations(
-                    search_query,
-                    display=limits["interpretations"],
-                ),
-                source_notes,
-                "Interpretation search",
-                gaps=gaps,
-                query=search_query,
-                recommended_interface="search_interpretations",
+            authority_search_queries = [search_query]
+            if primary_identity is not None:
+                authority_search_queries = authority_context_search_queries(
+                    primary_identity,
+                    list(articles or []),
+                    authority_target_articles,
+                    ranking_query=search_query,
+                )
+            interpretation_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in authority_search_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_interpretations(
+                            candidate_query,
+                            display=limits["interpretations"],
+                        ),
+                        source_notes,
+                        "Interpretation search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_interpretations",
+                    )
+                ]
             )
-            case_candidates = safe_list(
-                lambda: self.search_cases(
-                    search_query,
-                    display=limits["cases"],
-                ),
-                source_notes,
-                "Case search",
-                gaps=gaps,
-                query=search_query,
-                recommended_interface="search_cases",
+            case_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in authority_search_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_cases(
+                            candidate_query,
+                            display=limits["cases"],
+                        ),
+                        source_notes,
+                        "Case search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_cases",
+                    )
+                ]
             )
-            constitutional_candidates = safe_list(
-                lambda: self.search_constitutional_decisions(
-                    search_query,
-                    display=limits["constitutional_decisions"],
-                ),
-                source_notes,
-                "Constitutional decision search",
-                gaps=gaps,
-                query=search_query,
-                recommended_interface="search_constitutional_decisions",
+            constitutional_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in authority_search_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_constitutional_decisions(
+                            candidate_query,
+                            display=limits["constitutional_decisions"],
+                        ),
+                        source_notes,
+                        "Constitutional decision search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_constitutional_decisions",
+                    )
+                ]
             )
             annex_form_limit = limits["annex_forms"]
             law_annex_limit = (annex_form_limit + 1) // 2
@@ -2931,6 +2960,7 @@ class MolegApi:
             ][:annex_form_limit]
 
         eager_detail_limits = bundle_eager_detail_limits(search_query, mode=mode, budget=budget)
+        authority_ranking_query = " ".join(authority_search_queries) if search_query else search_query
         eager_text_budget = BUNDLE_EAGER_TEXT_CHAR_LIMITS[budget]
         eager_text_used = 0
         if any(eager_detail_limits.values()):
@@ -2942,7 +2972,7 @@ class MolegApi:
 
         for candidate in ranked_candidates(
             interpretation_candidates,
-            search_query,
+            authority_ranking_query,
             limit=eager_detail_limits["interpretations"],
         ):
             key = candidate_identity_key(candidate)
@@ -2968,7 +2998,7 @@ class MolegApi:
 
         for candidate in ranked_candidates(
             case_candidates,
-            search_query,
+            authority_ranking_query,
             limit=eager_detail_limits["cases"],
         ):
             key = candidate_identity_key(candidate)
@@ -2994,7 +3024,7 @@ class MolegApi:
 
         for candidate in ranked_candidates(
             constitutional_candidates,
-            search_query,
+            authority_ranking_query,
             limit=eager_detail_limits["constitutional_decisions"],
         ):
             key = candidate_identity_key(candidate)
@@ -3019,14 +3049,14 @@ class MolegApi:
             loaded_detail_keys.add(key)
 
         append_authority_article_mismatch_gaps(
-            target_article_refs_from_loaded_articles(loaded_articles),
+            target_article_refs_from_loaded_articles(authority_target_articles),
             interpretations=loaded_interpretations,
             cases=loaded_cases,
             constitutional_decisions=loaded_constitutional_decisions,
             gaps=gaps,
         )
         append_authority_temporal_mismatch_gaps(
-            loaded_articles,
+            authority_target_articles,
             interpretations=loaded_interpretations,
             cases=loaded_cases,
             constitutional_decisions=loaded_constitutional_decisions,

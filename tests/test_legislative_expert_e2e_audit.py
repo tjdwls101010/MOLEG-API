@@ -28,6 +28,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_requested_article_not_loaded_guardrail",
         "context_bundle_article_status_guardrail",
         "context_bundle_whole_law_article_status_guardrail",
+        "context_bundle_moved_article_destination_authority_search",
         "context_bundle_delegation_lookup_failure_guardrail",
         "case_search_candidate_detail_guardrail",
         "empty_case_search_absence_guardrail",
@@ -517,6 +518,33 @@ def test_legislative_expert_e2e_audit_preserves_whole_law_article_status_guardra
         "whole_law_moved_article_requires_article_context_before_current_substance"
         in status.risk_flags
     )
+
+
+def test_legislative_expert_e2e_audit_searches_moved_bundle_destination_authority():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    status = by_scenario["context_bundle_moved_article_destination_authority_search"]
+
+    assert status.status == "ready_for_reasoning"
+    assert status.public_interfaces == ["load_legal_context_bundle"]
+    assert status.must_have["requested_moved_article_loaded"] is True
+    assert status.must_have["destination_article_loaded"] is True
+    assert status.must_have["destination_authority_search_performed"] is True
+    assert status.must_have["interpretation_loaded"] is True
+    assert status.must_have["case_loaded"] is True
+    assert status.must_have["constitutional_loaded"] is True
+    assert status.must_have["no_authority_gap_for_moved_marker"] is True
+    assert status.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert "자동차관리법 제12조 의무의 의미와 위헌 위험" in status.evidence["search_queries"]
+    assert status.evidence["loaded_interpretations"] == ["자동차등록 의무 해석"]
+    assert status.evidence["loaded_cases"] == ["자동차등록 의무 사건"]
+    assert status.evidence["loaded_constitutional_decisions"] == ["자동차등록 의무 헌재 사건"]
+    assert not [kind for kind in status.evidence["gap_kinds"] if kind.startswith("authority_")]
+    assert {citation.article for citation in status.citations} == {"제12조"}
+    assert "context_bundle_moved_article_searches_destination_authority" in status.risk_flags
 
 
 def test_legislative_expert_e2e_audit_marks_requested_law_not_loaded():

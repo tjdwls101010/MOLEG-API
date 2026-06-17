@@ -55,6 +55,7 @@ The answer-discipline harness checks the last pre-answer step: from prompt plan 
 | Moved article status guardrail | ready for reasoning | `load_article_context()` preserves the searched moved article as source state and loads the destination article before current-substance citations. |
 | Context bundle article status guardrail | ready for reasoning | `load_legal_context_bundle()` preserves deleted requested articles as gaps/source state and follows moved requested articles to destination text before current-substance citations. |
 | Context bundle whole-law article status guardrail | needs more source loading | Whole-law `load_legal_context_bundle()` preserves deleted/moved article rows as source state and emits gaps plus a `load_article_context()` follow-up before moved-marker current-substance claims. |
+| Context bundle moved-article destination authority search | ready for reasoning | Requested-article `load_legal_context_bundle()` includes moved destination article queries when searching eager interpretation, case, and Constitutional Court authority candidates. |
 | Query expansion candidate authority guardrail | needs more source loading | Legal-term, related-law, and AI-search candidates remain planning context; no citation is available until selected law/article text is loaded. |
 | Law-search candidate detail guardrail | needs more source loading | Law-name search hits remain identity candidates; no law text, article wording, current duty, sanction, or procedure is citable until selected law/article text is loaded. |
 | Empty law-search absence guardrail | needs more source loading | A zero-hit scoped law search can be disclosed with its query/effective-basis scope, but cannot become a claim that no current law or legal basis exists. |
@@ -112,13 +113,13 @@ python3 -m pytest tests/test_legislative_expert_answer_discipline.py -q
 Result:
 
 ```text
-scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 61 scenarios
+scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 62 scenarios
 scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
 scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
-tests/test_legislative_expert_e2e_audit.py -q -> 55 passed
+tests/test_legislative_expert_e2e_audit.py -q -> 56 passed
 tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
-tests/test_legislative_expert_artifact_safety.py -q -> 56 passed
+tests/test_legislative_expert_artifact_safety.py -q -> 57 passed
 tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
 ```
 

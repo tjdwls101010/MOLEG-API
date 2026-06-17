@@ -5278,7 +5278,10 @@ def test_load_legal_context_bundle_follows_moved_requested_article_to_destinatio
         search_payloads=[
             {"AdmRulSearch": {"admrul": []}},
             {"ExpcSearch": {"expc": []}},
+            {"ExpcSearch": {"expc": []}},
             {"PrecSearch": {"prec": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
@@ -5341,6 +5344,156 @@ def test_load_legal_context_bundle_follows_moved_requested_article_to_destinatio
         ("service", "eflawjosub", {"ID": "001747", "JO": "001200"}),
         ("service", "lsDelegated", {"ID": "001747"}),
     ]
+
+
+def test_load_legal_context_bundle_searches_moved_destination_for_eager_authority():
+    class DestinationAuthoritySource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            query = params.get("query", "")
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            if target == "expc" and "제12조" in query:
+                return {
+                    "ExpcSearch": {
+                        "expc": [
+                            {
+                                "법령해석례일련번호": "120",
+                                "안건명": "자동차등록 의무 해석",
+                                "회신일자": "20250415",
+                            }
+                        ]
+                    }
+                }
+            if target == "prec" and "제12조" in query:
+                return {
+                    "PrecSearch": {
+                        "prec": [
+                            {
+                                "판례일련번호": "220",
+                                "사건명": "자동차등록 의무 사건",
+                                "선고일자": "20250510",
+                            }
+                        ]
+                    }
+                }
+            if target == "detc" and "제12조" in query:
+                return {
+                    "DetcSearch": {
+                        "detc": [
+                            {
+                                "헌재결정례일련번호": "320",
+                                "사건명": "자동차등록 의무 헌재 사건",
+                                "종국일자": "20250627",
+                            }
+                        ]
+                    }
+                }
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = DestinationAuthoritySource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문시행일자": "20250101",
+                        "조문내용": "자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "120",
+                    "안건명": "자동차등록 의무 해석",
+                    "회신일자": "20250415",
+                    "관련법령": "자동차관리법 제12조",
+                    "회답": "현행 등록 의무에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "220",
+                    "사건명": "자동차등록 의무 사건",
+                    "선고일자": "20250510",
+                    "참조조문": "자동차관리법 제12조",
+                    "판례내용": "현행 등록 의무에 관한 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "320",
+                    "사건명": "자동차등록 의무 헌재 사건",
+                    "종국일자": "20250627",
+                    "심판대상조문": "자동차관리법 제12조",
+                    "전문": "현행 등록 의무에 관한 결정",
+                }
+            },
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제9조 의무의 의미와 위헌 위험",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        articles=["제9조"],
+        mode="statute_review",
+        budget="standard",
+    )
+
+    assert [article.article for article in bundle.loaded.articles] == ["제9조", "제12조"]
+    assert [item.identity.title for item in bundle.loaded.interpretations] == [
+        "자동차등록 의무 해석"
+    ]
+    assert [item.identity.title for item in bundle.loaded.cases] == ["자동차등록 의무 사건"]
+    assert [item.identity.title for item in bundle.loaded.constitutional_decisions] == [
+        "자동차등록 의무 헌재 사건"
+    ]
+    assert not [gap for gap in bundle.gaps if gap.kind.startswith("authority_")]
+    search_queries = [
+        params["query"]
+        for kind, _, params in source.calls
+        if kind == "search"
+    ]
+    assert "자동차관리법 제9조 의무의 의미와 위헌 위험" in search_queries
+    assert "자동차관리법 제12조 의무의 의미와 위헌 위험" in search_queries
 
 
 def test_load_legal_context_bundle_marks_whole_law_deleted_and_moved_articles_as_source_state():
