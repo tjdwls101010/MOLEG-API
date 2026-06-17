@@ -3968,6 +3968,139 @@ def test_load_delegated_criteria_uses_explicit_query_for_operational_candidate_d
     )
 
 
+def test_load_delegated_criteria_searches_moved_destination_for_operational_candidates():
+    class DestinationOperationalSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            query = params.get("query", "")
+            if target == "admrul" and "제12조" in query:
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙 일련번호": "2100000123456",
+                                "행정규칙명": "자동차등록 운영규정",
+                                "행정규칙종류": "고시",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "위임법령명": "자동차관리법",
+                                "위임조문번호": "제12조",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and "제12조" in query:
+                return {
+                    "licbyl": [
+                        {
+                            "licbyl id": "220000012",
+                            "별표명": "자동차등록 기준",
+                            "관련법령명": "자동차관리법",
+                            "관련법령ID": "001747",
+                            "별표종류": "별표",
+                        }
+                    ]
+                }
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = DestinationOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차등록 운영기준은 하위 규정으로 정한다.",
+                    },
+                }
+            },
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000123456",
+                    "행정규칙명": "자동차등록 운영규정",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "위임조문번호": "제12조",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "2",
+                                "조문제목": "등록 기준",
+                                "조문내용": "자동차등록 운영기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 자동차관리법 [별표]",
+                    "자동차등록 기준",
+                    "| 구분 | 기준 |",
+                    "| 신청 | 등록 신청서 제출 |",
+                ]
+            )
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제9조"],
+        query="자동차관리법 제9조 등록 운영기준",
+        budget="minimal",
+    )
+
+    assert [article.article for article in bundle.loaded.articles] == ["제9조", "제12조"]
+    assert [rule.identity.name for rule in bundle.loaded.administrative_rules] == [
+        "자동차등록 운영규정"
+    ]
+    assert [annex.identity.title for annex in bundle.loaded.annex_forms] == ["자동차등록 기준"]
+    search_queries = [params["query"] for kind, _, params in source.calls if kind == "search"]
+    assert "자동차관리법 제9조 등록 운영기준" in search_queries
+    assert "자동차관리법 제12조 등록 운영기준" in search_queries
+    assert "자동차등록 운영기준" in bundle.loaded.administrative_rules[0].text
+    assert "등록 신청서 제출" in bundle.loaded.annex_forms[0].text
+
+
 def test_load_delegated_criteria_preserves_administrative_rule_article_status():
     identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
     source = FakeSource(

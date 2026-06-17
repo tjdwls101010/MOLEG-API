@@ -113,6 +113,26 @@ def test_query_discovered_delegated_criteria_can_be_promoted_after_detail_loadin
     )
 
 
+def test_moved_destination_query_delegated_criteria_can_be_promoted_after_detail_loading():
+    loaded = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_moved_article_query_candidate_discovery"]
+
+    assert loaded.status == "ready_for_reasoning"
+    assert loaded.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert "자동차관리법 제12조 등록 운영기준" in loaded.evidence["search_queries"]
+    assert loaded.evidence["loaded_administrative_rules"] == ["자동차등록 운영규정"]
+    assert loaded.evidence["loaded_annex_forms"] == ["자동차등록 기준"]
+    assert {"law", "delegation", "administrative_rule", "annex"}.issubset(
+        {citation.source_type for citation in loaded.citations}
+    )
+    assert (
+        "delegated_criteria_moved_article_uses_destination_query_for_operational_candidates"
+        in loaded.risk_flags
+    )
+
+
 def test_low_confidence_annex_rows_are_not_promoted_to_threshold_claims():
     readiness = {
         report.scenario: report

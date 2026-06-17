@@ -56,6 +56,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "empty_annex_form_search_absence_guardrail",
         "delegated_criteria_after_followups",
         "delegated_criteria_query_candidate_discovery",
+        "delegated_criteria_moved_article_query_candidate_discovery",
         "delegated_criteria_administrative_rule_article_status_guardrail",
         "delegated_criteria_annex_source_mismatch_guardrail",
         "delegated_criteria_source_mismatch_guardrail",
@@ -1330,6 +1331,38 @@ def test_legislative_expert_e2e_audit_uses_delegated_criteria_query_for_candidat
     )
     assert (
         "delegated_criteria_uses_explicit_query_for_candidate_discovery"
+        in loaded.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_uses_moved_destination_query_for_delegated_criteria():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    loaded = by_scenario["delegated_criteria_moved_article_query_candidate_discovery"]
+
+    assert loaded.status == "ready_for_reasoning"
+    assert loaded.public_interfaces == ["load_delegated_criteria"]
+    assert loaded.must_have["requested_moved_article_loaded"] is True
+    assert loaded.must_have["destination_article_loaded"] is True
+    assert loaded.must_have["original_query_search_performed"] is True
+    assert loaded.must_have["destination_query_search_performed"] is True
+    assert loaded.must_have["destination_administrative_rule_candidate_found"] is True
+    assert loaded.must_have["destination_annex_candidate_found"] is True
+    assert loaded.must_have["administrative_rule_detail_loaded"] is True
+    assert loaded.must_have["annex_body_loaded"] is True
+    assert loaded.evidence["loaded_articles"] == ["제9조", "제12조"]
+    assert "자동차관리법 제9조 등록 운영기준" in loaded.evidence["search_queries"]
+    assert "자동차관리법 제12조 등록 운영기준" in loaded.evidence["search_queries"]
+    assert loaded.evidence["loaded_administrative_rules"] == ["자동차등록 운영규정"]
+    assert loaded.evidence["loaded_annex_forms"] == ["자동차등록 기준"]
+    assert {"law", "delegation", "administrative_rule", "annex"} == {
+        citation.source_type for citation in loaded.citations
+    }
+    assert (
+        "delegated_criteria_moved_article_uses_destination_query_for_operational_candidates"
         in loaded.risk_flags
     )
 

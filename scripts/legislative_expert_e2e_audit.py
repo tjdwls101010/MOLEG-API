@@ -139,6 +139,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_empty_annex_form_search_absence_guardrail(),
             _audit_delegated_criteria_after_followups(),
             _audit_delegated_criteria_query_candidate_discovery(),
+            _audit_delegated_criteria_moved_article_query_candidate_discovery(),
             _audit_delegated_criteria_administrative_rule_article_status_guardrail(),
             _audit_delegated_criteria_annex_source_mismatch_guardrail(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
@@ -4504,6 +4505,193 @@ def _audit_delegated_criteria_query_candidate_discovery() -> LegislativeExpertSc
         ],
         evidence={
             "search_queries": search_queries,
+            "administrative_rule_candidates": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ],
+            "annex_form_candidates": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ],
+            "loaded_administrative_rules": [
+                rule.identity.name for rule in bundle.loaded.administrative_rules
+            ],
+            "loaded_annex_forms": [
+                annex.identity.title for annex in bundle.loaded.annex_forms
+            ],
+            "call_targets": call_targets,
+        },
+    )
+
+
+def _audit_delegated_criteria_moved_article_query_candidate_discovery() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    rule_name = "자동차등록 운영규정"
+    original_query = "자동차관리법 제9조 등록 운영기준"
+    destination_query = "자동차관리법 제12조 등록 운영기준"
+    identity = LawIdentity(law_id="001747", name=law_name, basis="effective", mst="270001")
+
+    class DestinationOperationalSource(ScenarioSource):
+        def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
+            self.calls.append(("search", target, dict(params)))
+            searched_query = params.get("query", "")
+            if target == "admrul" and "제12조" in searched_query:
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙 일련번호": "2100000123456",
+                                "행정규칙명": rule_name,
+                                "행정규칙종류": "고시",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "위임법령명": law_name,
+                                "위임조문번호": "제12조",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and "제12조" in searched_query:
+                return annex_search_payload("220000012", "자동차등록 기준", related_name=law_name)
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = DestinationOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": law_name,
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                        "조문이동이후": "12",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": law_name,
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차등록 운영기준은 하위 규정으로 정한다.",
+                    },
+                }
+            },
+            law_structure_payload(law_name, "001747", "270001", "자동차관리법 시행령"),
+            delegation_payload(law_name, "자동차관리법 시행령", law_id="001747", article="12"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000123456",
+                    "행정규칙ID": "2099999",
+                    "행정규칙명": rule_name,
+                    "행정규칙종류": "고시",
+                    "발령일자": "20250101",
+                    "소관부처명": "국토교통부",
+                    "시행일자": "20250101",
+                    "위임법령ID": "001747",
+                    "위임법령명": law_name,
+                    "위임조문번호": "제12조",
+                    "위임조문제목": "자동차등록",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "2",
+                                "조문제목": "등록 기준",
+                                "조문내용": "자동차등록 운영기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 자동차관리법 [별표]",
+                    "자동차등록 기준",
+                    "| 구분 | 기준 |",
+                    "| 신청 | 등록 신청서 제출 |",
+                ]
+            )
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제9조"],
+        query=original_query,
+        budget="minimal",
+    )
+    administrative_rule = bundle.loaded.administrative_rules[0]
+    annex_body = bundle.loaded.annex_forms[0]
+    search_queries = [params["query"] for kind, _, params in source.calls if kind == "search"]
+    call_targets = [target for _, target, _ in source.calls]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_moved_article_query_candidate_discovery",
+        question="이동된 조문에서 운용기준 후보가 목적지 조문 기준 query로 발견되고 detail까지 로드되는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "requested_moved_article_loaded": [
+                article.article for article in bundle.loaded.articles
+            ][:1]
+            == ["제9조"],
+            "destination_article_loaded": "제12조"
+            in [article.article for article in bundle.loaded.articles],
+            "original_query_search_performed": original_query in search_queries,
+            "destination_query_search_performed": destination_query in search_queries,
+            "destination_administrative_rule_candidate_found": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ]
+            == [rule_name],
+            "destination_annex_candidate_found": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ]
+            == ["자동차등록 기준"],
+            "administrative_rule_detail_loaded": administrative_rule.identity.name == rule_name
+            and "자동차등록 운영기준" in administrative_rule.text,
+            "annex_body_loaded": "등록 신청서 제출" in annex_body.text,
+            "detail_loaded_inside_task_interface": "admrul" in call_targets
+            and "lsBylTextDownLoad.do" in call_targets,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", law_name, "제9조", "moved statute article"),
+            SourceCitation("law", "eflawjosub", law_name, "제12조", "current destination article"),
+            SourceCitation("delegation", "lsDelegated", "자동차관리법 시행령", "제12조", "delegated rule graph"),
+            SourceCitation("administrative_rule", "admrul", rule_name, "제2조", "loaded administrative rule"),
+            SourceCitation("annex", "licbyl", "자동차등록 기준", authority="loaded law annex table"),
+        ],
+        risk_flags=[
+            "delegated_criteria_moved_article_uses_destination_query_for_operational_candidates",
+            "moved_requested_article_is_not_enough_for_operational_candidate_discovery",
+        ],
+        next_actions=[
+            "Use destination-article-loaded administrative-rule and annex bodies for operational criteria after source-reference checks.",
+        ],
+        evidence={
+            "search_queries": search_queries,
+            "loaded_articles": [article.article for article in bundle.loaded.articles],
             "administrative_rule_candidates": [
                 item.identity.name for item in bundle.candidates.administrative_rules
             ],

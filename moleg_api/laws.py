@@ -2404,7 +2404,12 @@ class MolegApi:
         )
         limits = delegated_criteria_load_limits(budget)
         candidate_limits = bundle_limits(budget)
-        ranking_query = explicit_query or delegated_criteria_ranking_query(bundle)
+        explicit_queries = (
+            delegated_criteria_query_search_queries(bundle, explicit_query)
+            if explicit_query
+            else []
+        )
+        ranking_query = " ".join(explicit_queries) if explicit_queries else delegated_criteria_ranking_query(bundle)
 
         source_notes = list(bundle.source_notes)
         gaps = list(bundle.gaps)
@@ -2420,16 +2425,22 @@ class MolegApi:
         annex_form_candidates = list(bundle.candidates.annex_forms)
 
         if explicit_query:
-            query_administrative_candidates = safe_list(
-                lambda: self.search_administrative_rules(
-                    explicit_query,
-                    display=candidate_limits["administrative_rules"],
-                ),
-                source_notes,
-                "Delegated-criteria administrative-rule query search",
-                gaps=gaps,
-                query=explicit_query,
-                recommended_interface="search_administrative_rules",
+            query_administrative_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in explicit_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_administrative_rules(
+                            candidate_query,
+                            display=candidate_limits["administrative_rules"],
+                        ),
+                        source_notes,
+                        "Delegated-criteria administrative-rule query search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_administrative_rules",
+                    )
+                ]
             )
             administrative_candidates = dedupe_candidates(
                 [
@@ -2440,31 +2451,43 @@ class MolegApi:
             annex_form_limit = candidate_limits["annex_forms"]
             law_annex_limit = (annex_form_limit + 1) // 2
             admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
-            query_law_annex_candidates = safe_list(
-                lambda: self.search_annex_forms(
-                    explicit_query,
-                    source="law",
-                    search_scope="source",
-                    display=law_annex_limit,
-                ),
-                source_notes,
-                "Delegated-criteria law annex/form query search",
-                gaps=gaps,
-                query=explicit_query,
-                recommended_interface="search_annex_forms",
+            query_law_annex_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in explicit_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_annex_forms(
+                            candidate_query,
+                            source="law",
+                            search_scope="source",
+                            display=law_annex_limit,
+                        ),
+                        source_notes,
+                        "Delegated-criteria law annex/form query search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_annex_forms",
+                    )
+                ]
             )
-            query_admin_annex_candidates = safe_list(
-                lambda: self.search_annex_forms(
-                    explicit_query,
-                    source="administrative_rule",
-                    search_scope="source",
-                    display=admin_annex_limit,
-                ),
-                source_notes,
-                "Delegated-criteria administrative-rule annex/form query search",
-                gaps=gaps,
-                query=explicit_query,
-                recommended_interface="search_annex_forms",
+            query_admin_annex_candidates = dedupe_candidates(
+                [
+                    candidate
+                    for candidate_query in explicit_queries
+                    for candidate in safe_list(
+                        lambda candidate_query=candidate_query: self.search_annex_forms(
+                            candidate_query,
+                            source="administrative_rule",
+                            search_scope="source",
+                            display=admin_annex_limit,
+                        ),
+                        source_notes,
+                        "Delegated-criteria administrative-rule annex/form query search",
+                        gaps=gaps,
+                        query=candidate_query,
+                        recommended_interface="search_annex_forms",
+                    )
+                ]
             )
             annex_form_candidates = dedupe_candidates(
                 [
@@ -5453,6 +5476,34 @@ def delegated_criteria_ranking_query(bundle: LegalContextBundle) -> str:
     parts.extend(str(article) for article in bundle.request.articles)
     parts.extend(identity.name for identity in bundle.candidates.laws[:1])
     return " ".join(part for part in parts if part).strip()
+
+
+def delegated_criteria_query_search_queries(bundle: LegalContextBundle, query: str) -> list[str]:
+    identity = delegated_criteria_query_identity(bundle)
+    if identity is None or not bundle.request.articles or not bundle.loaded.articles:
+        return [query]
+    return article_target_search_queries(
+        identity,
+        list(bundle.request.articles),
+        bundle.loaded.articles,
+        ranking_query=query,
+    )
+
+
+def delegated_criteria_query_identity(bundle: LegalContextBundle) -> LawIdentity | None:
+    for article in bundle.loaded.articles:
+        if article.identity.law_id or article.identity.mst or article.identity.name:
+            return article.identity
+    for law in bundle.loaded.laws:
+        if law.identity.law_id or law.identity.mst or law.identity.name:
+            return law.identity
+    for graph in bundle.loaded.delegations:
+        if graph.identity.law_id or graph.identity.mst or graph.identity.name:
+            return graph.identity
+    for identity in bundle.candidates.laws:
+        if identity.law_id or identity.mst or identity.name:
+            return identity
+    return None
 
 
 def ranked_candidates(candidates: list[Any], query: str | None, *, limit: int) -> list[Any]:
