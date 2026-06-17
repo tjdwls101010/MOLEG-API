@@ -125,6 +125,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_context_bundle_authority_article_unverified_guardrail(),
             _audit_context_bundle_authority_article_partial_match_guardrail(),
             _audit_context_bundle_authority_temporal_mismatch_guardrail(),
+            _audit_context_bundle_authority_after_reference_date_guardrail(),
             _audit_law_structure_hierarchy_candidate_guardrail(),
             _audit_institutional_system_law_structure_not_loaded_guardrail(),
             _audit_empty_delegation_graph_absence_guardrail(),
@@ -3410,6 +3411,201 @@ def _audit_context_bundle_authority_temporal_mismatch_guardrail() -> Legislative
             "authority_deferred_filters": [item.filters for item in temporal_deferred],
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
+        },
+    )
+
+
+def _audit_context_bundle_authority_after_reference_date_guardrail() -> LegislativeExpertScenarioReport:
+    target_law_name = "개인정보 보호법"
+    target_article = "제15조"
+    reference_date = "20250101"
+    current_article_effective_date = "20240101"
+    authority_dates = {
+        "interpretation": "20250615",
+        "case": "20250710",
+        "constitutional": "20250827",
+    }
+    source = ScenarioSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "104",
+                            "안건명": "개인정보 동의 기준일 이후 해석",
+                            "회신일자": authority_dates["interpretation"],
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "204",
+                            "사건명": "개인정보 기준일 이후 판례",
+                            "선고일자": authority_dates["case"],
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "304",
+                            "사건명": "개인정보 기준일 이후 헌재결정",
+                            "종국일자": authority_dates["constitutional"],
+                        }
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": current_article_effective_date,
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "009999",
+                            "법령명": target_law_name,
+                        },
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "104",
+                    "안건명": "개인정보 동의 기준일 이후 해석",
+                    "회신일자": authority_dates["interpretation"],
+                    "관련법령": f"{target_law_name} {target_article}",
+                    "회답": "기준일 이후 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "204",
+                    "사건명": "개인정보 기준일 이후 판례",
+                    "선고일자": authority_dates["case"],
+                    "참조조문": f"{target_law_name} {target_article}",
+                    "판례내용": "기준일 이후 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "304",
+                    "사건명": "개인정보 기준일 이후 헌재결정",
+                    "종국일자": authority_dates["constitutional"],
+                    "심판대상조문": f"{target_law_name} {target_article}",
+                    "전문": "기준일 이후 결정",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "2025년 1월 1일 기준 개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        law_identifier=LawIdentity(law_id="009999", name=target_law_name, basis="effective"),
+        articles=[target_article],
+        mode="statute_review",
+        budget="standard",
+        as_of="2025-01-01",
+    )
+    temporal_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_temporal_mismatch"]
+    temporal_deferred = [
+        item
+        for item in bundle.deferred
+        if item.source_type == "authority_temporal_mismatch"
+    ]
+    authority_article_matches = {
+        "interpretation": _references_target_article(
+            bundle.loaded.interpretations[0].referenced_articles,
+            law_name=target_law_name,
+            article=target_article,
+        ),
+        "case": _references_target_article(
+            bundle.loaded.cases[0].referenced_articles,
+            law_name=target_law_name,
+            article=target_article,
+        ),
+        "constitutional": _references_target_article(
+            bundle.loaded.constitutional_decisions[0].reviewed_articles,
+            law_name=target_law_name,
+            article=target_article,
+        ),
+    }
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_authority_after_reference_date_guardrail",
+        question="as_of 기준일 이후에 나온 권위자료를 기준일 현재 권위로 승격하지 않는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "reference_date_preserved": bundle.request.as_of == reference_date,
+            "target_article_loaded": bundle.loaded.articles[0].article == target_article,
+            "target_article_effective_before_reference_date": bundle.loaded.articles[0].effective_date
+            == current_article_effective_date,
+            "eager_authority_details_loaded": bool(bundle.loaded.interpretations)
+            and bool(bundle.loaded.cases)
+            and bool(bundle.loaded.constitutional_decisions),
+            "authority_articles_match_target": all(authority_article_matches.values()),
+            "authority_after_reference_date_gaps_preserved": [
+                gap.recommended_interface for gap in temporal_gaps
+            ]
+            == [
+                "search_interpretations",
+                "search_cases",
+                "search_constitutional_decisions",
+            ],
+            "authority_after_reference_date_followups_preserved": [
+                (item.interface, item.filters.get("reference_date"))
+                for item in temporal_deferred
+            ]
+            == [
+                ("search_interpretations", reference_date),
+                ("search_cases", reference_date),
+                ("search_constitutional_decisions", reference_date),
+            ],
+            "no_as_of_authority_claim_from_future_authority": True,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", target_law_name, target_article, "as-of article"),
+        ],
+        risk_flags=[
+            "context_bundle_authority_date_after_reference_date",
+            "matching_referenced_article_is_not_enough_when_authority_postdates_reference_date",
+        ],
+        next_actions=[
+            "Use the loaded target article as as-of legal text only.",
+            "Search or inspect authority that existed on or before the reference date before as-of authority claims.",
+        ],
+        evidence={
+            "target_article": {
+                "law_name": target_law_name,
+                "article": target_article,
+                "effective_date": bundle.loaded.articles[0].effective_date,
+            },
+            "reference_date": bundle.request.as_of,
+            "authority_dates": authority_dates,
+            "authority_article_matches": authority_article_matches,
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "authority_gap_interfaces": [gap.recommended_interface for gap in temporal_gaps],
+            "authority_gap_queries": [gap.query for gap in temporal_gaps],
+            "authority_deferred_interfaces": [item.interface for item in temporal_deferred],
+            "authority_deferred_filters": [item.filters for item in temporal_deferred],
         },
     )
 

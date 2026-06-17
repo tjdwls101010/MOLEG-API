@@ -1142,16 +1142,16 @@ def _context_bundle_authority_temporal_mismatch_discipline(
         allowed_claims=[
             "The context bundle loaded the target article as current source text.",
             "The eager-loaded authority details reference or review the target article.",
-            "Older or date-unverified authority details may be described as historical or follow-up context until history/as-of checks are loaded.",
+            "Older, date-unverified, or after-reference-date authority details may be described as follow-up context until the temporal gap is resolved.",
         ],
         forbidden_claims=[
-            "Older or date-unverified eager-loaded interpretation, court case, or Constitutional Court detail is current target-article authority merely because referenced_articles or reviewed_articles match.",
-            "A matching referenced article proves the authority reflects the currently effective wording.",
+            "Older, date-unverified, or after-reference-date eager-loaded interpretation, court case, or Constitutional Court detail is current target-article authority or as-of target-article authority merely because referenced_articles or reviewed_articles match.",
+            "A matching referenced article proves the authority reflects the currently effective wording or reference-date wording.",
             "The context bundle resolved current legal meaning before trace_law_history or authority-date article text is checked.",
         ],
         required_disclosures=[
-            "Disclose the authority_temporal_mismatch gap before discussing older or date-unverified authority detail.",
-            "Disclose the target article's effective date and the older or missing authority dates before any current-authority claim.",
+            "Disclose the authority_temporal_mismatch gap before discussing older, date-unverified, or after-reference-date authority detail.",
+            "Disclose the target article's effective date, reference date when supplied, and authority dates before any current/as-of authority claim.",
         ],
         required_followups=[
             step.interface

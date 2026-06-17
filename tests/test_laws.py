@@ -6627,6 +6627,120 @@ def test_load_authority_context_promotes_matching_current_authorities():
     ]
 
 
+def test_load_authority_context_keeps_after_reference_date_authorities_out_of_current_authorities():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "113",
+                            "안건명": "개인정보 동의 기준일 이후 해석",
+                            "회신일자": "20250615",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "213",
+                            "사건명": "개인정보 동의 기준일 이후 사건",
+                            "선고일자": "20250710",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "313",
+                            "사건명": "개인정보 기준일 이후 헌재 사건",
+                            "종국일자": "20250827",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20240101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "113",
+                    "안건명": "개인정보 동의 기준일 이후 해석",
+                    "회신일자": "20250615",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "기준일 이후 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "213",
+                    "사건명": "개인정보 동의 기준일 이후 사건",
+                    "선고일자": "20250710",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "기준일 이후 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "313",
+                    "사건명": "개인정보 기준일 이후 헌재 사건",
+                    "종국일자": "20250827",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "기준일 이후 결정",
+                }
+            },
+        ],
+    )
+
+    context = MolegApi(source).load_authority_context(
+        identity,
+        articles=["제15조"],
+        query="개인정보 보호법 제15조 동의",
+        budget="minimal",
+        as_of="2025-01-01",
+    )
+
+    assert [item.identity.title for item in context.loaded.interpretations] == [
+        "개인정보 동의 기준일 이후 해석"
+    ]
+    assert context.request.as_of == "20250101"
+    assert context.current_authorities.interpretations == []
+    assert context.current_authorities.cases == []
+    assert context.current_authorities.constitutional_decisions == []
+    temporal_gaps = [gap for gap in context.gaps if gap.kind == "authority_temporal_mismatch"]
+    assert [gap.recommended_interface for gap in temporal_gaps] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert all("after the reference date 20250101" in gap.reason for gap in temporal_gaps)
+    temporal_deferred = [
+        item
+        for item in context.deferred
+        if item.source_type == "authority_temporal_mismatch"
+    ]
+    assert [(item.interface, item.filters["authority_date"]) for item in temporal_deferred] == [
+        ("search_interpretations", "20250615"),
+        ("search_cases", "20250710"),
+        ("search_constitutional_decisions", "20250827"),
+    ]
+    assert all(item.filters["reference_date"] == "20250101" for item in temporal_deferred)
+
+
 def test_load_authority_context_searches_moved_destination_article_for_current_authorities():
     identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
     source = FakeSource(
@@ -7265,6 +7379,130 @@ def test_load_legal_context_bundle_marks_eager_authority_older_than_current_arti
             "current_article_effective_date": "20250101",
         },
     ]
+
+
+def test_load_legal_context_bundle_keeps_after_reference_date_authorities_out_of_current_context():
+    identity = LawIdentity(law_id="009999", name="개인정보 보호법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "104",
+                            "안건명": "개인정보 동의 기준일 이후 해석",
+                            "회신일자": "20250615",
+                        }
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "판례일련번호": "204",
+                            "사건명": "개인정보 기준일 이후 판례",
+                            "선고일자": "20250710",
+                        }
+                    ]
+                }
+            },
+            {
+                "DetcSearch": {
+                    "detc": [
+                        {
+                            "헌재결정례일련번호": "304",
+                            "사건명": "개인정보 기준일 이후 헌재결정",
+                            "종국일자": "20250827",
+                        }
+                    ]
+                }
+            },
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "15",
+                        "조문제목": "개인정보의 수집ㆍ이용",
+                        "조문시행일자": "20240101",
+                        "조문내용": "개인정보처리자는 정보주체의 동의를 받아 개인정보를 수집할 수 있다.",
+                    }
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "009999", "법령명": "개인정보 보호법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+            {
+                "expc": {
+                    "법령해석례일련번호": "104",
+                    "안건명": "개인정보 동의 기준일 이후 해석",
+                    "회신일자": "20250615",
+                    "관련법령": "개인정보 보호법 제15조",
+                    "회답": "기준일 이후 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "204",
+                    "사건명": "개인정보 기준일 이후 판례",
+                    "선고일자": "20250710",
+                    "참조조문": "개인정보 보호법 제15조",
+                    "판례내용": "기준일 이후 판례",
+                }
+            },
+            {
+                "detc": {
+                    "헌재결정례일련번호": "304",
+                    "사건명": "개인정보 기준일 이후 헌재결정",
+                    "종국일자": "20250827",
+                    "심판대상조문": "개인정보 보호법 제15조",
+                    "전문": "기준일 이후 결정",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "2025년 1월 1일 기준 개인정보 보호법 제15조 동의의 의미와 위헌 위험",
+        law_identifier=identity,
+        articles=["제15조"],
+        mode="statute_review",
+        budget="standard",
+        as_of="2025-01-01",
+    )
+
+    assert bundle.request.as_of == "20250101"
+    assert bundle.loaded.articles[0].effective_date == "20240101"
+    assert [(ref.law_name, ref.article) for ref in bundle.loaded.interpretations[0].referenced_articles] == [
+        ("개인정보 보호법", "제15조")
+    ]
+    temporal_gaps = [gap for gap in bundle.gaps if gap.kind == "authority_temporal_mismatch"]
+    assert [gap.recommended_interface for gap in temporal_gaps] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert all("after the reference date 20250101" in gap.reason for gap in temporal_gaps)
+    temporal_deferred = [
+        item
+        for item in bundle.deferred
+        if item.source_type == "authority_temporal_mismatch"
+    ]
+    assert [(item.interface, item.filters["authority_date"]) for item in temporal_deferred] == [
+        ("search_interpretations", "20250615"),
+        ("search_cases", "20250710"),
+        ("search_constitutional_decisions", "20250827"),
+    ]
+    assert all(item.filters["reference_date"] == "20250101" for item in temporal_deferred)
 
 
 def test_load_legal_context_bundle_preserves_promulgation_bridge_ambiguity():

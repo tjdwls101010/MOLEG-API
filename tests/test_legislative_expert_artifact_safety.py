@@ -903,6 +903,37 @@ def test_context_bundle_authority_temporal_mismatch_is_not_promoted_to_current_a
     assert any("authority_temporal_mismatch" in disclosure for disclosure in discipline.required_disclosures)
 
 
+def test_context_bundle_authority_after_reference_date_is_not_promoted_to_as_of_authority():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["context_bundle_authority_after_reference_date_guardrail"]
+
+    assert readiness.status == "needs_more_source_loading"
+    assert [citation.source_type for citation in readiness.citations] == ["law"]
+    assert readiness.evidence["reference_date"] == "20250101"
+    assert readiness.evidence["target_article"]["effective_date"] == "20240101"
+    assert readiness.evidence["authority_dates"] == {
+        "interpretation": "20250615",
+        "case": "20250710",
+        "constitutional": "20250827",
+    }
+    assert readiness.evidence["authority_article_matches"] == {
+        "interpretation": True,
+        "case": True,
+        "constitutional": True,
+    }
+    assert readiness.evidence["authority_gap_interfaces"] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert (
+        "matching_referenced_article_is_not_enough_when_authority_postdates_reference_date"
+        in readiness.risk_flags
+    )
+
+
 def test_administrative_rule_search_candidates_are_not_promoted_to_rule_text_citations():
     readiness = {
         report.scenario: report

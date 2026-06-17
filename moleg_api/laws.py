@@ -1687,6 +1687,7 @@ class MolegApi:
             constitutional_decisions=loaded_constitutional_decisions,
             gaps=gaps,
             deferred=deferred,
+            reference_date=reference_date,
         )
 
         current_interpretations = [
@@ -1696,6 +1697,7 @@ class MolegApi:
                 item.referenced_articles,
                 item.identity.interpretation_date,
                 target_articles,
+                reference_date=reference_date,
             )
         ]
         current_cases = [
@@ -1705,6 +1707,7 @@ class MolegApi:
                 item.referenced_articles,
                 item.identity.decision_date,
                 target_articles,
+                reference_date=reference_date,
             )
         ]
         current_constitutional_decisions = [
@@ -1714,6 +1717,7 @@ class MolegApi:
                 item.reviewed_articles,
                 item.identity.decision_date,
                 target_articles,
+                reference_date=reference_date,
             )
         ]
 
@@ -3166,6 +3170,7 @@ class MolegApi:
             constitutional_decisions=loaded_constitutional_decisions,
             gaps=gaps,
             deferred=deferred,
+            reference_date=reference_date,
         )
 
         deferred.extend(
@@ -4924,20 +4929,23 @@ def append_authority_temporal_mismatch_gaps(
     constitutional_decisions: list[JudicialDecisionText],
     gaps: list[ContextGap],
     deferred: list[DeferredLookup],
+    reference_date: str | None = None,
 ) -> None:
-    target_effective_dates = {
+    reference_date = compact_date(reference_date)
+    raw_target_effective_dates = {
         (article.identity.name, article.article): compact_date(
             article.effective_date or article.identity.effective_date
         )
         for article in target_articles
         if article.identity.name and article.article
     }
+    target_refs = set(raw_target_effective_dates)
     target_effective_dates = {
         target: effective_date
-        for target, effective_date in target_effective_dates.items()
+        for target, effective_date in raw_target_effective_dates.items()
         if is_compact_ymd(effective_date)
     }
-    if not target_effective_dates:
+    if not target_refs:
         return
 
     authority_groups: list[tuple[str, list[tuple[str | None, list[Any]]]]] = [
@@ -4960,23 +4968,27 @@ def append_authority_temporal_mismatch_gaps(
             authority_date = compact_date(authority_date_value)
             for reference in references:
                 target = (reference.law_name, reference.article)
-                effective_date = target_effective_dates.get(target)
-                if not effective_date:
+                if target not in target_refs:
                     continue
+                effective_date = target_effective_dates.get(target)
+                target_label = article_ref_label({target})
                 if not is_compact_ymd(authority_date):
+                    if not effective_date and not is_compact_ymd(reference_date):
+                        continue
                     key = (source_type, target, "unverified")
                     if key in emitted:
                         continue
                     emitted.add(key)
-                    target_label = article_ref_label({target})
                     gaps.append(
                         ContextGap(
                             kind="authority_temporal_mismatch",
                             reason=(
                                 f"Eager-loaded {source_type} detail for {target_label} has a missing "
                                 f"or unparseable authority date, while the loaded article effective date is "
-                                f"{effective_date}; run trace_law_history or inspect the authority-date "
-                                "source before treating it as current target-article authority."
+                                f"{effective_date or 'unknown'}"
+                                f"{authority_reference_date_phrase(reference_date)}; run trace_law_history "
+                                "or inspect the authority-date source before treating it as current "
+                                "target-article authority."
                             ),
                             query=target_label,
                             recommended_interface="trace_law_history",
@@ -4996,10 +5008,50 @@ def append_authority_temporal_mismatch_gaps(
                                 "article": target[1],
                                 "authority_source_type": source_type,
                                 "authority_date": None,
-                                "current_article_effective_date": effective_date,
+                                **authority_temporal_filter_dates(effective_date, reference_date),
                             },
                         )
                     )
+                    continue
+                if is_compact_ymd(reference_date) and authority_date > reference_date:
+                    key = (source_type, target, f"after-reference:{authority_date}")
+                    if key in emitted:
+                        continue
+                    emitted.add(key)
+                    followup_interface = authority_search_interface(source_type)
+                    gaps.append(
+                        ContextGap(
+                            kind="authority_temporal_mismatch",
+                            reason=(
+                                f"Eager-loaded {source_type} detail for {target_label} is dated "
+                                f"{authority_date}, after the reference date {reference_date}; "
+                                "search for authority available on or before the reference date before treating "
+                                "it as as-of target-article authority."
+                            ),
+                            query=target_label,
+                            recommended_interface=followup_interface,
+                        )
+                    )
+                    deferred.append(
+                        DeferredLookup(
+                            interface=followup_interface,
+                            query=target_label,
+                            reason=(
+                                f"Find {source_type} authority for {target_label} that existed on or before "
+                                f"reference date {reference_date}; loaded authority date {authority_date} is later."
+                            ),
+                            source_type="authority_temporal_mismatch",
+                            filters={
+                                "law_name": target[0],
+                                "article": target[1],
+                                "authority_source_type": source_type,
+                                "authority_date": authority_date,
+                                **authority_temporal_filter_dates(effective_date, reference_date),
+                            },
+                        )
+                    )
+                    continue
+                if not effective_date:
                     continue
                 if authority_date >= effective_date:
                     continue
@@ -5007,7 +5059,6 @@ def append_authority_temporal_mismatch_gaps(
                 if key in emitted:
                     continue
                 emitted.add(key)
-                target_label = article_ref_label({target})
                 gaps.append(
                     ContextGap(
                         kind="authority_temporal_mismatch",
@@ -5035,16 +5086,46 @@ def append_authority_temporal_mismatch_gaps(
                             "article": target[1],
                             "authority_source_type": source_type,
                             "authority_date": authority_date,
-                            "current_article_effective_date": effective_date,
+                            **authority_temporal_filter_dates(effective_date, reference_date),
                         },
                     )
                 )
+
+
+def authority_reference_date_phrase(reference_date: str | None) -> str:
+    if is_compact_ymd(reference_date):
+        return f" and reference date is {reference_date}"
+    return ""
+
+
+def authority_temporal_filter_dates(
+    effective_date: str | None,
+    reference_date: str | None,
+) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    if effective_date:
+        filters["current_article_effective_date"] = effective_date
+    if is_compact_ymd(reference_date):
+        filters["reference_date"] = str(reference_date)
+    return filters
+
+
+def authority_search_interface(source_type: str) -> str:
+    if source_type == "interpretation":
+        return "search_interpretations"
+    if source_type == "case":
+        return "search_cases"
+    if source_type == "constitutional":
+        return "search_constitutional_decisions"
+    return "load_authority_context"
 
 
 def authority_references_current_targets(
     references: list[Any],
     authority_date_value: str | None,
     target_articles: list[ArticleText],
+    *,
+    reference_date: str | None = None,
 ) -> bool:
     if not references or not target_articles:
         return False
@@ -5065,7 +5146,12 @@ def authority_references_current_targets(
     if not matched_targets:
         return False
     if not is_compact_ymd(authority_date):
+        if is_compact_ymd(reference_date):
+            return False
         return not any(is_compact_ymd(target_effective_dates[target]) for target in matched_targets)
+    reference_date = compact_date(reference_date)
+    if is_compact_ymd(reference_date) and authority_date > reference_date:
+        return False
     return all(
         not is_compact_ymd(target_effective_dates[target]) or authority_date >= target_effective_dates[target]
         for target in matched_targets

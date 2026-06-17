@@ -42,6 +42,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_authority_article_unverified_guardrail",
         "context_bundle_authority_article_partial_match_guardrail",
         "context_bundle_authority_temporal_mismatch_guardrail",
+        "context_bundle_authority_after_reference_date_guardrail",
         "law_structure_hierarchy_candidate_guardrail",
         "institutional_system_law_structure_not_loaded_guardrail",
         "empty_delegation_graph_absence_guardrail",
@@ -1077,6 +1078,51 @@ def test_legislative_expert_e2e_audit_marks_context_bundle_authority_temporal_mi
     )
     assert (
         "matching_referenced_article_is_not_enough_when_authority_predates_current_wording"
+        in temporal.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_marks_authorities_after_reference_date():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    temporal = by_scenario["context_bundle_authority_after_reference_date_guardrail"]
+
+    assert temporal.status == "needs_more_source_loading"
+    assert temporal.public_interfaces == ["load_legal_context_bundle"]
+    assert temporal.must_have["reference_date_preserved"] is True
+    assert temporal.must_have["target_article_loaded"] is True
+    assert temporal.must_have["target_article_effective_before_reference_date"] is True
+    assert temporal.must_have["eager_authority_details_loaded"] is True
+    assert temporal.must_have["authority_articles_match_target"] is True
+    assert temporal.must_have["authority_after_reference_date_gaps_preserved"] is True
+    assert temporal.must_have["authority_after_reference_date_followups_preserved"] is True
+    assert temporal.must_have["no_as_of_authority_claim_from_future_authority"] is True
+    assert [citation.source_type for citation in temporal.citations] == ["law"]
+    assert temporal.evidence["reference_date"] == "20250101"
+    assert temporal.evidence["target_article"] == {
+        "law_name": "개인정보 보호법",
+        "article": "제15조",
+        "effective_date": "20240101",
+    }
+    assert temporal.evidence["authority_dates"] == {
+        "interpretation": "20250615",
+        "case": "20250710",
+        "constitutional": "20250827",
+    }
+    assert temporal.evidence["authority_gap_interfaces"] == [
+        "search_interpretations",
+        "search_cases",
+        "search_constitutional_decisions",
+    ]
+    assert [
+        item["reference_date"]
+        for item in temporal.evidence["authority_deferred_filters"]
+    ] == ["20250101", "20250101", "20250101"]
+    assert (
+        "matching_referenced_article_is_not_enough_when_authority_postdates_reference_date"
         in temporal.risk_flags
     )
 
