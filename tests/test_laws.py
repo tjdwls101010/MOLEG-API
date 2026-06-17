@@ -3677,7 +3677,6 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
                 "id": "44전자금융거래법",
                 "annex_id": "44전자금융거래법",
                 "source": "law",
-                "source_target": "licbyl",
                 "related_name": "전자금융거래법",
             },
         ),
@@ -3688,7 +3687,6 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
                 "id": "55전자금융거래법",
                 "annex_id": "55전자금융거래법",
                 "source": "administrative_rule",
-                "source_target": "admbyl",
                 "related_name": "전자금융거래법 고시",
             },
         ),
@@ -3699,7 +3697,6 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
                 "id": "44전자금융거래법 시행령",
                 "annex_id": "44전자금융거래법 시행령",
                 "source": "law",
-                "source_target": "licbyl",
                 "related_name": "전자금융거래법 시행령",
             },
         ),
@@ -3710,11 +3707,11 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
                 "id": "55전자금융거래법 시행령",
                 "annex_id": "55전자금융거래법 시행령",
                 "source": "administrative_rule",
-                "source_target": "admbyl",
                 "related_name": "전자금융거래법 시행령 고시",
             },
         ),
     ]
+    assert all("source_target" not in item.filters for item in bundle.deferred)
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     empty_delegation_gaps = [
@@ -5473,7 +5470,6 @@ def test_load_legal_context_bundle_stages_question_context():
                 "id": "220000001",
                 "annex_id": "220000001",
                 "source": "law",
-                "source_target": "licbyl",
                 "related_name": "자동차관리법",
             },
         ),
@@ -5484,7 +5480,6 @@ def test_load_legal_context_bundle_stages_question_context():
                 "id": "330000001",
                 "annex_id": "330000001",
                 "source": "administrative_rule",
-                "source_target": "admbyl",
                 "related_name": "무단방치 자동차 처리 규정",
             },
         ),
@@ -5502,23 +5497,24 @@ def test_load_legal_context_bundle_stages_question_context():
         (
             "자동차 방치 관련 법령해석례",
             "moleg",
-            {"id": "330471", "source": "moleg", "source_target": "expc"},
+            {"id": "330471", "source": "moleg"},
         )
     ]
     assert [(item.query, item.source_type, item.filters) for item in case_deferred] == [
         (
             "자동차 인도청구",
             "case",
-            {"id": "228541", "source": "case", "source_target": "prec"},
+            {"id": "228541", "source": "case"},
         )
     ]
     assert [(item.query, item.source_type, item.filters) for item in constitutional_deferred] == [
         (
             "자동차관리법제26조등위헌확인",
             "constitutional",
-            {"id": "58400", "source": "constitutional", "source_target": "detc"},
+            {"id": "58400", "source": "constitutional"},
         )
     ]
+    assert all("source_target" not in item.filters for item in bundle.deferred)
     assert bundle.gaps[0].kind == "websearch_required"
     assert bundle.gaps[0].recommended_interface == "websearch"
 
