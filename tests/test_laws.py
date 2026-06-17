@@ -1911,16 +1911,16 @@ def test_get_annex_form_body_allows_source_id_string_from_deferred_lookup():
     source = FakeSource(text_payloads=["■ 자동차관리법 [별표]\n처리 기준"])
 
     body = MolegApi(source).get_annex_form_body(
-        "44자동차관리법",
+        "440000001",
         title="자동차관리법 별표",
     )
 
-    assert body.identity.annex_id == "44자동차관리법"
+    assert body.identity.annex_id == "440000001"
     assert source.calls[0] == (
         "post_text",
         "lsBylTextDownLoad.do",
         {
-            "bylSeq": "44자동차관리법",
+            "bylSeq": "440000001",
             "title": "자동차관리법 별표",
             "mode": "0",
         },
@@ -1932,6 +1932,16 @@ def test_get_annex_form_body_rejects_title_string_before_text_export():
 
     with pytest.raises(NoResultError) as exc_info:
         MolegApi(source).get_annex_form_body("과태료의 부과기준")
+
+    assert "search_annex_forms" in str(exc_info.value)
+    assert source.calls == []
+
+
+def test_get_annex_form_body_rejects_digit_prefixed_title_before_text_export():
+    source = FakeSource(text_payloads=["잘못 호출되면 안 되는 별표 본문"])
+
+    with pytest.raises(NoResultError) as exc_info:
+        MolegApi(source).get_annex_form_body("2024년 과태료 부과기준")
 
     assert "search_annex_forms" in str(exc_info.value)
     assert source.calls == []
