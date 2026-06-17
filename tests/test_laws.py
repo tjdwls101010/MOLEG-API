@@ -3310,6 +3310,35 @@ def test_expand_legal_query_get_law_followup_uses_mst_when_law_id_is_missing():
     ]
 
 
+def test_expand_legal_query_does_not_emit_unloadable_get_law_followup_for_name_only_candidate():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": [{"법령명한글": "데이터기본법"}]}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query("데이터기본법", include_websearch_hint=False)
+
+    assert not [
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "get_law" and search.filters.get("law_name")
+    ]
+    assert any(
+        search.interface == "search_laws" and search.filters == {"basis": "effective"}
+        for search in expansion.follow_up_searches
+    )
+
+
 def test_expand_legal_query_records_empty_sources_without_failing():
     source = FakeSource(
         search_payloads=[
@@ -6226,6 +6255,44 @@ def test_load_legal_context_bundle_preserves_requested_article_load_failures():
     ]
 
 
+def test_load_legal_context_bundle_resolves_name_only_law_identity_before_article_retry():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 제26조 하위 기준",
+        law_identifier=LawIdentity(law_id=None, name="자동차관리법", basis="effective"),
+        articles=["제26조"],
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.articles == []
+    assert not [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_article" and item.filters.get("law_name")
+    ]
+    search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in search_deferred] == [
+        ("자동차관리법", {"basis": "effective"})
+    ]
+    assert {gap.recommended_interface for gap in bundle.gaps if gap.query == "자동차관리법 제26조"} == {
+        "search_laws"
+    }
+
+
 def test_load_legal_context_bundle_preserves_deleted_requested_article_gap():
     source = FakeSource(
         search_payloads=[
@@ -6742,6 +6809,44 @@ def test_load_legal_context_bundle_preserves_primary_law_load_failures():
     ]
 
 
+def test_load_legal_context_bundle_resolves_name_only_law_identity_before_detail_retry():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 현행 내용",
+        law_identifier=LawIdentity(law_id=None, name="자동차관리법", basis="effective"),
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.laws == []
+    assert not [
+        item
+        for item in bundle.deferred
+        if item.interface in {"get_law", "find_delegated_rules", "get_law_structure"}
+        and item.filters.get("law_name")
+    ]
+    search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in search_deferred] == [
+        ("자동차관리법", {"basis": "effective"})
+    ]
+    assert {gap.recommended_interface for gap in bundle.gaps if gap.query == "자동차관리법"} == {
+        "search_laws"
+    }
+
+
 def test_load_legal_context_bundle_preserves_delegation_source_access_failures():
     class DelegationRateLimitedSource(FakeSource):
         def service(self, target, params):
@@ -7029,6 +7134,54 @@ def test_load_legal_context_bundle_promulgated_bill_history_deferred_uses_mst_wh
     assert [(item.interface, item.filters) for item in history_deferred] == [
         ("trace_law_history", {"mst": "270001"}),
         ("compare_law_versions", {"mst": "270001"}),
+    ]
+
+
+def test_load_legal_context_bundle_promulgated_bill_resolves_name_only_law_before_history_retry():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령명한글": "데이터기본법",
+                            "공포번호": "20000",
+                            "공포일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ]
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "20250101",
+        },
+        mode="promulgated_bill",
+    )
+
+    assert not [
+        item
+        for item in bundle.deferred
+        if item.interface in {"trace_law_history", "compare_law_versions"}
+        and item.filters.get("law_name")
+    ]
+    search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in search_deferred] == [
+        ("데이터기본법", {"basis": "promulgated"})
     ]
 
 

@@ -3060,26 +3060,27 @@ class MolegApi:
                         as_of=reference_date,
                     )
 
-            try:
-                graph = self.find_delegated_rules(primary_identity)
-                loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
-            except NoResultError:
-                loaded_delegations.append(DelegationGraph(identity=primary_identity, rules=[], raw={}))
-                append_empty_delegation_lookup_gap(
-                    primary_identity,
-                    gaps,
-                    deferred,
-                )
-            except MolegApiError as exc:
-                source_notes.append(f"Delegation lookup skipped: {exc}")
-                append_delegation_lookup_failure_gap(
-                    exc,
-                    primary_identity,
-                    gaps,
-                    deferred,
-                )
+            if law_identity_has_source_identifier(primary_identity):
+                try:
+                    graph = self.find_delegated_rules(primary_identity)
+                    loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
+                except NoResultError:
+                    loaded_delegations.append(DelegationGraph(identity=primary_identity, rules=[], raw={}))
+                    append_empty_delegation_lookup_gap(
+                        primary_identity,
+                        gaps,
+                        deferred,
+                    )
+                except MolegApiError as exc:
+                    source_notes.append(f"Delegation lookup skipped: {exc}")
+                    append_delegation_lookup_failure_gap(
+                        exc,
+                        primary_identity,
+                        gaps,
+                        deferred,
+                    )
 
-            if mode == "promulgated_bill":
+            if mode == "promulgated_bill" and law_identity_has_source_identifier(primary_identity):
                 deferred.append(
                     DeferredLookup(
                         interface="trace_law_history",
@@ -5010,15 +5011,16 @@ def build_follow_up_searches(
     ]
 
     for identity in law_candidates[:3]:
-        searches.append(
-            FollowUpSearch(
-                interface="get_law",
-                query=identity.name,
-                reason="Load the current effective text for a candidate law.",
-                source_type="law",
-                filters=law_identity_followup_filters(identity, include_basis=True),
+        if law_identity_has_source_identifier(identity):
+            searches.append(
+                FollowUpSearch(
+                    interface="get_law",
+                    query=identity.name,
+                    reason="Load the current effective text for a candidate law.",
+                    source_type="law",
+                    filters=law_identity_followup_filters(identity, include_basis=True),
+                )
             )
-        )
     for term in term_candidates[:5]:
         searches.append(
             FollowUpSearch(
@@ -5729,6 +5731,24 @@ def append_requested_article_load_gap(
     article_label = article_label_for_filter(article)
     query = f"{identity.name} {article_label}"
     gap_kind = "source_access_failure" if isinstance(exc, SourceApiError) else "requested_article_not_loaded"
+    if not law_identity_has_source_identifier(identity):
+        gaps.append(
+            ContextGap(
+                kind=gap_kind,
+                reason=(
+                    f"Requested article load failed with {type(exc).__name__}: {exc}. "
+                    "Resolve one MOLEG law identity before retrying article-detail loading."
+                ),
+                query=query,
+                recommended_interface="search_laws",
+            )
+        )
+        append_law_identity_resolution_deferred(
+            identity,
+            deferred,
+            reason="Resolve one LawIdentity before retrying requested-article text loading.",
+        )
+        return
     gaps.append(
         ContextGap(
             kind=gap_kind,
@@ -5766,6 +5786,24 @@ def append_requested_law_load_gap(
     as_of: str | None,
 ) -> None:
     gap_kind = "source_access_failure" if isinstance(exc, SourceApiError) else "requested_law_not_loaded"
+    if not law_identity_has_source_identifier(identity):
+        gaps.append(
+            ContextGap(
+                kind=gap_kind,
+                reason=(
+                    f"Requested law load failed with {type(exc).__name__}: {exc}. "
+                    "Resolve one MOLEG law identity before retrying law-detail loading."
+                ),
+                query=identity.name,
+                recommended_interface="search_laws",
+            )
+        )
+        append_law_identity_resolution_deferred(
+            identity,
+            deferred,
+            reason="Resolve one LawIdentity before retrying whole-statute text loading.",
+        )
+        return
     gaps.append(
         ContextGap(
             kind=gap_kind,
@@ -5800,6 +5838,20 @@ def append_delegation_lookup_failure_gap(
     gaps: list[ContextGap],
     deferred: list[DeferredLookup],
 ) -> None:
+    if not law_identity_has_source_identifier(identity):
+        append_source_failure_gap(
+            exc,
+            gaps,
+            query=identity.name,
+            recommended_interface="search_laws",
+            source_label=f"Delegation lookup for {identity.name}",
+        )
+        append_law_identity_resolution_deferred(
+            identity,
+            deferred,
+            reason="Resolve one LawIdentity before retrying delegation lookup.",
+        )
+        return
     append_source_failure_gap(
         exc,
         gaps,
@@ -5877,6 +5929,24 @@ def append_law_structure_load_gap(
     deferred: list[DeferredLookup],
 ) -> None:
     gap_kind = "source_access_failure" if isinstance(exc, SourceApiError) else "law_structure_not_loaded"
+    if not law_identity_has_source_identifier(identity):
+        gaps.append(
+            ContextGap(
+                kind=gap_kind,
+                reason=(
+                    f"Law-structure lookup failed with {type(exc).__name__}: {exc}. "
+                    "Resolve one MOLEG law identity before retrying hierarchy loading."
+                ),
+                query=identity.name,
+                recommended_interface="search_laws",
+            )
+        )
+        append_law_identity_resolution_deferred(
+            identity,
+            deferred,
+            reason="Resolve one LawIdentity before retrying hierarchy loading.",
+        )
+        return
     gaps.append(
         ContextGap(
             kind=gap_kind,
@@ -5899,6 +5969,35 @@ def append_law_structure_load_gap(
             reason="Load hierarchy context before claiming lower instruments are unavailable.",
             source_type="law_structure",
             filters=filters,
+        )
+    )
+
+
+def law_identity_has_source_identifier(identity: LawIdentity) -> bool:
+    return bool(identity.law_id or identity.mst)
+
+
+def append_law_identity_resolution_deferred(
+    identity: LawIdentity,
+    deferred: list[DeferredLookup],
+    *,
+    reason: str,
+) -> None:
+    if any(
+        item.interface == "search_laws"
+        and item.source_type == "law"
+        and item.query == identity.name
+        and item.filters == {"basis": identity.basis}
+        for item in deferred
+    ):
+        return
+    deferred.append(
+        DeferredLookup(
+            interface="search_laws",
+            query=identity.name,
+            reason=reason,
+            source_type="law",
+            filters={"basis": identity.basis},
         )
     )
 
