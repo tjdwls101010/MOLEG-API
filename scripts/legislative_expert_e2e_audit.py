@@ -138,6 +138,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_annex_form_search_candidate_detail_guardrail(),
             _audit_empty_annex_form_search_absence_guardrail(),
             _audit_delegated_criteria_after_followups(),
+            _audit_delegated_criteria_query_candidate_discovery(),
             _audit_delegated_criteria_administrative_rule_article_status_guardrail(),
             _audit_delegated_criteria_annex_source_mismatch_guardrail(),
             _audit_delegated_criteria_source_mismatch_guardrail(),
@@ -4337,6 +4338,7 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             _administrative_rule_annex_search_payload(),
+            *_empty_delegated_criteria_query_search_payloads(),
         ],
         text_payloads=[pipe_table_text()],
     )
@@ -4385,6 +4387,135 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             "source_article": administrative_rule.identity.source_article,
             "annex_extraction_method": annex_body.extraction_method,
             "structured_annex_rows": len(annex_body.structured_data.rows if annex_body.structured_data else []),
+            "call_targets": call_targets,
+        },
+    )
+
+
+def _audit_delegated_criteria_query_candidate_discovery() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    rule_name = "무단방치 자동차 처리 규정"
+    query = "무단방치 자동차 처리 기준"
+    identity = LawIdentity(law_id="001747", name=law_name, basis="effective", mst="270001")
+
+    class QueryOnlyOperationalSource(ScenarioSource):
+        def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
+            self.calls.append(("search", target, dict(params)))
+            searched_query = params.get("query")
+            if target == "admrul" and searched_query == query:
+                return administrative_rule_search_payload(rule_name)
+            if target == "licbyl" and searched_query == query:
+                return annex_search_payload(
+                    "440000026",
+                    "무단방치 자동차 처리 기준",
+                    related_name=law_name,
+                )
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    source = QueryOnlyOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": law_name,
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 무단방치 자동차 처리 기준은 대통령령으로 정한다.",
+                    },
+                }
+            },
+            law_structure_payload(law_name, "001747", "270001", "자동차관리법 시행령"),
+            delegation_payload(law_name, "자동차관리법 시행령", law_id="001747", article="26"),
+            _administrative_rule_detail_payload(),
+        ],
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 자동차관리법 [별표]",
+                    "무단방치 자동차 처리 기준",
+                    "| 구분 | 기준 |",
+                    "| 공고 | 14일 이상 |",
+                ]
+            )
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제26조"],
+        query=query,
+        budget="minimal",
+    )
+    administrative_rule = bundle.loaded.administrative_rules[0]
+    annex_body = bundle.loaded.annex_forms[0]
+    search_queries = [params["query"] for kind, _, params in source.calls if kind == "search"]
+    call_targets = [target for _, target, _ in source.calls]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_query_candidate_discovery",
+        question="법명 검색으로는 안 잡히는 운용기준 후보를 명시적 query로 찾아 detail까지 로드하는가?",
+        status="ready_for_reasoning",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "broad_law_name_search_performed": law_name in search_queries,
+            "explicit_query_search_performed": query in search_queries,
+            "query_administrative_rule_candidate_found": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ]
+            == [rule_name],
+            "query_annex_candidate_found": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ]
+            == ["무단방치 자동차 처리 기준"],
+            "administrative_rule_detail_loaded": rule_name == administrative_rule.identity.name
+            and "무단방치 자동차 처리 기준" in administrative_rule.text,
+            "annex_body_loaded": "14일 이상" in annex_body.text,
+            "detail_loaded_inside_task_interface": "admrul" in call_targets
+            and "lsBylTextDownLoad.do" in call_targets,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", law_name, "제26조", "current statute article"),
+            SourceCitation("delegation", "lsDelegated", "자동차관리법 시행령", "제26조", "delegated rule graph"),
+            SourceCitation("administrative_rule", "admrul", rule_name, "제2조", "loaded administrative rule"),
+            SourceCitation("annex", "licbyl", "무단방치 자동차 처리 기준", authority="loaded law annex table"),
+        ],
+        risk_flags=[
+            "delegated_criteria_uses_explicit_query_for_candidate_discovery",
+            "delegated_criteria_query_candidates_still_require_detail_loading",
+        ],
+        next_actions=[
+            "Use the loaded administrative-rule and annex bodies for operational criteria after source-reference checks.",
+        ],
+        evidence={
+            "search_queries": search_queries,
+            "administrative_rule_candidates": [
+                item.identity.name for item in bundle.candidates.administrative_rules
+            ],
+            "annex_form_candidates": [
+                item.identity.title for item in bundle.candidates.annex_forms
+            ],
+            "loaded_administrative_rules": [
+                rule.identity.name for rule in bundle.loaded.administrative_rules
+            ],
+            "loaded_annex_forms": [
+                annex.identity.title for annex in bundle.loaded.annex_forms
+            ],
             "call_targets": call_targets,
         },
     )
@@ -4463,6 +4594,7 @@ def _audit_delegated_criteria_administrative_rule_article_status_guardrail() -> 
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
+            *_empty_delegated_criteria_query_search_payloads(),
         ],
     )
 
@@ -4542,6 +4674,7 @@ def _audit_delegated_criteria_annex_source_mismatch_guardrail() -> LegislativeEx
                 ]
             },
             {"admbyl": []},
+            *_empty_delegated_criteria_query_search_payloads(),
         ],
         text_payloads=[
             "■ 자동차손해배상 보장법 [별표]\n| 구분 | 기준 |\n| 공고 | 7일 |"
@@ -4626,6 +4759,7 @@ def _audit_delegated_criteria_source_mismatch_guardrail() -> LegislativeExpertSc
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             _administrative_rule_annex_search_payload(),
+            *_empty_delegated_criteria_query_search_payloads(),
         ],
         text_payloads=[pipe_table_text()],
     )
@@ -5367,6 +5501,14 @@ def _administrative_rule_detail_payload(
             },
         }
     }
+
+
+def _empty_delegated_criteria_query_search_payloads() -> list[dict[str, Any]]:
+    return [
+        {"AdmRulSearch": {"admrul": []}},
+        {"licbyl": []},
+        {"admbyl": []},
+    ]
 
 
 def _administrative_rule_annex_search_payload() -> dict[str, Any]:

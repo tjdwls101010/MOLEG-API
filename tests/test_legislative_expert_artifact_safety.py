@@ -94,6 +94,25 @@ def test_followup_loaded_context_can_be_promoted_to_citation():
     assert loaded.evidence["structured_annex_rows"] == 2
 
 
+def test_query_discovered_delegated_criteria_can_be_promoted_after_detail_loading():
+    loaded = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_query_candidate_discovery"]
+
+    assert loaded.status == "ready_for_reasoning"
+    assert "무단방치 자동차 처리 기준" in loaded.evidence["search_queries"]
+    assert loaded.evidence["loaded_administrative_rules"] == ["무단방치 자동차 처리 규정"]
+    assert loaded.evidence["loaded_annex_forms"] == ["무단방치 자동차 처리 기준"]
+    assert {"administrative_rule", "annex"}.issubset(
+        {citation.source_type for citation in loaded.citations}
+    )
+    assert (
+        "delegated_criteria_uses_explicit_query_for_candidate_discovery"
+        in loaded.risk_flags
+    )
+
+
 def test_low_confidence_annex_rows_are_not_promoted_to_threshold_claims():
     readiness = {
         report.scenario: report

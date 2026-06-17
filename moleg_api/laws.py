@@ -2394,7 +2394,7 @@ class MolegApi:
         """
         if articles is not None and not articles:
             raise NoResultError("articles must contain at least one article when provided")
-        ranking_query = require_query(query) if query is not None else None
+        explicit_query = require_query(query) if query is not None else None
 
         bundle = self.load_institutional_system(
             [law_identifier],
@@ -2403,7 +2403,8 @@ class MolegApi:
             as_of=as_of,
         )
         limits = delegated_criteria_load_limits(budget)
-        ranking_query = ranking_query or delegated_criteria_ranking_query(bundle)
+        candidate_limits = bundle_limits(budget)
+        ranking_query = explicit_query or delegated_criteria_ranking_query(bundle)
 
         source_notes = list(bundle.source_notes)
         gaps = list(bundle.gaps)
@@ -2415,9 +2416,66 @@ class MolegApi:
         loaded_administrative_rules: list[AdministrativeRuleText] = []
         loaded_annex_forms: list[AnnexFormText] = []
         loaded_candidate_keys: set[tuple[str | None, str]] = set()
+        administrative_candidates = list(bundle.candidates.administrative_rules)
+        annex_form_candidates = list(bundle.candidates.annex_forms)
+
+        if explicit_query:
+            query_administrative_candidates = safe_list(
+                lambda: self.search_administrative_rules(
+                    explicit_query,
+                    display=candidate_limits["administrative_rules"],
+                ),
+                source_notes,
+                "Delegated-criteria administrative-rule query search",
+                gaps=gaps,
+                query=explicit_query,
+                recommended_interface="search_administrative_rules",
+            )
+            administrative_candidates = dedupe_candidates(
+                [
+                    *query_administrative_candidates,
+                    *administrative_candidates,
+                ]
+            )[: candidate_limits["administrative_rules"]]
+            annex_form_limit = candidate_limits["annex_forms"]
+            law_annex_limit = (annex_form_limit + 1) // 2
+            admin_annex_limit = max(1, annex_form_limit - law_annex_limit)
+            query_law_annex_candidates = safe_list(
+                lambda: self.search_annex_forms(
+                    explicit_query,
+                    source="law",
+                    search_scope="source",
+                    display=law_annex_limit,
+                ),
+                source_notes,
+                "Delegated-criteria law annex/form query search",
+                gaps=gaps,
+                query=explicit_query,
+                recommended_interface="search_annex_forms",
+            )
+            query_admin_annex_candidates = safe_list(
+                lambda: self.search_annex_forms(
+                    explicit_query,
+                    source="administrative_rule",
+                    search_scope="source",
+                    display=admin_annex_limit,
+                ),
+                source_notes,
+                "Delegated-criteria administrative-rule annex/form query search",
+                gaps=gaps,
+                query=explicit_query,
+                recommended_interface="search_annex_forms",
+            )
+            annex_form_candidates = dedupe_candidates(
+                [
+                    *query_law_annex_candidates,
+                    *query_admin_annex_candidates,
+                    *annex_form_candidates,
+                ]
+            )[:annex_form_limit]
 
         for candidate in ranked_candidates(
-            bundle.candidates.administrative_rules,
+            administrative_candidates,
             ranking_query,
             limit=limits["administrative_rules"],
         ):
@@ -2448,7 +2506,7 @@ class MolegApi:
                 )
 
         for candidate in ranked_candidates(
-            bundle.candidates.annex_forms,
+            annex_form_candidates,
             ranking_query,
             limit=limits["annex_forms"],
         ):
@@ -2482,14 +2540,14 @@ class MolegApi:
 
         deferred.extend(
             deferred_from_candidates(
-                unloaded_candidates(bundle.candidates.administrative_rules, loaded_candidate_keys),
+                unloaded_candidates(administrative_candidates, loaded_candidate_keys),
                 "get_administrative_rule",
                 "administrative_rule",
             )
         )
         deferred.extend(
             deferred_from_candidates(
-                unloaded_candidates(bundle.candidates.annex_forms, loaded_candidate_keys),
+                unloaded_candidates(annex_form_candidates, loaded_candidate_keys),
                 "get_annex_form_body",
                 "annex_form",
             )
@@ -2501,6 +2559,11 @@ class MolegApi:
                 bundle.loaded,
                 administrative_rules=loaded_administrative_rules,
                 annex_forms=loaded_annex_forms,
+            ),
+            candidates=replace(
+                bundle.candidates,
+                administrative_rules=administrative_candidates,
+                annex_forms=annex_form_candidates,
             ),
             deferred=deferred,
             gaps=gaps,

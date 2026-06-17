@@ -3396,6 +3396,14 @@ def institutional_admin_annex_payload(name: str):
     }
 
 
+def empty_delegated_criteria_query_search_payloads():
+    return [
+        {"AdmRulSearch": {"admrul": []}},
+        {"licbyl": []},
+        {"admbyl": []},
+    ]
+
+
 def test_load_institutional_system_stages_multiple_explicit_statutes():
     first = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
     second = LawIdentity(law_id="100002", mst="300002", name="전자금융거래법 시행령", basis="effective")
@@ -3758,6 +3766,7 @@ def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
             institutional_constitutional_search_payload("자동차관리법"),
             institutional_law_annex_payload("자동차관리법"),
             institutional_admin_annex_payload("자동차관리법"),
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
@@ -3831,6 +3840,134 @@ def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
     )
 
 
+def test_load_delegated_criteria_uses_explicit_query_for_operational_candidate_discovery():
+    class QueryOnlyOperationalSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            query = params.get("query")
+            if target == "admrul" and query == "무단방치 자동차 처리 기준":
+                return {
+                    "AdmRulSearch": {
+                        "admrul": [
+                            {
+                                "행정규칙 일련번호": "2100000248758",
+                                "행정규칙명": "무단방치 자동차 처리 규정",
+                                "행정규칙종류": "고시",
+                                "발령일자": "20250101",
+                                "시행일자": "20250101",
+                                "위임법령명": "자동차관리법",
+                                "위임조문번호": "제26조",
+                            }
+                        ]
+                    }
+                }
+            if target == "licbyl" and query == "무단방치 자동차 처리 기준":
+                return {
+                    "licbyl": [
+                        {
+                            "licbyl id": "440000026",
+                            "별표명": "무단방치 자동차 처리 기준",
+                            "관련법령명": "자동차관리법",
+                            "관련법령ID": "001747",
+                            "별표종류": "별표",
+                        }
+                    ]
+                }
+            if target == "admrul":
+                return {"AdmRulSearch": {"admrul": []}}
+            if target == "expc":
+                return {"ExpcSearch": {"expc": []}}
+            if target == "prec":
+                return {"PrecSearch": {"prec": []}}
+            if target == "detc":
+                return {"DetcSearch": {"detc": []}}
+            if target == "licbyl":
+                return {"licbyl": []}
+            if target == "admbyl":
+                return {"admbyl": []}
+            raise AssertionError(f"Unexpected search target: {target}")
+
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = QueryOnlyOperationalSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 무단방치 자동차 처리 기준은 대통령령으로 정한다.",
+                    },
+                }
+            },
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙명": "무단방치 자동차 처리 규정",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "위임조문번호": "26",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "2",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=[
+            "\n".join(
+                [
+                    "■ 자동차관리법 [별표]",
+                    "무단방치 자동차 처리 기준",
+                    "| 구분 | 기준 |",
+                    "| 공고 | 14일 이상 |",
+                ]
+            )
+        ],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제26조"],
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    assert [rule.identity.name for rule in bundle.loaded.administrative_rules] == [
+        "무단방치 자동차 처리 규정"
+    ]
+    assert [annex.identity.title for annex in bundle.loaded.annex_forms] == [
+        "무단방치 자동차 처리 기준"
+    ]
+    assert "무단방치 자동차의 처리 기준" in bundle.loaded.administrative_rules[0].text
+    assert "14일 이상" in bundle.loaded.annex_forms[0].text
+    search_queries = [params["query"] for kind, _, params in source.calls if kind == "search"]
+    assert "자동차관리법" in search_queries
+    assert "무단방치 자동차 처리 기준" in search_queries
+    assert ("service", "admrul", {"ID": "2100000248758"}) in source.calls
+    assert source.calls[-1] == (
+        "post_text",
+        "lsBylTextDownLoad.do",
+        {
+            "bylSeq": "440000026",
+            "title": "무단방치 자동차 처리 기준",
+            "mode": "0",
+        },
+    )
+
+
 def test_load_delegated_criteria_preserves_administrative_rule_article_status():
     identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
     source = FakeSource(
@@ -3841,6 +3978,7 @@ def test_load_delegated_criteria_preserves_administrative_rule_article_status():
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
@@ -3939,6 +4077,7 @@ def test_load_delegated_criteria_preserves_moved_administrative_rule_destination
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
@@ -4015,6 +4154,7 @@ def test_load_delegated_criteria_marks_annex_source_mismatches():
                 ]
             },
             {"admbyl": []},
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
@@ -4079,6 +4219,7 @@ def test_load_delegated_criteria_marks_missing_annex_source_references_as_unveri
                 ]
             },
             {"admbyl": []},
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),
@@ -4131,6 +4272,7 @@ def test_load_delegated_criteria_marks_rule_source_article_mismatches():
             institutional_constitutional_search_payload("자동차관리법"),
             institutional_law_annex_payload("자동차관리법"),
             institutional_admin_annex_payload("자동차관리법"),
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             {
@@ -4196,6 +4338,7 @@ def test_load_delegated_criteria_marks_missing_rule_source_references_as_unverif
             institutional_constitutional_search_payload("자동차관리법"),
             institutional_law_annex_payload("자동차관리법"),
             institutional_admin_annex_payload("자동차관리법"),
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             {
@@ -4263,6 +4406,7 @@ def test_load_delegated_criteria_preserves_detail_source_failures_as_deferred_ga
             institutional_constitutional_search_payload("자동차관리법"),
             institutional_law_annex_payload("자동차관리법"),
             institutional_admin_annex_payload("자동차관리법"),
+            *empty_delegated_criteria_query_search_payloads(),
         ],
         service_payloads=[
             institutional_law_payload("001747", "자동차관리법", "270001", article_no="26"),

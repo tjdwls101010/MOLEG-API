@@ -55,6 +55,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "annex_form_search_candidate_detail_guardrail",
         "empty_annex_form_search_absence_guardrail",
         "delegated_criteria_after_followups",
+        "delegated_criteria_query_candidate_discovery",
         "delegated_criteria_administrative_rule_article_status_guardrail",
         "delegated_criteria_annex_source_mismatch_guardrail",
         "delegated_criteria_source_mismatch_guardrail",
@@ -1302,6 +1303,35 @@ def test_legislative_expert_e2e_audit_marks_followup_loaded_delegated_criteria_r
         {citation.source_type for citation in loaded.citations}
     )
     assert "delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey" in loaded.risk_flags
+
+
+def test_legislative_expert_e2e_audit_uses_delegated_criteria_query_for_candidate_discovery():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    loaded = by_scenario["delegated_criteria_query_candidate_discovery"]
+
+    assert loaded.status == "ready_for_reasoning"
+    assert loaded.public_interfaces == ["load_delegated_criteria"]
+    assert loaded.must_have["broad_law_name_search_performed"] is True
+    assert loaded.must_have["explicit_query_search_performed"] is True
+    assert loaded.must_have["query_administrative_rule_candidate_found"] is True
+    assert loaded.must_have["query_annex_candidate_found"] is True
+    assert loaded.must_have["administrative_rule_detail_loaded"] is True
+    assert loaded.must_have["annex_body_loaded"] is True
+    assert "자동차관리법" in loaded.evidence["search_queries"]
+    assert "무단방치 자동차 처리 기준" in loaded.evidence["search_queries"]
+    assert loaded.evidence["loaded_administrative_rules"] == ["무단방치 자동차 처리 규정"]
+    assert loaded.evidence["loaded_annex_forms"] == ["무단방치 자동차 처리 기준"]
+    assert {"administrative_rule", "annex"}.issubset(
+        {citation.source_type for citation in loaded.citations}
+    )
+    assert (
+        "delegated_criteria_uses_explicit_query_for_candidate_discovery"
+        in loaded.risk_flags
+    )
 
 
 def test_legislative_expert_e2e_audit_preserves_delegated_criteria_rule_article_status():
