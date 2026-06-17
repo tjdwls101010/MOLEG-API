@@ -5266,6 +5266,11 @@ def append_authority_temporal_mismatch_gaps(
         for article in target_articles
         if article.identity.name and article.article
     }
+    target_identities = {
+        (article.identity.name, article.article): article.identity
+        for article in target_articles
+        if article.identity.name and article.article
+    }
     target_refs = set(raw_target_effective_dates)
     target_effective_dates = {
         target: effective_date
@@ -5330,13 +5335,14 @@ def append_authority_temporal_mismatch_gaps(
                                 f"authority against current effective date {effective_date}."
                             ),
                             source_type="authority_temporal_mismatch",
-                            filters={
-                                "law_name": target[0],
-                                "article": target[1],
-                                "authority_source_type": source_type,
-                                "authority_date": None,
-                                **authority_temporal_filter_dates(effective_date, reference_date),
-                            },
+                            filters=authority_temporal_trace_filters(
+                                target_identities.get(target),
+                                target,
+                                source_type=source_type,
+                                authority_date=None,
+                                effective_date=effective_date,
+                                reference_date=reference_date,
+                            ),
                         )
                     )
                     continue
@@ -5408,15 +5414,39 @@ def append_authority_temporal_mismatch_gaps(
                             f"{authority_date} and current effective date {effective_date}."
                         ),
                         source_type="authority_temporal_mismatch",
-                        filters={
-                            "law_name": target[0],
-                            "article": target[1],
-                            "authority_source_type": source_type,
-                            "authority_date": authority_date,
-                            **authority_temporal_filter_dates(effective_date, reference_date),
-                        },
+                        filters=authority_temporal_trace_filters(
+                            target_identities.get(target),
+                            target,
+                            source_type=source_type,
+                            authority_date=authority_date,
+                            effective_date=effective_date,
+                            reference_date=reference_date,
+                        ),
                     )
                 )
+
+
+def authority_temporal_trace_filters(
+    identity: LawIdentity | None,
+    target: tuple[str | None, str | None],
+    *,
+    source_type: str,
+    authority_date: str | None,
+    effective_date: str | None,
+    reference_date: str | None,
+) -> dict[str, Any]:
+    filters: dict[str, Any] = {}
+    if identity and identity.law_id:
+        filters["law_id"] = identity.law_id
+    elif identity and identity.mst:
+        filters["mst"] = identity.mst
+    elif target[0]:
+        filters["law_name"] = target[0]
+    filters["article"] = target[1]
+    filters["authority_source_type"] = source_type
+    filters["authority_date"] = authority_date
+    filters.update(authority_temporal_filter_dates(effective_date, reference_date))
+    return filters
 
 
 def authority_reference_date_phrase(reference_date: str | None) -> str:

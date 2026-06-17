@@ -1220,21 +1220,21 @@ def test_legislative_expert_e2e_audit_marks_context_bundle_authority_temporal_mi
     ]
     assert temporal.evidence["authority_deferred_filters"] == [
         {
-            "law_name": "개인정보 보호법",
+            "law_id": "009999",
             "article": "제15조",
             "authority_source_type": "interpretation",
             "authority_date": "20210115",
             "current_article_effective_date": "20250101",
         },
         {
-            "law_name": "개인정보 보호법",
+            "law_id": "009999",
             "article": "제15조",
             "authority_source_type": "case",
             "authority_date": "20210215",
             "current_article_effective_date": "20250101",
         },
         {
-            "law_name": "개인정보 보호법",
+            "law_id": "009999",
             "article": "제15조",
             "authority_source_type": "constitutional",
             "authority_date": "20210315",
