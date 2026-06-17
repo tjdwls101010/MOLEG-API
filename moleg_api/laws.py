@@ -2735,7 +2735,36 @@ class MolegApi:
                         )
                     )
                 law_candidates = query_expansion.law_candidates[: limits["law_candidates"]]
-                primary_identity = law_candidates[0] if law_candidates else None
+                if len(law_candidates) == 1:
+                    primary_identity = law_candidates[0]
+                elif len(law_candidates) > 1:
+                    ambiguities.append(
+                        Ambiguity(
+                            kind="statute_identity",
+                            message=(
+                                "Question query matched multiple MOLEG law identities; "
+                                "select one LawIdentity or use statute_review before loading statute text."
+                            ),
+                            candidates=law_candidates,
+                        )
+                    )
+                    gaps.append(
+                        ContextGap(
+                            kind="manual_review_required",
+                            reason="The question matched multiple MOLEG law identities, so no statute text was auto-loaded.",
+                            query=query,
+                            recommended_interface="search_laws",
+                        )
+                    )
+                    deferred.append(
+                        DeferredLookup(
+                            interface="search_laws",
+                            query=query,
+                            reason="Resolve one LawIdentity before loading current statute text.",
+                            source_type="law",
+                            filters={"basis": "effective"},
+                        )
+                    )
             except MolegApiError as exc:
                 source_notes.append(f"Query expansion skipped: {exc}")
                 append_query_expansion_failure_gap(

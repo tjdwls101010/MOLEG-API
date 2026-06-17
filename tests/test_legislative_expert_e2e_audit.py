@@ -19,6 +19,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "deleted_article_status_guardrail",
         "moved_article_status_guardrail",
         "query_expansion_candidate_authority_guardrail",
+        "context_bundle_ambiguous_question_law_candidate_guardrail",
         "law_search_candidate_detail_guardrail",
         "empty_law_search_absence_guardrail",
         "interpretation_search_candidate_detail_guardrail",
@@ -95,6 +96,18 @@ def test_legislative_expert_e2e_audit_marks_blocking_guardrails():
     assert ambiguous.evidence["candidate_count"] == 2
     assert ambiguous.evidence["loaded_laws"] == 0
     assert "ambiguous_law_name_must_not_be_silently_selected" in ambiguous.risk_flags
+
+    ambiguous_question = by_scenario["context_bundle_ambiguous_question_law_candidate_guardrail"]
+    assert ambiguous_question.status == "blocked_for_manual_review"
+    assert ambiguous_question.evidence["candidate_law_ids"] == ["111111", "222222"]
+    assert ambiguous_question.evidence["loaded_laws"] == 0
+    assert "manual_review_required" in ambiguous_question.evidence["gap_kinds"]
+    assert "search_laws" in ambiguous_question.evidence["deferred_interfaces"]
+    assert "eflaw" not in ambiguous_question.evidence["service_call_targets"]
+    assert (
+        "ambiguous_question_law_candidates_must_not_be_silently_selected"
+        in ambiguous_question.risk_flags
+    )
 
     source_lag = by_scenario["promulgation_bridge_source_lag_guardrail"]
     assert source_lag.status == "blocked_for_manual_review"

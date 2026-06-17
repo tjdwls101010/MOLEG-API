@@ -5020,6 +5020,78 @@ def test_load_legal_context_bundle_stages_question_context():
     assert bundle.gaps[0].recommended_interface == "websearch"
 
 
+def test_load_legal_context_bundle_does_not_auto_load_ambiguous_question_law_candidates():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "270001",
+                        },
+                        {
+                            "법령ID": "222222",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "270002",
+                        },
+                    ]
+                }
+            },
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "111111",
+                        "법령명_한글": "데이터기본법",
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {"조문단위": []},
+                }
+            },
+            {"lsDelegated": {"법령": {"법령정보": {"법령ID": "111111"}, "위임조문정보": []}}},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle("데이터기본법", budget="standard")
+
+    assert [identity.law_id for identity in bundle.candidates.laws] == ["111111", "222222"]
+    assert bundle.loaded.laws == []
+    assert bundle.loaded.delegations == []
+    assert bundle.ambiguities[0].kind == "statute_identity"
+    assert [candidate.law_id for candidate in bundle.ambiguities[0].candidates] == [
+        "111111",
+        "222222",
+    ]
+    assert any(gap.kind == "manual_review_required" for gap in bundle.gaps)
+    assert any(
+        item.interface == "search_laws"
+        and item.query == "데이터기본법"
+        and item.filters == {"basis": "effective"}
+        for item in bundle.deferred
+    )
+    assert all(
+        call != ("service", "eflaw", {"ID": "111111"})
+        and call != ("service", "lsDelegated", {"ID": "111111"})
+        for call in source.calls
+    )
+
+
 def test_load_legal_context_bundle_preserves_query_expansion_source_access_failure():
     class QueryExpansionRateLimitedSource(FakeSource):
         def search(self, target, params):

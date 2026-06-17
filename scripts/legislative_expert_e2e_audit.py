@@ -102,6 +102,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_deleted_article_status_guardrail(),
             _audit_moved_article_status_guardrail(),
             _audit_query_expansion_candidate_authority_guardrail(),
+            _audit_context_bundle_ambiguous_question_law_candidate_guardrail(),
             _audit_law_search_candidate_detail_guardrail(),
             _audit_empty_law_search_absence_guardrail(),
             _audit_interpretation_search_candidate_detail_guardrail(),
@@ -965,6 +966,97 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
             "follow_up_interfaces": follow_up_interfaces,
             "citations_loaded": 0,
             "call_targets": [target for _, target, _ in source.calls],
+        },
+    )
+
+
+def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> LegislativeExpertScenarioReport:
+    query = "데이터기본법"
+    source = ScenarioSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": query,
+                            "법령일련번호": "270001",
+                        },
+                        {
+                            "법령ID": "222222",
+                            "법령명한글": query,
+                            "법령일련번호": "270002",
+                        },
+                    ]
+                }
+            },
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "111111",
+                        "법령명_한글": query,
+                        "법령일련번호": "270001",
+                    },
+                    "조문": {"조문단위": []},
+                }
+            },
+            {"lsDelegated": {"법령": {"법령정보": {"법령ID": "111111"}, "위임조문정보": []}}},
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(query, budget="standard")
+    gap_kinds = [gap.kind for gap in bundle.gaps]
+    deferred_interfaces = [item.interface for item in bundle.deferred]
+    service_call_targets = [target for call_type, target, _ in source.calls if call_type == "service"]
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_ambiguous_question_law_candidate_guardrail",
+        question="question bundle이 같은 법령명 후보가 여러 개인 경우 첫 후보 본문을 자동 로드하지 않는가?",
+        status="blocked_for_manual_review",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "ambiguity_surfaced": any(item.kind == "statute_identity" for item in bundle.ambiguities),
+            "candidate_set_preserved": [identity.law_id for identity in bundle.candidates.laws]
+            == ["111111", "222222"],
+            "no_law_text_auto_loaded": not bundle.loaded.laws,
+            "manual_review_gap_preserved": "manual_review_required" in gap_kinds,
+            "search_laws_followup_preserved": "search_laws" in deferred_interfaces,
+            "no_statute_detail_auto_loaded": not any(
+                target in {"eflaw", "lsDelegated"} for target in service_call_targets
+            ),
+        },
+        citations=[],
+        risk_flags=[
+            "ambiguous_question_law_candidates_must_not_be_silently_selected",
+            "question_bundle_requires_selected_law_identity_before_current_law_claim",
+        ],
+        next_actions=[
+            "Resolve the intended LawIdentity with search_laws() or call statute_review with a selected identity before current-law reasoning.",
+        ],
+        evidence={
+            "query": query,
+            "ambiguity_kinds": [item.kind for item in bundle.ambiguities],
+            "candidate_law_ids": [identity.law_id for identity in bundle.candidates.laws],
+            "candidate_names": [identity.name for identity in bundle.candidates.laws],
+            "loaded_laws": len(bundle.loaded.laws),
+            "gap_kinds": gap_kinds,
+            "deferred_interfaces": deferred_interfaces,
+            "service_call_targets": service_call_targets,
         },
     )
 

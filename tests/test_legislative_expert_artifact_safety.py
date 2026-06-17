@@ -500,6 +500,24 @@ def test_law_search_candidates_are_not_promoted_to_law_text_citations():
     assert any("identity metadata" in claim for claim in discipline.forbidden_claims)
 
 
+def test_context_bundle_ambiguous_question_candidates_are_not_promoted_to_law_text():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["context_bundle_ambiguous_question_law_candidate_guardrail"]
+
+    assert readiness.status == "blocked_for_manual_review"
+    assert readiness.citations == []
+    assert readiness.evidence["loaded_laws"] == 0
+    assert "manual_review_required" in readiness.evidence["gap_kinds"]
+    assert "search_laws" in readiness.evidence["deferred_interfaces"]
+    assert "eflaw" not in readiness.evidence["service_call_targets"]
+    assert (
+        "ambiguous_question_law_candidates_must_not_be_silently_selected"
+        in readiness.risk_flags
+    )
+
+
 def test_empty_law_search_is_not_promoted_to_no_legal_source_claim():
     readiness = {
         report.scenario: report
