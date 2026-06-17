@@ -208,6 +208,10 @@ def run_legislative_expert_answer_discipline() -> list[AnswerDisciplineReport]:
             prompt_reports["delegated_operational_criteria"],
             readiness_reports["delegated_criteria_after_followups"],
         ),
+        _delegated_criteria_source_mismatch_discipline(
+            prompt_reports["delegated_operational_criteria"],
+            readiness_reports["delegated_criteria_source_mismatch_guardrail"],
+        ),
         _low_confidence_annex_body_discipline(
             prompt_reports["annex_table_extraction_confidence"],
             readiness_reports["low_confidence_annex_body_guardrail"],
@@ -1639,6 +1643,44 @@ def _delegated_criteria_after_followups_discipline(
             "prompt_status": prompt.status,
             "readiness_status": readiness.status,
             "structured_annex_rows": readiness.evidence["structured_annex_rows"],
+            "risk_flags": readiness.risk_flags,
+        },
+    )
+
+
+def _delegated_criteria_source_mismatch_discipline(
+    prompt: PromptDryRunReport,
+    readiness: LegislativeExpertScenarioReport,
+) -> AnswerDisciplineReport:
+    return AnswerDisciplineReport(
+        scenario="delegated_criteria_source_mismatch_answer_discipline",
+        status="must_load_more_sources",
+        allowed_claims=[
+            "The current statute article and delegation graph were loaded.",
+            "The mismatched administrative-rule detail may be used only as follow-up context.",
+        ],
+        forbidden_claims=[
+            "The loaded administrative-rule body is operational criteria for the target article despite delegated_criteria_source_mismatch.",
+            "The loaded annex/form body proves target-article criteria when its related administrative rule has a source mismatch.",
+            "A loaded administrative-rule detail can be cited as target delegated criteria without matching source_law_name/source_article.",
+        ],
+        required_disclosures=[
+            "Disclose the delegated_criteria_source_mismatch gap before discussing the loaded administrative-rule detail.",
+            "Disclose the target article and the loaded administrative rule's source article before any operational-criteria claim.",
+        ],
+        required_followups=[
+            "find_delegated_rules",
+            "search_administrative_rules",
+            "get_administrative_rule",
+            "get_annex_form_body",
+        ],
+        citations=readiness.citations,
+        evidence={
+            "prompt_status": prompt.status,
+            "readiness_status": readiness.status,
+            "target_articles": readiness.evidence["target_articles"],
+            "loaded_source_articles": readiness.evidence["loaded_source_articles"],
+            "gap_kinds": readiness.evidence["gap_kinds"],
             "risk_flags": readiness.risk_flags,
         },
     )

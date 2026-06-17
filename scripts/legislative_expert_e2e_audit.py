@@ -133,6 +133,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_annex_form_search_candidate_detail_guardrail(),
             _audit_empty_annex_form_search_absence_guardrail(),
             _audit_delegated_criteria_after_followups(),
+            _audit_delegated_criteria_source_mismatch_guardrail(),
             _audit_low_confidence_annex_body(),
             _audit_historical_repealed_article_as_of(),
             _audit_future_effective_administrative_rule_after_followup(),
@@ -3634,6 +3635,87 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
     )
 
 
+def _audit_delegated_criteria_source_mismatch_guardrail() -> LegislativeExpertScenarioReport:
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective", mst="270001")
+    source = ScenarioSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 무단방치 자동차 처리 기준은 대통령령으로 정한다.",
+                    }
+                }
+            },
+            law_structure_payload("자동차관리법", "001747", "270001", "자동차관리법 시행령"),
+            delegation_payload("자동차관리법", "자동차관리법 시행령", law_id="001747", article="26"),
+            _administrative_rule_detail_payload(source_article="제99조"),
+        ],
+        search_payloads=[
+            administrative_rule_search_payload("무단방치 자동차 처리 규정"),
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            _administrative_rule_annex_search_payload(),
+        ],
+        text_payloads=[pipe_table_text()],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제26조"],
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+    mismatch_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_source_mismatch"
+    ]
+
+    return LegislativeExpertScenarioReport(
+        scenario="delegated_criteria_source_mismatch_guardrail",
+        question="로드된 행정규칙 detail이 대상 법/조문이 아닌 다른 위임조문을 가리킬 때 운용기준 인용을 막는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_delegated_criteria"],
+        must_have={
+            "target_article_loaded": [article.article for article in bundle.loaded.articles] == ["제26조"],
+            "administrative_rule_body_loaded": bool(bundle.loaded.administrative_rules),
+            "source_mismatch_gap_preserved": [gap.query for gap in mismatch_gaps]
+            == ["자동차관리법 제26조"],
+            "mismatch_recommends_delegation_followup": [gap.recommended_interface for gap in mismatch_gaps]
+            == ["find_delegated_rules"],
+            "administrative_rule_not_cited_as_target_criteria": True,
+        },
+        citations=[
+            SourceCitation("law", "eflawjosub", "자동차관리법", "제26조", "current statute article"),
+            SourceCitation("delegation", "lsDelegated", "자동차관리법 시행령", "제26조", "delegated rule graph"),
+        ],
+        risk_flags=[
+            "delegated_criteria_source_mismatch_not_target_operational_criteria",
+            "loaded_administrative_rule_source_reference_must_match_target_article",
+        ],
+        next_actions=[
+            "Use the loaded administrative-rule detail only as follow-up context until its source law/article matches the target.",
+            "Run delegation or alternate administrative-rule/annex searches before citing operational criteria for the target article.",
+        ],
+        evidence={
+            "target_articles": [article.article for article in bundle.loaded.articles],
+            "loaded_administrative_rules": [
+                rule.identity.name for rule in bundle.loaded.administrative_rules
+            ],
+            "loaded_source_articles": [
+                rule.identity.source_article for rule in bundle.loaded.administrative_rules
+            ],
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "gap_recommended_interfaces": [
+                gap.recommended_interface for gap in mismatch_gaps
+            ],
+            "call_targets": [target for _, target, _ in source.calls],
+        },
+    )
+
+
 def _audit_low_confidence_annex_body() -> LegislativeExpertScenarioReport:
     identity = AnnexFormIdentity(
         annex_id="17677511",
@@ -4192,7 +4274,10 @@ def _audit_interpretation_authority_distinction() -> LegislativeExpertScenarioRe
     )
 
 
-def _administrative_rule_detail_payload(effective_date: str = "20250101") -> dict[str, Any]:
+def _administrative_rule_detail_payload(
+    effective_date: str = "20250101",
+    source_article: str = "제26조",
+) -> dict[str, Any]:
     return {
         "admrul": {
             "행정규칙 일련번호": "2100000248758",
@@ -4204,7 +4289,7 @@ def _administrative_rule_detail_payload(effective_date: str = "20250101") -> dic
             "시행일자": effective_date,
             "위임법령ID": "001747",
             "위임법령명": "자동차관리법",
-            "위임조문번호": "제26조",
+            "위임조문번호": source_article,
             "위임조문제목": "자동차의 강제처리",
             "조문": {
                 "조문단위": [

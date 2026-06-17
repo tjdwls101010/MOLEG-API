@@ -50,6 +50,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "annex_form_search_candidate_detail_guardrail",
         "empty_annex_form_search_absence_guardrail",
         "delegated_criteria_after_followups",
+        "delegated_criteria_source_mismatch_guardrail",
         "low_confidence_annex_body_guardrail",
         "historical_article_as_of_guardrail",
         "future_effective_administrative_rule_guardrail",
@@ -1138,6 +1139,28 @@ def test_legislative_expert_e2e_audit_marks_followup_loaded_delegated_criteria_r
         {citation.source_type for citation in loaded.citations}
     )
     assert "delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey" in loaded.risk_flags
+
+
+def test_legislative_expert_e2e_audit_blocks_delegated_criteria_source_mismatches():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    mismatch = by_scenario["delegated_criteria_source_mismatch_guardrail"]
+
+    assert mismatch.status == "needs_more_source_loading"
+    assert mismatch.public_interfaces == ["load_delegated_criteria"]
+    assert mismatch.must_have["target_article_loaded"] is True
+    assert mismatch.must_have["administrative_rule_body_loaded"] is True
+    assert mismatch.must_have["source_mismatch_gap_preserved"] is True
+    assert mismatch.must_have["mismatch_recommends_delegation_followup"] is True
+    assert mismatch.must_have["administrative_rule_not_cited_as_target_criteria"] is True
+    assert {citation.source_type for citation in mismatch.citations} == {"law", "delegation"}
+    assert mismatch.evidence["target_articles"] == ["제26조"]
+    assert mismatch.evidence["loaded_source_articles"] == ["제99조"]
+    assert "delegated_criteria_source_mismatch" in mismatch.evidence["gap_kinds"]
+    assert "delegated_criteria_source_mismatch_not_target_operational_criteria" in mismatch.risk_flags
 
 
 def test_legislative_expert_e2e_audit_marks_low_confidence_annex_rows_as_plain_text_fallback():

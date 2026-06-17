@@ -1008,6 +1008,7 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
             guardrails=[
                 "load_delegated_criteria is bounded source loading, not an exhaustive survey of every lower instrument.",
                 "Statute text alone is insufficient when delegated criteria may control practice.",
+                "Loaded administrative-rule detail is target operational criteria only when delegated_criteria_source_mismatch is absent.",
                 "After loading selected administrative-rule detail, compare its effective date to the reference date before calling it current operational criteria.",
             ],
             forbidden_actions=[

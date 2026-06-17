@@ -970,6 +970,29 @@ def test_empty_administrative_rule_search_is_not_promoted_to_no_delegated_criter
     assert any("one scoped administrative-rule search" in disclosure for disclosure in discipline.required_disclosures)
 
 
+def test_delegated_criteria_source_mismatch_is_not_promoted_to_operational_criteria():
+    readiness = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }["delegated_criteria_source_mismatch_guardrail"]
+    discipline = {
+        report.scenario: report
+        for report in run_legislative_expert_answer_discipline()
+    }["delegated_criteria_source_mismatch_answer_discipline"]
+
+    assert readiness.status == "needs_more_source_loading"
+    assert {citation.source_type for citation in readiness.citations} == {"law", "delegation"}
+    assert "delegated_criteria_source_mismatch" in readiness.evidence["gap_kinds"]
+    assert readiness.evidence["loaded_source_articles"] == ["제99조"]
+    assert (
+        "delegated_criteria_source_mismatch_not_target_operational_criteria"
+        in readiness.risk_flags
+    )
+    assert discipline.status == "must_load_more_sources"
+    assert "find_delegated_rules" in discipline.required_followups
+    assert any("source mismatch" in claim for claim in discipline.forbidden_claims)
+
+
 def test_missing_administrative_rule_source_reference_is_not_promoted_to_no_authorization():
     readiness = {
         report.scenario: report

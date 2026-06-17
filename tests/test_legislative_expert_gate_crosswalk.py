@@ -772,11 +772,15 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
     delegated_prompt = prompt_reports["delegated_operational_criteria"]
     delegated_readiness = readiness_reports["delegated_criteria_tracing"]
     delegated_loaded_readiness = readiness_reports["delegated_criteria_after_followups"]
+    delegated_mismatch_readiness = readiness_reports[
+        "delegated_criteria_source_mismatch_guardrail"
+    ]
     delegated_future_admin_readiness = readiness_reports["future_effective_administrative_rule_guardrail"]
     assert delegated_prompt.status == "needs_more_source_loading"
     assert delegated_readiness.status == "needs_more_source_loading"
     assert any(step.interface == "load_delegated_criteria" for step in delegated_prompt.planned_steps)
     assert any("effective date" in guardrail for guardrail in delegated_prompt.guardrails)
+    assert any("delegated_criteria_source_mismatch" in guardrail for guardrail in delegated_prompt.guardrails)
     assert delegated_readiness.must_have["deferred_followups_preserved"] is True
     assert delegated_loaded_readiness.status == "ready_for_reasoning"
     assert delegated_future_admin_readiness.status == "ready_for_reasoning"
@@ -790,6 +794,13 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
         if step.required_before_answer
     })
     assert delegated_loaded_readiness.public_interfaces == ["load_delegated_criteria"]
+    assert delegated_mismatch_readiness.status == "needs_more_source_loading"
+    assert delegated_mismatch_readiness.public_interfaces == ["load_delegated_criteria"]
+    assert "delegated_criteria_source_mismatch" in delegated_mismatch_readiness.evidence["gap_kinds"]
+    assert {citation.source_type for citation in delegated_mismatch_readiness.citations} == {
+        "law",
+        "delegation",
+    }
 
     missing_admin_ref_prompt = prompt_reports["administrative_rule_missing_source_reference_review"]
     missing_admin_ref_readiness = readiness_reports[

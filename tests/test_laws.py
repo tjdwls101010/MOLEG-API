@@ -3694,6 +3694,131 @@ def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
     )
 
 
+def test_load_delegated_criteria_marks_rule_source_article_mismatches():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            institutional_interpretation_search_payload("자동차관리법"),
+            institutional_case_search_payload("자동차관리법"),
+            institutional_constitutional_search_payload("자동차관리법"),
+            institutional_law_annex_payload("자동차관리법"),
+            institutional_admin_annex_payload("자동차관리법"),
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 무단방치 자동차 처리 기준은 대통령령으로 정한다.",
+                    }
+                }
+            },
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "위임법령명": "자동차관리법",
+                    "위임조문번호": "99",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=["■ 자동차관리법 [별표]\n| 구분 | 기준 |\n| 공고 | 14일 |"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제26조"],
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    assert [rule.identity.name for rule in bundle.loaded.administrative_rules] == ["자동차관리법 고시"]
+    mismatch_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_source_mismatch"
+    ]
+    assert [(gap.query, gap.recommended_interface) for gap in mismatch_gaps] == [
+        ("자동차관리법 제26조", "find_delegated_rules")
+    ]
+    assert "자동차관리법 고시" in mismatch_gaps[0].reason
+    assert "제99조" in mismatch_gaps[0].reason
+    assert "제26조" in mismatch_gaps[0].reason
+
+
+def test_load_delegated_criteria_marks_missing_rule_source_references_as_unverified():
+    identity = LawIdentity(law_id="001747", mst="270001", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            institutional_admin_search_payload("자동차관리법"),
+            institutional_interpretation_search_payload("자동차관리법"),
+            institutional_case_search_payload("자동차관리법"),
+            institutional_constitutional_search_payload("자동차관리법"),
+            institutional_law_annex_payload("자동차관리법"),
+            institutional_admin_annex_payload("자동차관리법"),
+        ],
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 무단방치 자동차 처리 기준은 대통령령으로 정한다.",
+                    }
+                }
+            },
+            institutional_structure_payload("001747", "자동차관리법", "270001", "자동차관리법 시행령"),
+            institutional_delegation_payload("001747", "자동차관리법", "자동차관리법 시행령"),
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "21자동차관리법",
+                    "행정규칙명": "자동차관리법 고시",
+                    "행정규칙종류": "고시",
+                    "시행일자": "20250101",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "처리 기준",
+                                "조문내용": "무단방치 자동차의 처리 기준은 별표에 따른다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+        text_payloads=["■ 자동차관리법 [별표]\n| 구분 | 기준 |\n| 공고 | 14일 |"],
+    )
+
+    bundle = MolegApi(source).load_delegated_criteria(
+        identity,
+        articles=["제26조"],
+        query="무단방치 자동차 처리 기준",
+        budget="minimal",
+    )
+
+    unverified_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "delegated_criteria_source_unverified"
+    ]
+    assert [(gap.query, gap.recommended_interface) for gap in unverified_gaps] == [
+        ("자동차관리법 제26조", "find_delegated_rules")
+    ]
+    assert "source-law or source-article reference is missing" in unverified_gaps[0].reason
+
+
 def test_load_delegated_criteria_preserves_detail_source_failures_as_deferred_gaps():
     class DelegatedCriteriaRateLimitedSource(FakeSource):
         def service(self, target, params):

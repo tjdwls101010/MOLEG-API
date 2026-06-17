@@ -2413,6 +2413,13 @@ class MolegApi:
                     source_label="Delegated-criteria annex/form body",
                 )
 
+        append_delegated_criteria_source_gaps(
+            bundle,
+            loaded_administrative_rules,
+            gaps,
+            source_notes,
+        )
+
         deferred.extend(
             deferred_from_candidates(
                 unloaded_candidates(bundle.candidates.administrative_rules, loaded_candidate_keys),
@@ -3418,6 +3425,189 @@ def append_administrative_rule_not_effective_as_of_gap(
     source_notes.append(
         f"{identity.name} is loaded but not effective as of {reference_date}; "
         f"administrative-rule effective date is {effective_date}."
+    )
+
+
+def append_delegated_criteria_source_gaps(
+    bundle: LegalContextBundle,
+    administrative_rules: list[AdministrativeRuleText],
+    gaps: list[ContextGap],
+    source_notes: list[str],
+) -> None:
+    scope = delegated_criteria_target_scope(bundle)
+    if not administrative_rules or (not scope["law_names"] and not scope["law_ids"]):
+        return
+    for rule in administrative_rules:
+        match_state, source_label = delegated_criteria_source_match_state(rule, scope)
+        if match_state == "matched":
+            continue
+        query = delegated_criteria_scope_label(scope)
+        if match_state == "unverified":
+            reason = (
+                f"{rule.identity.name} was loaded as delegated criteria, but its source-law "
+                f"or source-article reference is missing for {query}; inspect delegation "
+                "metadata before treating it as target operational criteria."
+            )
+            kind = "delegated_criteria_source_unverified"
+        else:
+            reason = (
+                f"{rule.identity.name} was loaded as delegated criteria, but its explicit "
+                f"source reference ({source_label}) does not match {query}; do not cite it "
+                "as target operational criteria without another delegation source."
+            )
+            kind = "delegated_criteria_source_mismatch"
+        gaps.append(
+            ContextGap(
+                kind=kind,
+                reason=reason,
+                query=query,
+                recommended_interface="find_delegated_rules",
+            )
+        )
+        source_notes.append(reason)
+
+
+def delegated_criteria_target_scope(bundle: LegalContextBundle) -> dict[str, set[str]]:
+    law_ids: set[str] = set()
+    law_names: set[str] = set()
+    articles: set[str] = {
+        comparable_article_label(article)
+        for article in bundle.request.articles
+        if comparable_article_label(article)
+    }
+    for law in bundle.loaded.laws:
+        if law.identity.law_id:
+            law_ids.add(law.identity.law_id)
+        if law.identity.name:
+            law_names.add(law.identity.name)
+    for article in bundle.loaded.articles:
+        if article.identity.law_id:
+            law_ids.add(article.identity.law_id)
+        if article.identity.name:
+            law_names.add(article.identity.name)
+        if article.article:
+            articles.add(comparable_article_label(article.article))
+    for graph in bundle.loaded.delegations:
+        if graph.identity.law_id:
+            law_ids.add(graph.identity.law_id)
+        if graph.identity.name:
+            law_names.add(graph.identity.name)
+    return {"law_ids": law_ids, "law_names": law_names, "articles": articles}
+
+
+def delegated_criteria_scope_label(scope: dict[str, set[str]]) -> str:
+    law_label = ", ".join(sorted(scope["law_names"] or scope["law_ids"]))
+    article_label = ", ".join(sorted(scope["articles"]))
+    return f"{law_label} {article_label}".strip()
+
+
+def delegated_criteria_source_match_state(
+    rule: AdministrativeRuleText,
+    scope: dict[str, set[str]],
+) -> tuple[str, str]:
+    references = administrative_rule_source_references(rule)
+    if not references:
+        return ("unverified", "missing source reference")
+    matching_law_refs = [
+        reference
+        for reference in references
+        if source_law_matches_scope(reference, scope)
+    ]
+    if not matching_law_refs:
+        return ("mismatch", administrative_rule_source_reference_label(references))
+    if not scope["articles"]:
+        return ("matched", administrative_rule_source_reference_label(matching_law_refs))
+    article_refs = [
+        reference
+        for reference in matching_law_refs
+        if reference["article"]
+    ]
+    if not article_refs:
+        return ("unverified", administrative_rule_source_reference_label(matching_law_refs))
+    if any(
+        articles_overlap(reference["article"], target_article)
+        for reference in article_refs
+        for target_article in scope["articles"]
+    ):
+        return ("matched", administrative_rule_source_reference_label(article_refs))
+    return ("mismatch", administrative_rule_source_reference_label(article_refs))
+
+
+def administrative_rule_source_references(rule: AdministrativeRuleText) -> list[dict[str, str | None]]:
+    references: list[dict[str, str | None]] = []
+    raw_references = [
+        {
+            "law_id": rule.identity.source_law_id,
+            "law_name": rule.identity.source_law_name,
+            "article": rule.identity.source_article,
+        },
+        *[
+            {
+                "law_id": article.source_law_id,
+                "law_name": article.source_law_name,
+                "article": article.source_article,
+            }
+            for article in rule.articles
+        ],
+    ]
+    seen: set[tuple[str | None, str | None, str | None]] = set()
+    for reference in raw_references:
+        if not any(reference.values()):
+            continue
+        normalized = {
+            "law_id": reference["law_id"],
+            "law_name": reference["law_name"],
+            "article": comparable_article_label(reference["article"]),
+        }
+        key = (normalized["law_id"], normalized["law_name"], normalized["article"])
+        if key in seen:
+            continue
+        seen.add(key)
+        references.append(normalized)
+    return references
+
+
+def source_law_matches_scope(
+    reference: dict[str, str | None],
+    scope: dict[str, set[str]],
+) -> bool:
+    return bool(
+        (reference["law_id"] and reference["law_id"] in scope["law_ids"])
+        or (reference["law_name"] and reference["law_name"] in scope["law_names"])
+    )
+
+
+def administrative_rule_source_reference_label(
+    references: list[dict[str, str | None]],
+) -> str:
+    return ", ".join(
+        " ".join(
+            part
+            for part in (
+                reference["law_name"] or reference["law_id"] or "unknown law",
+                reference["article"],
+            )
+            if part
+        )
+        for reference in references
+    )
+
+
+def comparable_article_label(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    return re.sub(r"\s+", "", article_label_for_filter(value))
+
+
+def articles_overlap(first: str | None, second: str | None) -> bool:
+    left = comparable_article_label(first)
+    right = comparable_article_label(second)
+    if not left or not right:
+        return False
+    return (
+        left == right
+        or (left.startswith(right) and left[len(right):].startswith("제"))
+        or (right.startswith(left) and right[len(left):].startswith("제"))
     )
 
 

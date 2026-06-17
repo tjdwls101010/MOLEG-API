@@ -43,6 +43,7 @@ def test_answer_discipline_reports_cover_high_risk_answer_states():
         "empty_annex_form_search_absence_answer_discipline",
         "delegated_criteria_answer_discipline",
         "delegated_criteria_after_followups_answer_discipline",
+        "delegated_criteria_source_mismatch_answer_discipline",
         "low_confidence_annex_body_answer_discipline",
         "future_effective_administrative_rule_answer_discipline",
         "future_effective_promulgated_law_answer_discipline",
@@ -742,6 +743,23 @@ def test_answer_discipline_allows_delegated_criteria_after_followups_only_with_s
     assert report.evidence["structured_annex_rows"] == 2
     assert any("selected" in disclosure for disclosure in report.required_disclosures)
     assert any("exhaustively inspected" in claim for claim in report.forbidden_claims)
+
+
+def test_answer_discipline_blocks_delegated_criteria_source_mismatches():
+    report = {
+        item.scenario: item
+        for item in run_legislative_expert_answer_discipline()
+    }["delegated_criteria_source_mismatch_answer_discipline"]
+
+    assert report.status == "must_load_more_sources"
+    assert {citation.source_type for citation in report.citations} == {"law", "delegation"}
+    assert report.evidence["target_articles"] == ["제26조"]
+    assert report.evidence["loaded_source_articles"] == ["제99조"]
+    assert "delegated_criteria_source_mismatch" in report.evidence["gap_kinds"]
+    assert "find_delegated_rules" in report.required_followups
+    assert "search_administrative_rules" in report.required_followups
+    assert any("source mismatch" in claim for claim in report.forbidden_claims)
+    assert any("delegated_criteria_source_mismatch" in disclosure for disclosure in report.required_disclosures)
 
 
 def test_answer_discipline_refuses_threshold_claims_from_low_confidence_annex_rows():
