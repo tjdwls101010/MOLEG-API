@@ -6285,6 +6285,11 @@ def _audit_ambiguous_statute_set() -> LegislativeExpertScenarioReport:
     )
 
     bundle = MolegApi(source).load_institutional_system(["데이터기본법"], budget="minimal")
+    search_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
 
     return LegislativeExpertScenarioReport(
         scenario="ambiguous_statute_identity_guardrail",
@@ -6296,6 +6301,9 @@ def _audit_ambiguous_statute_set() -> LegislativeExpertScenarioReport:
             "no_law_loaded": not bundle.loaded.laws,
             "manual_review_gap_preserved": any(gap.kind == "manual_review_required" for gap in bundle.gaps),
             "search_laws_followup_preserved": any(item.interface == "search_laws" for item in bundle.deferred),
+            "effective_search_filter_preserved": [
+                (item.query, item.filters) for item in search_deferred
+            ] == [("데이터기본법", {"basis": "effective"})],
         },
         risk_flags=["ambiguous_law_name_must_not_be_silently_selected"],
         next_actions=["Resolve the candidate LawIdentity before loading institutional-system context."],
@@ -6303,6 +6311,8 @@ def _audit_ambiguous_statute_set() -> LegislativeExpertScenarioReport:
             "ambiguity_count": len(bundle.ambiguities),
             "candidate_count": len(bundle.ambiguities[0].candidates) if bundle.ambiguities else 0,
             "loaded_laws": len(bundle.loaded.laws),
+            "deferred_interfaces": [item.interface for item in search_deferred],
+            "deferred_filters": [item.filters for item in search_deferred],
         },
     )
 

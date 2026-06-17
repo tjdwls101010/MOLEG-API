@@ -3889,7 +3889,9 @@ def test_load_institutional_system_preserves_statute_resolution_source_access_fa
         for item in bundle.deferred
         if item.interface == "search_laws" and item.source_type == "law"
     ]
-    assert [(item.query, item.filters) for item in resolution_deferred] == [("금융법", {})]
+    assert [(item.query, item.filters) for item in resolution_deferred] == [
+        ("금융법", {"basis": "effective"})
+    ]
     assert any("Statute resolution skipped for 금융법" in note for note in bundle.source_notes)
 
 
@@ -3916,6 +3918,14 @@ def test_load_institutional_system_records_ambiguous_statute_identity_without_gu
     assert "금융법" in bundle.ambiguities[0].message
     assert bundle.gaps[0].kind == "manual_review_required"
     assert bundle.gaps[0].recommended_interface == "search_laws"
+    resolution_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_laws" and item.source_type == "law"
+    ]
+    assert [(item.query, item.filters) for item in resolution_deferred] == [
+        ("금융법", {"basis": "effective"})
+    ]
 
 
 def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():

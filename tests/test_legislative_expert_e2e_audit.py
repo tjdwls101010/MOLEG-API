@@ -97,8 +97,11 @@ def test_legislative_expert_e2e_audit_marks_blocking_guardrails():
 
     ambiguous = by_scenario["ambiguous_statute_identity_guardrail"]
     assert ambiguous.status == "blocked_for_manual_review"
+    assert ambiguous.must_have["effective_search_filter_preserved"] is True
     assert ambiguous.evidence["candidate_count"] == 2
     assert ambiguous.evidence["loaded_laws"] == 0
+    assert ambiguous.evidence["deferred_interfaces"] == ["search_laws"]
+    assert ambiguous.evidence["deferred_filters"] == [{"basis": "effective"}]
     assert "ambiguous_law_name_must_not_be_silently_selected" in ambiguous.risk_flags
 
     ambiguous_question = by_scenario["context_bundle_ambiguous_question_law_candidate_guardrail"]

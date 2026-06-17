@@ -2180,6 +2180,7 @@ class MolegApi:
                         query=resolution.identifier,
                         reason="Resolve the statute identity before loading this part of the institutional system.",
                         source_type="law",
+                        filters={"basis": "effective"},
                     )
                 )
                 continue
@@ -5620,6 +5621,7 @@ def append_institutional_statute_resolution_failure_gap(
             query=query,
             reason="Retry statute identity resolution before treating this institutional-system member as unavailable.",
             source_type="law",
+            filters={"basis": "effective"},
         )
     )
 
