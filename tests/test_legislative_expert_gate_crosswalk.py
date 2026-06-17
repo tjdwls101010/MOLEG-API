@@ -638,22 +638,23 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
         "administrative_rule_article_status_guardrail"
     ]
     assert administrative_rule_status_prompt.status == "needs_more_source_loading"
-    assert administrative_rule_status_readiness.status == "needs_more_source_loading"
+    assert administrative_rule_status_readiness.status == "ready_for_reasoning"
     administrative_rule_status_required_interfaces = [
         step.interface
         for step in administrative_rule_status_prompt.planned_steps
         if step.required_before_answer
     ]
-    assert administrative_rule_status_required_interfaces.count("get_administrative_rule") == 2
-    assert administrative_rule_status_readiness.citations == []
+    assert administrative_rule_status_required_interfaces == ["load_administrative_rule_context"]
+    assert len(administrative_rule_status_readiness.citations) == 3
     assert administrative_rule_status_readiness.evidence["article_statuses"][0]["is_deleted"] is True
     assert administrative_rule_status_readiness.evidence["article_statuses"][1]["moved_to"] == "제6조"
+    assert administrative_rule_status_readiness.evidence["current_article"] == "제6조"
     assert (
-        "administrative_rule_moved_article_requires_destination_detail"
+        "administrative_rule_moved_article_destination_loaded_before_current_criteria"
         in administrative_rule_status_readiness.risk_flags
     )
     assert any(
-        "deleted or moved administrative-rule article" in guardrail
+        "deleted administrative-rule article" in guardrail
         for guardrail in administrative_rule_status_prompt.guardrails
     )
 

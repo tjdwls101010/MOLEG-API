@@ -2136,6 +2136,125 @@ def test_get_administrative_rule_rejects_empty_articles_list():
     assert source.calls == []
 
 
+def test_load_administrative_rule_context_follows_moved_article_to_current_destination():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": "무단방치 자동차 처리 규정",
+                    "시행일자": "20250101",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "3",
+                                "조문제목": "삭제",
+                                "조문내용": "제3조 삭제 <2025. 1. 1.>",
+                                "조문제개정유형": "삭제",
+                                "조문변경여부": "Y",
+                            },
+                            {
+                                "조문번호": "4",
+                                "조문제목": "이동",
+                                "조문내용": "제4조는 제6조로 이동 <2025. 1. 1.>",
+                                "조문제개정유형": "이동",
+                                "조문이동이전": "4",
+                                "조문이동이후": "6",
+                                "조문변경여부": "Y",
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": "무단방치 자동차 처리 규정",
+                    "시행일자": "20250101",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "6",
+                                "조문제목": "처리 기준",
+                                "조문내용": "제6조(처리 기준) 무단방치 자동차 처리 절차를 따른다.",
+                                "조문제개정유형": "전문개정",
+                            }
+                        ]
+                    },
+                }
+            },
+        ]
+    )
+
+    context = MolegApi(source).load_administrative_rule_context(
+        "2100000248758",
+        articles=["제3조", "제4조"],
+    )
+
+    assert context.rule.identity.name == "무단방치 자동차 처리 규정"
+    assert [article.article for article in context.requested_articles] == ["제3조", "제4조"]
+    assert [article.article for article in context.loaded_articles] == ["제3조", "제4조", "제6조"]
+    assert [article.article for article in context.current_articles] == ["제6조"]
+    assert "처리 절차" in context.current_articles[0].text
+    assert context.deferred == []
+    assert [gap.kind for gap in context.gaps] == ["deleted_administrative_rule_article"]
+    assert any("deleted administrative-rule article" in note for note in context.source_notes)
+    assert any("moved to 제6조" in note for note in context.source_notes)
+    assert source.calls == [
+        ("service", "admrul", {"ID": "2100000248758"}),
+        ("service", "admrul", {"ID": "2100000248758"}),
+    ]
+
+
+def test_load_administrative_rule_context_preserves_moved_destination_load_failure():
+    class DestinationRateLimitedSource(FakeSource):
+        def service(self, target, params):
+            self.calls.append(("service", target, params))
+            if len(self.calls) == 2:
+                raise RateLimitError("law.go.kr rate limited target admrul after 3 attempt(s)")
+            return self.service_payloads.pop(0)
+
+    source = DestinationRateLimitedSource(
+        service_payloads=[
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": "무단방치 자동차 처리 규정",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "4",
+                                "조문제목": "이동",
+                                "조문내용": "제4조는 제6조로 이동 <2025. 1. 1.>",
+                                "조문제개정유형": "이동",
+                                "조문이동이후": "6",
+                            }
+                        ]
+                    },
+                }
+            }
+        ]
+    )
+
+    context = MolegApi(source).load_administrative_rule_context(
+        "2100000248758",
+        articles=["제4조"],
+    )
+
+    assert context.requested_articles[0].article == "제4조"
+    assert context.requested_articles[0].moved_to == "제6조"
+    assert context.current_articles == []
+    assert [article.article for article in context.loaded_articles] == ["제4조"]
+    assert context.gaps[0].kind == "source_access_failure"
+    assert context.gaps[0].recommended_interface == "load_administrative_rule_context"
+    assert context.deferred[0].interface == "load_administrative_rule_context"
+    assert context.deferred[0].filters["article"] == "제6조"
+    assert context.deferred[0].filters["serial_id"] == "2100000248758"
+
+
 def test_get_administrative_rule_preserves_branch_article_labels_and_filters():
     source = FakeSource(
         service_payloads=[

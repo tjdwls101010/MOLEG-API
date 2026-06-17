@@ -2883,17 +2883,46 @@ def _audit_administrative_rule_article_status_guardrail() -> LegislativeExpertSc
                         ]
                     },
                 }
-            }
+            },
+            {
+                "admrul": {
+                    "행정규칙 일련번호": "2100000248758",
+                    "행정규칙ID": "2077465",
+                    "행정규칙명": rule_name,
+                    "행정규칙종류": "고시",
+                    "발령일자": "20250101",
+                    "소관부처명": "국토교통부",
+                    "시행일자": "20250101",
+                    "위임법령ID": "001747",
+                    "위임법령명": "자동차관리법",
+                    "위임조문번호": "제26조",
+                    "위임조문제목": "자동차의 강제처리",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "6",
+                                "조문제목": "처리 기준",
+                                "조문내용": "제6조(처리 기준) 무단방치 자동차 처리 절차를 따른다.",
+                                "조문시행일자": "20250101",
+                                "조문여부": "조문",
+                                "조문제개정유형": "전문개정",
+                            }
+                        ]
+                    },
+                }
+            },
         ]
     )
 
-    administrative_rule = MolegApi(source).get_administrative_rule(
+    context = MolegApi(source).load_administrative_rule_context(
         "2100000248758",
         articles=["제3조", "제4조"],
     )
-    articles = administrative_rule.articles
+    administrative_rule = context.rule
+    articles = context.requested_articles
     deleted_article = articles[0]
     moved_article = articles[1]
+    current_article = context.current_articles[0] if context.current_articles else None
     article_statuses = [
         {
             "article": article.article,
@@ -2907,8 +2936,8 @@ def _audit_administrative_rule_article_status_guardrail() -> LegislativeExpertSc
     return LegislativeExpertScenarioReport(
         scenario="administrative_rule_article_status_guardrail",
         question="행정규칙 조문 detail이 삭제 또는 이동 상태일 때 이를 현재 운영기준처럼 인용하지 않는가?",
-        status="needs_more_source_loading",
-        public_interfaces=["get_administrative_rule"],
+        status="ready_for_reasoning",
+        public_interfaces=["load_administrative_rule_context"],
         must_have={
             "administrative_rule_loaded": administrative_rule.identity.name == rule_name,
             "deleted_article_status_preserved": deleted_article.article == "제3조"
@@ -2917,18 +2946,43 @@ def _audit_administrative_rule_article_status_guardrail() -> LegislativeExpertSc
             "moved_article_status_preserved": moved_article.article == "제4조"
             and moved_article.revision_type == "이동"
             and moved_article.moved_to == "제6조",
-            "operational_claim_blocked": True,
-            "destination_article_followup_required": moved_article.moved_to == "제6조",
+            "deleted_article_not_operational_text": True,
+            "destination_article_loaded": current_article is not None
+            and current_article.article == "제6조",
+            "current_article_is_destination": current_article is not None
+            and "처리 절차" in current_article.text,
         },
-        citations=[],
+        citations=[
+            SourceCitation(
+                "administrative_rule",
+                "admrul",
+                rule_name,
+                "제3조",
+                "deleted administrative-rule article marker",
+            ),
+            SourceCitation(
+                "administrative_rule",
+                "admrul",
+                rule_name,
+                "제4조",
+                "moved administrative-rule article marker",
+            ),
+            SourceCitation(
+                "administrative_rule",
+                "admrul",
+                rule_name,
+                "제6조",
+                "current destination administrative-rule article",
+            ),
+        ],
         risk_flags=[
             "administrative_rule_deleted_article_is_not_current_operational_criteria",
-            "administrative_rule_moved_article_requires_destination_detail",
+            "administrative_rule_moved_article_destination_loaded_before_current_criteria",
             "administrative_rule_article_status_required_before_operational_criteria_claim",
         ],
         next_actions=[
             "Disclose deleted administrative-rule article status before discussing legal effect.",
-            "Load the moved-to administrative-rule article before citing current operational criteria.",
+            "Cite the loaded moved-to administrative-rule article before stating current operational criteria.",
             "Load history or version comparison if the answer needs prior wording or amendment reason.",
         ],
         evidence={
@@ -2938,8 +2992,13 @@ def _audit_administrative_rule_article_status_guardrail() -> LegislativeExpertSc
             "deleted_article": deleted_article.article,
             "moved_article": moved_article.article,
             "moved_to": moved_article.moved_to,
+            "current_article": current_article.article if current_article else None,
+            "current_article_text": current_article.text if current_article else None,
+            "loaded_articles": [article.article for article in context.loaded_articles],
+            "gap_kinds": [gap.kind for gap in context.gaps],
+            "deferred_interfaces": [lookup.interface for lookup in context.deferred],
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
-            "citations_loaded": 0,
+            "citations_loaded": 3,
         },
     )
 

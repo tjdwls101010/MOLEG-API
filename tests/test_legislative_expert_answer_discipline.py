@@ -607,19 +607,20 @@ def test_answer_discipline_requires_admin_rule_destination_loading_for_article_s
         for item in run_legislative_expert_answer_discipline()
     }["administrative_rule_article_status_answer_discipline"]
 
-    assert report.status == "must_load_more_sources"
-    assert report.citations == []
+    assert report.status == "can_answer_with_loaded_sources"
+    assert len(report.citations) == 3
     assert report.evidence["deleted_article"] == "제3조"
     assert report.evidence["moved_article"] == "제4조"
     assert report.evidence["moved_to"] == "제6조"
+    assert report.evidence["current_article"] == "제6조"
+    assert report.evidence["loaded_articles"] == ["제3조", "제4조", "제6조"]
     assert (
         "administrative_rule_deleted_article_is_not_current_operational_criteria"
         in report.evidence["risk_flags"]
     )
-    assert "get_administrative_rule" in report.required_followups
     assert "trace_law_history" in report.required_followups
     assert any("deleted administrative-rule article" in claim for claim in report.allowed_claims)
-    assert any("destination administrative-rule article" in claim for claim in report.forbidden_claims)
+    assert any("destination administrative-rule article" in claim for claim in report.allowed_claims)
     assert any("administrative-rule article status" in disclosure for disclosure in report.required_disclosures)
 
 

@@ -641,10 +641,10 @@ def test_prompt_dry_run_requires_admin_rule_destination_loading_for_article_stat
     }
 
     assert report.status == "needs_more_source_loading"
-    assert required_interfaces.count("get_administrative_rule") == 2
+    assert required_interfaces == ["load_administrative_rule_context"]
     assert "trace_law_history" in optional_interfaces
-    assert any("deleted or moved administrative-rule article" in guardrail for guardrail in report.guardrails)
-    assert any("destination administrative-rule article" in action for action in report.forbidden_actions)
+    assert any("deleted administrative-rule article" in guardrail for guardrail in report.guardrails)
+    assert any("moved administrative-rule article marker" in action for action in report.forbidden_actions)
 
 
 def test_prompt_dry_run_requires_admin_rule_detail_for_supplementary_transition_review():

@@ -392,6 +392,19 @@ class AdministrativeRuleText:
 
 
 @dataclass(frozen=True)
+class AdministrativeRuleContext:
+    """Administrative-rule lookup context with article-status guardrails."""
+
+    rule: AdministrativeRuleText
+    requested_articles: list[AdministrativeRuleArticleText] = field(default_factory=list)
+    current_articles: list[AdministrativeRuleArticleText] = field(default_factory=list)
+    loaded_articles: list[AdministrativeRuleArticleText] = field(default_factory=list)
+    deferred: list[DeferredLookup] = field(default_factory=list)
+    gaps: list[ContextGap] = field(default_factory=list)
+    source_notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class AnnexFormIdentity:
     """Normalized law or administrative-rule annex/form identity."""
 

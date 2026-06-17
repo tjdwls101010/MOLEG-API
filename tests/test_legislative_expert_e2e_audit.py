@@ -948,23 +948,29 @@ def test_legislative_expert_e2e_audit_preserves_administrative_rule_article_stat
 
     status = by_scenario["administrative_rule_article_status_guardrail"]
 
-    assert status.status == "needs_more_source_loading"
-    assert status.public_interfaces == ["get_administrative_rule"]
+    assert status.status == "ready_for_reasoning"
+    assert status.public_interfaces == ["load_administrative_rule_context"]
     assert status.must_have["administrative_rule_loaded"] is True
     assert status.must_have["deleted_article_status_preserved"] is True
     assert status.must_have["moved_article_status_preserved"] is True
-    assert status.must_have["operational_claim_blocked"] is True
-    assert status.must_have["destination_article_followup_required"] is True
-    assert status.citations == []
+    assert status.must_have["deleted_article_not_operational_text"] is True
+    assert status.must_have["destination_article_loaded"] is True
+    assert status.must_have["current_article_is_destination"] is True
+    assert len(status.citations) == 3
     assert status.evidence["article_statuses"] == [
         {"article": "제3조", "revision_type": "삭제", "is_deleted": True, "moved_to": None},
         {"article": "제4조", "revision_type": "이동", "is_deleted": False, "moved_to": "제6조"},
     ]
+    assert status.evidence["current_article"] == "제6조"
+    assert status.evidence["loaded_articles"] == ["제3조", "제4조", "제6조"]
     assert (
         "administrative_rule_deleted_article_is_not_current_operational_criteria"
         in status.risk_flags
     )
-    assert "administrative_rule_moved_article_requires_destination_detail" in status.risk_flags
+    assert (
+        "administrative_rule_moved_article_destination_loaded_before_current_criteria"
+        in status.risk_flags
+    )
 
 
 def test_legislative_expert_e2e_audit_preserves_administrative_rule_supplementary_transition_context():

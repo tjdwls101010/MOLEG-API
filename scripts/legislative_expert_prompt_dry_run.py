@@ -772,13 +772,8 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
             planned_steps=[
                 PromptWorkflowStep(
                     "moleg-api",
-                    "get_administrative_rule",
-                    "Load selected administrative-rule articles and inspect deletion/movement status fields.",
-                ),
-                PromptWorkflowStep(
-                    "moleg-api",
-                    "get_administrative_rule",
-                    "Load the destination administrative-rule article identified by moved_to before citing current operational criteria.",
+                    "load_administrative_rule_context",
+                    "Load selected administrative-rule articles and follow moved_to to current destination articles before citing operational criteria.",
                 ),
                 PromptWorkflowStep(
                     "moleg-api",
@@ -788,12 +783,12 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
                 ),
             ],
             guardrails=[
-                "A deleted or moved administrative-rule article is source state, not current operational criteria.",
-                "Movement metadata can identify the follow-up article, but criteria require loading the destination administrative-rule article.",
+                "A deleted administrative-rule article is source state, not current operational criteria.",
+                "A moved administrative-rule article marker is source state; current criteria require load_administrative_rule_context.current_articles.",
             ],
             forbidden_actions=[
                 "Do not cite a deleted administrative-rule article as current operational criteria.",
-                "Do not describe destination administrative-rule article substance before loading that destination administrative-rule article.",
+                "Do not cite a moved administrative-rule article marker as current operational criteria.",
                 "Do not infer prior wording or movement reason before history or comparison context is loaded.",
             ],
         ),

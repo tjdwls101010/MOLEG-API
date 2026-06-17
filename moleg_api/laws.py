@@ -17,6 +17,7 @@ from .errors import (
 from .models import (
     AdministrativeRuleHit,
     AdministrativeRuleArticleText,
+    AdministrativeRuleContext,
     AdministrativeRuleIdentity,
     AdministrativeRuleText,
     Ambiguity,
@@ -1036,6 +1037,133 @@ class MolegApi:
             articles=rule_articles,
             supplementary_provisions=supplementary_provisions,
             raw=raw_rule if include_metadata else {},
+        )
+
+    def load_administrative_rule_context(
+        self,
+        identifier: AdministrativeRuleIdentity | AdministrativeRuleHit | str,
+        *,
+        articles: list[str | int] | None = None,
+        include_metadata: bool = True,
+        follow_moved: bool = True,
+    ) -> AdministrativeRuleContext:
+        """Load administrative-rule text and resolve moved/deleted articles.
+
+        Use when: the skill needs current operational criteria from a selected
+        notice, directive, established rule, or similar administrative rule and
+        should not mistake deleted/moved article markers for operative text.
+        Returns: `AdministrativeRuleContext` with requested articles,
+        current-citable articles, all loaded article rows, and any
+        gaps/deferred lookups needed before a criteria claim.
+        Raises: source and parse errors from the initial selected rule load;
+        moved-destination failures are preserved as context gaps instead.
+        Related: use `search_administrative_rules` for discovery and
+        `get_administrative_rule` when the caller only needs source text rows.
+        """
+        rule = self.get_administrative_rule(
+            identifier,
+            articles=articles,
+            include_metadata=include_metadata,
+        )
+        requested_articles = list(rule.articles)
+        loaded_articles = list(requested_articles)
+        current_articles: list[AdministrativeRuleArticleText] = []
+        deferred: list[DeferredLookup] = []
+        gaps: list[ContextGap] = []
+        source_notes: list[str] = []
+
+        for requested in requested_articles:
+            if requested.is_deleted:
+                append_deleted_administrative_rule_article_gap(requested, gaps, source_notes)
+                continue
+
+            current_article: AdministrativeRuleArticleText | None = requested
+            seen_articles = {requested.article} if requested.article else set()
+            followups_remaining = 5
+            while follow_moved and current_article and current_article.moved_to:
+                destination = current_article.moved_to
+                source_notes.append(
+                    f"{current_article.identity.name} {current_article.article} is moved to "
+                    f"{destination}; current operational criteria must come from the destination article."
+                )
+                if destination in seen_articles:
+                    gaps.append(
+                        ContextGap(
+                            kind="administrative_rule_article_movement_cycle",
+                            reason=(
+                                f"{current_article.identity.name} movement chain loops at {destination}; "
+                                "manual review is required before making a current operational-criteria claim."
+                            ),
+                            query=f"{current_article.identity.name} {destination}",
+                            recommended_interface="load_administrative_rule_context",
+                        )
+                    )
+                    current_article = None
+                    break
+                if followups_remaining <= 0:
+                    append_moved_administrative_rule_destination_lookup_gap(
+                        NoResultError("Moved administrative-rule article chain exceeded follow-up limit"),
+                        current_article.identity,
+                        destination,
+                        gaps,
+                        deferred,
+                    )
+                    current_article = None
+                    break
+                followups_remaining -= 1
+                try:
+                    destination_rule = self.get_administrative_rule(
+                        current_article.identity,
+                        articles=[destination],
+                        include_metadata=include_metadata,
+                    )
+                except MolegApiError as exc:
+                    append_moved_administrative_rule_destination_lookup_gap(
+                        exc,
+                        current_article.identity,
+                        destination,
+                        gaps,
+                        deferred,
+                    )
+                    current_article = None
+                    break
+
+                destination_article = destination_rule.articles[0]
+                loaded_articles.append(destination_article)
+                if destination_article.article:
+                    seen_articles.add(destination_article.article)
+                current_article = destination_article
+                if current_article.is_deleted:
+                    append_deleted_administrative_rule_article_gap(
+                        current_article,
+                        gaps,
+                        source_notes,
+                    )
+                    current_article = None
+                    break
+
+            if current_article and current_article.moved_to:
+                current_article = None
+
+            if requested.moved_to and not follow_moved:
+                append_moved_administrative_rule_destination_deferred(
+                    requested.identity,
+                    requested.moved_to,
+                    deferred,
+                )
+                current_article = None
+
+            if current_article is not None:
+                current_articles.append(current_article)
+
+        return AdministrativeRuleContext(
+            rule=rule,
+            requested_articles=requested_articles,
+            current_articles=current_articles,
+            loaded_articles=loaded_articles,
+            deferred=deferred,
+            gaps=gaps,
+            source_notes=source_notes,
         )
 
     def search_interpretations(
@@ -3097,6 +3225,80 @@ def append_moved_destination_deferred(
             filters=article_lookup_filters(identity, article, as_of=as_of, basis=basis),
         )
     )
+
+
+def append_deleted_administrative_rule_article_gap(
+    article: AdministrativeRuleArticleText,
+    gaps: list[ContextGap],
+    source_notes: list[str],
+) -> None:
+    gaps.append(
+        ContextGap(
+            kind="deleted_administrative_rule_article",
+            reason=(
+                f"{article.identity.name} {article.article} is marked deleted; "
+                "do not treat the deletion marker as current operational criteria."
+            ),
+            query=f"{article.identity.name} {article.article}",
+            recommended_interface="load_administrative_rule_context",
+        )
+    )
+    source_notes.append(
+        f"{article.identity.name} {article.article} is a deleted administrative-rule article "
+        "source state, not current operational criteria."
+    )
+
+
+def append_moved_administrative_rule_destination_lookup_gap(
+    exc: MolegApiError,
+    identity: AdministrativeRuleIdentity,
+    article: str,
+    gaps: list[ContextGap],
+    deferred: list[DeferredLookup],
+) -> None:
+    query = f"{identity.name} {article}"
+    append_source_failure_gap(
+        exc,
+        gaps,
+        query=query,
+        recommended_interface="load_administrative_rule_context",
+        source_label=f"Moved administrative-rule article destination lookup for {query}",
+    )
+    append_moved_administrative_rule_destination_deferred(identity, article, deferred)
+
+
+def append_moved_administrative_rule_destination_deferred(
+    identity: AdministrativeRuleIdentity,
+    article: str,
+    deferred: list[DeferredLookup],
+) -> None:
+    query = f"{identity.name} {article}"
+    deferred.append(
+        DeferredLookup(
+            interface="load_administrative_rule_context",
+            query=query,
+            reason=(
+                "Retry the moved administrative-rule article destination before making a "
+                "current operational-criteria claim."
+            ),
+            source_type="administrative_rule_article",
+            filters=administrative_rule_article_lookup_filters(identity, article),
+        )
+    )
+
+
+def administrative_rule_article_lookup_filters(
+    identity: AdministrativeRuleIdentity,
+    article: str,
+) -> dict[str, Any]:
+    filters: dict[str, Any] = {"article": article}
+    if identity.serial_id:
+        filters["serial_id"] = identity.serial_id
+    elif identity.rule_id:
+        filters["rule_id"] = identity.rule_id
+    else:
+        filters["name"] = identity.name
+    return filters
 
 
 def article_lookup_filters(

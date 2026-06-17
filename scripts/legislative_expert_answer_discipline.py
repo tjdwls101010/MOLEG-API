@@ -1412,30 +1412,26 @@ def _administrative_rule_article_status_discipline(
 ) -> AnswerDisciplineReport:
     return AnswerDisciplineReport(
         scenario="administrative_rule_article_status_answer_discipline",
-        status="must_load_more_sources",
+        status="can_answer_with_loaded_sources",
         allowed_claims=[
             "The selected administrative-rule detail was loaded and one article is a deleted administrative-rule article.",
             f"The selected administrative-rule detail marks one article as moved to {readiness.evidence['moved_to']}.",
-            "Deletion and movement markers may be disclosed as source state and used to choose follow-up loading.",
+            f"The loaded destination administrative-rule article is {readiness.evidence['current_article']}.",
+            "Current operational criteria may be discussed only from the loaded destination administrative-rule article text.",
         ],
         forbidden_claims=[
             "The deleted administrative-rule article states current operational criteria.",
             "The moved administrative-rule article marker states current operational criteria.",
-            "The destination administrative-rule article substance is known before the destination administrative-rule article is loaded.",
             "The prior wording or movement reason is known before history or comparison context is loaded.",
         ],
         required_disclosures=[
             "Disclose administrative-rule article status before discussing current operational criteria.",
-            "Disclose that the moved article marker is not loaded destination article text.",
+            "Disclose that current operational criteria are based on the loaded destination administrative-rule article.",
         ],
         required_followups=[
             step.interface
             for step in prompt.planned_steps
-            if step.source == "moleg-api"
-            and (
-                step.purpose.startswith("Load the destination administrative-rule article")
-                or step.interface == "trace_law_history"
-            )
+            if step.source == "moleg-api" and not step.required_before_answer
         ],
         citations=readiness.citations,
         evidence={
@@ -1447,6 +1443,8 @@ def _administrative_rule_article_status_discipline(
             "deleted_article": readiness.evidence["deleted_article"],
             "moved_article": readiness.evidence["moved_article"],
             "moved_to": readiness.evidence["moved_to"],
+            "current_article": readiness.evidence["current_article"],
+            "loaded_articles": readiness.evidence["loaded_articles"],
             "risk_flags": readiness.risk_flags,
         },
     )

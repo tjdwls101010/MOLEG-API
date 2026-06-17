@@ -836,16 +836,16 @@ def test_administrative_rule_article_status_is_not_promoted_to_operational_crite
         for report in run_legislative_expert_answer_discipline()
     }["administrative_rule_article_status_answer_discipline"]
 
-    assert readiness.status == "needs_more_source_loading"
-    assert readiness.citations == []
+    assert readiness.status == "ready_for_reasoning"
+    assert len(readiness.citations) == 3
     assert readiness.evidence["article_statuses"][0]["is_deleted"] is True
     assert readiness.evidence["article_statuses"][1]["moved_to"] == "제6조"
+    assert readiness.evidence["current_article"] == "제6조"
     assert (
         "administrative_rule_deleted_article_is_not_current_operational_criteria"
         in readiness.risk_flags
     )
-    assert discipline.status == "must_load_more_sources"
-    assert "get_administrative_rule" in discipline.required_followups
+    assert discipline.status == "can_answer_with_loaded_sources"
     assert any("current operational criteria" in claim for claim in discipline.forbidden_claims)
     assert any("administrative-rule article status" in disclosure for disclosure in discipline.required_disclosures)
 
