@@ -6969,6 +6969,73 @@ def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     assert source.calls[1] == ("service", "eflaw", {"MST": "260001"})
 
 
+def test_load_legal_context_bundle_promulgated_bill_history_deferred_uses_mst_when_law_id_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "260001",
+                            "공포번호": "20000",
+                            "공포일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령명_한글": "데이터기본법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20260101",
+                    },
+                    "조문": {"조문단위": []},
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령명": "데이터기본법",
+                            "법령일련번호": "270001",
+                        },
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        promulgation_bridge={
+            "prom_law_nm": "데이터기본법",
+            "prom_no": "20000",
+            "promulgation_dt": "20250101",
+        },
+        mode="promulgated_bill",
+    )
+
+    history_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface in {"trace_law_history", "compare_law_versions"}
+    ]
+    assert [(item.interface, item.filters) for item in history_deferred] == [
+        ("trace_law_history", {"mst": "270001"}),
+        ("compare_law_versions", {"mst": "270001"}),
+    ]
+
+
 def test_load_legal_context_bundle_preserves_promulgation_bridge_source_access_failure():
     class PromulgationBridgeRateLimitedSource(FakeSource):
         def search(self, target, params):

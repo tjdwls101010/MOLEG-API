@@ -3086,7 +3086,7 @@ class MolegApi:
                         query=primary_identity.name,
                         reason="Trace amendment history once the relevant article or date range is known.",
                         source_type="law_history",
-                        filters={"law_id": primary_identity.law_id},
+                        filters=law_identity_followup_filters(primary_identity),
                     )
                 )
                 deferred.append(
@@ -3095,7 +3095,7 @@ class MolegApi:
                         query=primary_identity.name,
                         reason="Compare before/after text when the bill's affected articles are identified.",
                         source_type="law_diff",
-                        filters={"law_id": primary_identity.law_id},
+                        filters=law_identity_followup_filters(primary_identity),
                     )
                 )
 
@@ -5016,7 +5016,7 @@ def build_follow_up_searches(
                 query=identity.name,
                 reason="Load the current effective text for a candidate law.",
                 source_type="law",
-                filters=law_identity_followup_filters(identity),
+                filters=law_identity_followup_filters(identity, include_basis=True),
             )
         )
     for term in term_candidates[:5]:
@@ -5056,8 +5056,12 @@ def build_follow_up_searches(
     return searches
 
 
-def law_identity_followup_filters(identity: LawIdentity) -> dict[str, str]:
-    filters = {"basis": identity.basis}
+def law_identity_followup_filters(
+    identity: LawIdentity,
+    *,
+    include_basis: bool = False,
+) -> dict[str, str]:
+    filters = {"basis": identity.basis} if include_basis else {}
     if identity.law_id:
         filters["law_id"] = identity.law_id
     elif identity.mst:
