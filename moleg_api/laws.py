@@ -5245,12 +5245,14 @@ def authority_references_current_targets(
     }
     target_refs = set(target_effective_dates)
     authority_date = compact_date(authority_date_value)
-    matched_targets = [
+    matched_targets = {
         (reference.law_name, reference.article)
         for reference in references
         if (reference.law_name, reference.article) in target_refs
-    ]
+    }
     if not matched_targets:
+        return False
+    if matched_targets != target_refs:
         return False
     if not is_compact_ymd(authority_date):
         if is_compact_ymd(reference_date):
