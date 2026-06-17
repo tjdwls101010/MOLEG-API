@@ -32,6 +32,7 @@ def test_legislative_expert_e2e_audit_covers_answer_readiness_scenarios():
         "context_bundle_moved_article_destination_authority_search",
         "context_bundle_moved_article_destination_candidate_search",
         "context_bundle_delegation_lookup_failure_guardrail",
+        "context_bundle_empty_delegation_graph_guardrail",
         "case_search_candidate_detail_guardrail",
         "empty_case_search_absence_guardrail",
         "constitutional_search_candidate_detail_guardrail",
@@ -663,6 +664,34 @@ def test_legislative_expert_e2e_audit_marks_delegation_lookup_failure():
     assert (
         "delegation_lookup_failure_is_not_no_delegated_rule"
         in delegation_failure.risk_flags
+    )
+
+
+def test_legislative_expert_e2e_audit_marks_context_bundle_empty_delegation_graph():
+    by_scenario = {
+        report.scenario: report
+        for report in run_legislative_expert_e2e_audit()
+    }
+
+    empty_delegation = by_scenario["context_bundle_empty_delegation_graph_guardrail"]
+
+    assert empty_delegation.status == "needs_more_source_loading"
+    assert empty_delegation.public_interfaces == ["load_legal_context_bundle"]
+    assert empty_delegation.must_have["current_law_loaded"] is True
+    assert empty_delegation.must_have["empty_delegation_graph_preserved"] is True
+    assert empty_delegation.must_have["empty_delegation_gap_preserved"] is True
+    assert empty_delegation.must_have["law_structure_followup_preserved"] is True
+    assert empty_delegation.must_have["no_delegation_absence_claim"] is True
+    assert [citation.source_type for citation in empty_delegation.citations] == ["law"]
+    assert "empty_delegation_graph" in empty_delegation.evidence["gap_kinds"]
+    assert empty_delegation.evidence["loaded_delegation_rule_counts"] == [0]
+    assert empty_delegation.evidence["law_structure_deferred_filters"] == [
+        {"law_id": "001747"}
+    ]
+    assert "lsDelegated" in empty_delegation.evidence["service_call_targets"]
+    assert (
+        "empty_context_bundle_delegation_graph_is_not_absence_of_delegated_rules"
+        in empty_delegation.risk_flags
     )
 
 

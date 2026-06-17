@@ -122,6 +122,7 @@ def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
             _audit_context_bundle_moved_article_destination_authority_search(),
             _audit_context_bundle_moved_article_destination_candidate_search(),
             _audit_context_bundle_delegation_lookup_failure_guardrail(),
+            _audit_context_bundle_empty_delegation_graph_guardrail(),
             _audit_case_search_candidate_detail_guardrail(),
             _audit_empty_case_search_absence_guardrail(),
             _audit_constitutional_search_candidate_detail_guardrail(),
@@ -2950,17 +2951,12 @@ def _audit_context_bundle_authority_article_mismatch_guardrail() -> LegislativeE
                     }
                 }
             },
-            {
-                "lsDelegated": {
-                    "법령": {
-                        "법령정보": {
-                            "법령ID": "009999",
-                            "법령명": target_law_name,
-                        },
-                        "위임조문정보": [],
-                    }
-                }
-            },
+            delegation_payload(
+                target_law_name,
+                "개인정보 보호법 시행령",
+                law_id="009999",
+                article="15",
+            ),
             {
                 "expc": {
                     "법령해석례일련번호": "100",
@@ -3110,17 +3106,12 @@ def _audit_context_bundle_authority_article_unverified_guardrail() -> Legislativ
                     }
                 }
             },
-            {
-                "lsDelegated": {
-                    "법령": {
-                        "법령정보": {
-                            "법령ID": "009999",
-                            "법령명": target_law_name,
-                        },
-                        "위임조문정보": [],
-                    }
-                }
-            },
+            delegation_payload(
+                target_law_name,
+                "개인정보 보호법 시행령",
+                law_id="009999",
+                article="15",
+            ),
             {
                 "expc": {
                     "법령해석례일련번호": "101",
@@ -3259,17 +3250,12 @@ def _audit_context_bundle_authority_article_partial_match_guardrail() -> Legisla
                     }
                 }
             },
-            {
-                "lsDelegated": {
-                    "법령": {
-                        "법령정보": {
-                            "법령ID": "009999",
-                            "법령명": target_law_name,
-                        },
-                        "위임조문정보": [],
-                    }
-                }
-            },
+            delegation_payload(
+                target_law_name,
+                "개인정보 보호법 시행령",
+                law_id="009999",
+                article="17",
+            ),
             {
                 "expc": {
                     "법령해석례일련번호": "102",
@@ -3430,17 +3416,12 @@ def _audit_context_bundle_authority_temporal_mismatch_guardrail() -> Legislative
                     }
                 }
             },
-            {
-                "lsDelegated": {
-                    "법령": {
-                        "법령정보": {
-                            "법령ID": "009999",
-                            "법령명": target_law_name,
-                        },
-                        "위임조문정보": [],
-                    }
-                }
-            },
+            delegation_payload(
+                target_law_name,
+                "개인정보 보호법 시행령",
+                law_id="009999",
+                article="15",
+            ),
             {
                 "expc": {
                     "법령해석례일련번호": "103",
@@ -3879,6 +3860,96 @@ def _audit_institutional_system_law_structure_not_loaded_guardrail() -> Legislat
             "loaded_law_structures": len(bundle.loaded.law_structures),
             "loaded_delegations": len(bundle.loaded.delegations),
             "service_call_targets": [target for kind, target, _ in source.calls if kind == "service"],
+        },
+    )
+
+
+def _audit_context_bundle_empty_delegation_graph_guardrail() -> LegislativeExpertScenarioReport:
+    law_name = "자동차관리법"
+    source = ScenarioSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            law_text_payload(law_name, "001747", "270001", article="제26조", title="자동차의 강제처리"),
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "001747",
+                            "법령명": law_name,
+                            "법령일련번호": "270001",
+                        },
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        f"{law_name} 하위 기준",
+        law_identifier=LawIdentity(law_id="001747", name=law_name, basis="effective"),
+        mode="statute_review",
+    )
+    empty_delegation_gaps = [
+        gap
+        for gap in bundle.gaps
+        if gap.kind == "empty_delegation_graph"
+    ]
+    law_structure_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_law_structure" and item.source_type == "law_structure"
+    ]
+    service_call_targets = [target for kind, target, _ in source.calls if kind == "service"]
+
+    return LegislativeExpertScenarioReport(
+        scenario="context_bundle_empty_delegation_graph_guardrail",
+        question="context bundle이 빈 위임조회 결과를 하위규정 없음으로 승격하지 않는가?",
+        status="needs_more_source_loading",
+        public_interfaces=["load_legal_context_bundle"],
+        must_have={
+            "current_law_loaded": bool(bundle.loaded.laws),
+            "empty_delegation_graph_preserved": (
+                len(bundle.loaded.delegations) == 1
+                and bundle.loaded.delegations[0].rules == []
+            ),
+            "empty_delegation_gap_preserved": [
+                (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
+            ]
+            == [(law_name, "get_law_structure")],
+            "law_structure_followup_preserved": [
+                (item.query, item.filters) for item in law_structure_deferred
+            ]
+            == [(law_name, {"law_id": "001747"})],
+            "no_delegation_absence_claim": True,
+        },
+        citations=[
+            SourceCitation("law", "eflaw", law_name, authority="current statute"),
+        ],
+        risk_flags=[
+            "empty_context_bundle_delegation_graph_is_not_absence_of_delegated_rules",
+            "zero_bundle_delegation_rules_require_structure_or_alternate_source_loading",
+        ],
+        next_actions=[
+            "Disclose that the context bundle's delegation lookup returned zero rows for the scoped statute.",
+            "Load law structure, alternate article scopes, administrative-rule candidates, or annex/form paths before any no-delegated-rule claim.",
+        ],
+        evidence={
+            "gap_kinds": [gap.kind for gap in bundle.gaps],
+            "loaded_delegation_rule_counts": [
+                len(graph.rules) for graph in bundle.loaded.delegations
+            ],
+            "law_structure_deferred_filters": [
+                item.filters for item in law_structure_deferred
+            ],
+            "service_call_targets": service_call_targets,
         },
     )
 

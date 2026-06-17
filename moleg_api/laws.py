@@ -2993,7 +2993,12 @@ class MolegApi:
                 graph = self.find_delegated_rules(primary_identity)
                 loaded_delegations.append(limit_delegation_graph(graph, limits["delegations"]))
             except NoResultError:
-                pass
+                loaded_delegations.append(DelegationGraph(identity=primary_identity, rules=[], raw={}))
+                append_empty_delegation_lookup_gap(
+                    primary_identity,
+                    gaps,
+                    deferred,
+                )
             except MolegApiError as exc:
                 source_notes.append(f"Delegation lookup skipped: {exc}")
                 append_delegation_lookup_failure_gap(
@@ -5676,6 +5681,44 @@ def append_delegation_lookup_failure_gap(
             query=identity.name,
             reason="Retry delegation lookup before assuming lower-rule context is unavailable.",
             source_type="delegation",
+            filters=filters,
+        )
+    )
+
+
+def append_empty_delegation_lookup_gap(
+    identity: LawIdentity,
+    gaps: list[ContextGap],
+    deferred: list[DeferredLookup],
+) -> None:
+    gaps.append(
+        ContextGap(
+            kind="empty_delegation_graph",
+            reason=(
+                "find_delegated_rules returned no delegated rows for this scoped lookup. "
+                "Do not treat one empty delegation graph as proof that no lower-rule, "
+                "subordinate source, notice, annex, or delegated criteria exists."
+            ),
+            query=identity.name,
+            recommended_interface="get_law_structure",
+        )
+    )
+    filters: dict[str, Any] = {}
+    if identity.law_id:
+        filters["law_id"] = identity.law_id
+    elif identity.mst:
+        filters["mst"] = identity.mst
+    else:
+        filters["law_name"] = identity.name
+    deferred.append(
+        DeferredLookup(
+            interface="get_law_structure",
+            query=identity.name,
+            reason=(
+                "Load law hierarchy or alternate lower-rule paths before making "
+                "any no-delegated-rule or no-delegated-criteria claim."
+            ),
+            source_type="law_structure",
             filters=filters,
         )
     )

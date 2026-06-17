@@ -6620,6 +6620,79 @@ def test_load_legal_context_bundle_preserves_delegation_source_access_failures()
     ]
 
 
+def test_load_legal_context_bundle_preserves_empty_delegation_graph_as_scoped_gap():
+    identity = LawIdentity(law_id="001747", name="자동차관리법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "법령일련번호": "270001",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "26",
+                                "조문제목": "자동차의 강제처리",
+                                "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {
+                            "법령ID": "001747",
+                            "법령명": "자동차관리법",
+                            "법령일련번호": "270001",
+                        },
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 하위 기준",
+        law_identifier=identity,
+        mode="statute_review",
+    )
+
+    assert bundle.loaded.laws[0].identity.name == "자동차관리법"
+    assert len(bundle.loaded.delegations) == 1
+    assert bundle.loaded.delegations[0].identity.name == "자동차관리법"
+    assert bundle.loaded.delegations[0].rules == []
+    empty_delegation_gaps = [
+        gap for gap in bundle.gaps if gap.kind == "empty_delegation_graph"
+    ]
+    assert [
+        (gap.query, gap.recommended_interface) for gap in empty_delegation_gaps
+    ] == [("자동차관리법", "get_law_structure")]
+    assert "not treat one empty delegation graph as proof" in empty_delegation_gaps[0].reason
+    law_structure_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "get_law_structure" and item.source_type == "law_structure"
+    ]
+    assert [(item.query, item.filters) for item in law_structure_deferred] == [
+        ("자동차관리법", {"law_id": "001747"})
+    ]
+
+
 def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     source = FakeSource(
         search_payloads=[
