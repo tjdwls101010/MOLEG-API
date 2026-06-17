@@ -112,6 +112,20 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
         filters.get("basis") == "effective"
         for filters in query_expansion_readiness.evidence["search_laws_followup_filters"]
     )
+    assert query_expansion_readiness.evidence["authority_followup_filters"] == [
+        {
+            "interface": "search_interpretations",
+            "filters": {"source": "moleg", "search_body": False},
+        },
+        {
+            "interface": "search_cases",
+            "filters": {"court": "all", "search_body": False},
+        },
+        {
+            "interface": "search_constitutional_decisions",
+            "filters": {"search_body": False},
+        },
+    ]
     assert query_expansion_readiness.citations == []
     assert "query_expansion_is_not_final_authority" in query_expansion_readiness.risk_flags
     assert any("planning context" in guardrail for guardrail in query_expansion_prompt.guardrails)

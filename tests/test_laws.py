@@ -3238,6 +3238,20 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
         "sources": ["law", "administrative_rule"],
         "search_scope": "source",
     }
+    interpretation_search = next(
+        search for search in expansion.follow_up_searches if search.interface == "search_interpretations"
+    )
+    case_search = next(
+        search for search in expansion.follow_up_searches if search.interface == "search_cases"
+    )
+    constitutional_search = next(
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "search_constitutional_decisions"
+    )
+    assert interpretation_search.filters == {"source": "moleg", "search_body": False}
+    assert case_search.filters == {"court": "all", "search_body": False}
+    assert constitutional_search.filters == {"search_body": False}
     assert "licbyl" not in str(annex_search.filters)
     assert "admbyl" not in str(annex_search.filters)
     assert any(search.interface == "websearch" for search in expansion.follow_up_searches)

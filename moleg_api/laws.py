@@ -4988,20 +4988,23 @@ def build_follow_up_searches(
         FollowUpSearch(
             interface="search_interpretations",
             query=query,
-            reason="Check MOLEG and ministry interpretation constraints.",
+            reason="Check MOLEG official interpretation constraints.",
             source_type="interpretation",
+            filters={"source": "moleg", "search_body": False},
         ),
         FollowUpSearch(
             interface="search_cases",
             query=query,
             reason="Check judicial interpretation and limits.",
             source_type="case",
+            filters={"court": "all", "search_body": False},
         ),
         FollowUpSearch(
             interface="search_constitutional_decisions",
             query=query,
             reason="Check constitutional-risk context.",
             source_type="constitutional",
+            filters={"search_body": False},
         ),
     ]
 

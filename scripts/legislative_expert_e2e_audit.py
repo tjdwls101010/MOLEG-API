@@ -941,6 +941,12 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
     law_search_followups = [
         search for search in expansion.follow_up_searches if search.interface == "search_laws"
     ]
+    authority_followups = [
+        search
+        for search in expansion.follow_up_searches
+        if search.interface
+        in {"search_interpretations", "search_cases", "search_constitutional_decisions"}
+    ]
 
     return LegislativeExpertScenarioReport(
         scenario="query_expansion_candidate_authority_guardrail",
@@ -958,6 +964,13 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
                 search.filters.get("basis") == "effective"
                 for search in law_search_followups
             ),
+            "authority_search_filters_preserved": [
+                (search.interface, search.filters) for search in authority_followups
+            ] == [
+                ("search_interpretations", {"source": "moleg", "search_body": False}),
+                ("search_cases", {"court": "all", "search_body": False}),
+                ("search_constitutional_decisions", {"search_body": False}),
+            ],
             "no_citable_source_loaded": True,
         },
         citations=[],
@@ -985,6 +998,10 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
             "follow_up_interfaces": follow_up_interfaces,
             "search_laws_followup_filters": [
                 search.filters for search in law_search_followups
+            ],
+            "authority_followup_filters": [
+                {"interface": search.interface, "filters": search.filters}
+                for search in authority_followups
             ],
             "citations_loaded": 0,
             "call_targets": [target for _, target, _ in source.calls],
