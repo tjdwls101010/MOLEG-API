@@ -3230,6 +3230,12 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
         search for search in expansion.follow_up_searches if search.interface == "search_laws"
     ]
     assert all(search.filters.get("basis") == "effective" for search in law_searches)
+    administrative_search = next(
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "search_administrative_rules"
+    )
+    assert administrative_search.filters == {"include_history": False}
     annex_search = next(
         search for search in expansion.follow_up_searches if search.interface == "search_annex_forms"
     )

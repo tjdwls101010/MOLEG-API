@@ -941,6 +941,11 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
     law_search_followups = [
         search for search in expansion.follow_up_searches if search.interface == "search_laws"
     ]
+    administrative_followups = [
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "search_administrative_rules"
+    ]
     authority_followups = [
         search
         for search in expansion.follow_up_searches
@@ -963,6 +968,10 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
             "effective_search_filters_preserved": all(
                 search.filters.get("basis") == "effective"
                 for search in law_search_followups
+            ),
+            "administrative_search_filters_preserved": all(
+                search.filters.get("include_history") is False
+                for search in administrative_followups
             ),
             "authority_search_filters_preserved": [
                 (search.interface, search.filters) for search in authority_followups
@@ -998,6 +1007,9 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
             "follow_up_interfaces": follow_up_interfaces,
             "search_laws_followup_filters": [
                 search.filters for search in law_search_followups
+            ],
+            "administrative_followup_filters": [
+                search.filters for search in administrative_followups
             ],
             "authority_followup_filters": [
                 {"interface": search.interface, "filters": search.filters}

@@ -112,6 +112,10 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
         filters.get("basis") == "effective"
         for filters in query_expansion_readiness.evidence["search_laws_followup_filters"]
     )
+    assert all(
+        filters.get("include_history") is False
+        for filters in query_expansion_readiness.evidence["administrative_followup_filters"]
+    )
     assert query_expansion_readiness.evidence["authority_followup_filters"] == [
         {
             "interface": "search_interpretations",

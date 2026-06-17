@@ -4977,6 +4977,7 @@ def build_follow_up_searches(
             query=query,
             reason="Check practical execution criteria in notices, directives, and established rules.",
             source_type="administrative_rule",
+            filters={"include_history": False},
         ),
         FollowUpSearch(
             interface="search_annex_forms",
@@ -5032,6 +5033,8 @@ def build_follow_up_searches(
         filters = {"article": law.article} if law.article else {}
         if law.source_type == "law":
             filters = {"basis": "effective", **filters}
+        elif law.source_type == "administrative_rule":
+            filters = {"include_history": False, **filters}
         searches.append(
             FollowUpSearch(
                 interface="search_laws" if law.source_type == "law" else "search_administrative_rules",
