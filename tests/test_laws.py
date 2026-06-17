@@ -5092,6 +5092,88 @@ def test_load_legal_context_bundle_does_not_auto_load_ambiguous_question_law_can
     )
 
 
+def test_load_legal_context_bundle_keeps_authority_detail_deferred_when_question_law_candidates_are_ambiguous():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "LawSearch": {
+                    "law": [
+                        {
+                            "법령ID": "111111",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "270001",
+                        },
+                        {
+                            "법령ID": "222222",
+                            "법령명한글": "데이터기본법",
+                            "법령일련번호": "270002",
+                        },
+                    ]
+                }
+            },
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {"aiRltLs": []},
+            {"AdmRulSearch": {"admrul": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "데이터기본법 의미 해석"}
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "200", "사건명": "데이터기본법 의미 사건"}
+                    ]
+                }
+            },
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+            {
+                "expc": {
+                    "법령해석례일련번호": "100",
+                    "안건명": "데이터기본법 의미 해석",
+                    "회답": "모호한 법령명 후보 중 하나에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "200",
+                    "사건명": "데이터기본법 의미 사건",
+                    "판례내용": "모호한 법령명 후보 중 하나에 관한 판례",
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle("데이터기본법 의미", budget="standard")
+
+    assert bundle.ambiguities[0].kind == "statute_identity"
+    assert [identity.law_id for identity in bundle.candidates.laws] == ["111111", "222222"]
+    assert [candidate.identity.interpretation_id for candidate in bundle.candidates.interpretations] == ["100"]
+    assert [candidate.identity.decision_id for candidate in bundle.candidates.cases] == ["200"]
+    assert bundle.loaded.interpretations == []
+    assert bundle.loaded.cases == []
+    assert any(
+        item.interface == "get_interpretation" and item.filters.get("id") == "100"
+        for item in bundle.deferred
+    )
+    assert any(
+        item.interface == "get_case" and item.filters.get("id") == "200"
+        for item in bundle.deferred
+    )
+    assert all(call[0] != "service" or call[1] not in {"expc", "prec", "detc"} for call in source.calls)
+
+
 def test_load_legal_context_bundle_preserves_query_expansion_source_access_failure():
     class QueryExpansionRateLimitedSource(FakeSource):
         def search(self, target, params):

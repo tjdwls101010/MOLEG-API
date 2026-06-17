@@ -971,7 +971,8 @@ def _audit_query_expansion_candidate_authority_guardrail() -> LegislativeExpertS
 
 
 def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> LegislativeExpertScenarioReport:
-    query = "데이터기본법"
+    law_name = "데이터기본법"
+    query = "데이터기본법 의미"
     source = ScenarioSource(
         search_payloads=[
             {
@@ -979,12 +980,12 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
                     "law": [
                         {
                             "법령ID": "111111",
-                            "법령명한글": query,
+                            "법령명한글": law_name,
                             "법령일련번호": "270001",
                         },
                         {
                             "법령ID": "222222",
-                            "법령명한글": query,
+                            "법령명한글": law_name,
                             "법령일련번호": "270002",
                         },
                     ]
@@ -995,8 +996,20 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
             {"aiSearch": []},
             {"aiRltLs": []},
             {"AdmRulSearch": {"admrul": []}},
-            {"ExpcSearch": {"expc": []}},
-            {"PrecSearch": {"prec": []}},
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {"법령해석례일련번호": "100", "안건명": "데이터기본법 의미 해석"}
+                    ]
+                }
+            },
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {"판례일련번호": "200", "사건명": "데이터기본법 의미 사건"}
+                    ]
+                }
+            },
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             {"admbyl": []},
@@ -1009,13 +1022,27 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
                 "eflaw": {
                     "기본정보": {
                         "법령ID": "111111",
-                        "법령명_한글": query,
+                        "법령명_한글": law_name,
                         "법령일련번호": "270001",
                     },
                     "조문": {"조문단위": []},
                 }
             },
             {"lsDelegated": {"법령": {"법령정보": {"법령ID": "111111"}, "위임조문정보": []}}},
+            {
+                "expc": {
+                    "법령해석례일련번호": "100",
+                    "안건명": "데이터기본법 의미 해석",
+                    "회답": "모호한 법령명 후보 중 하나에 관한 회답",
+                }
+            },
+            {
+                "prec": {
+                    "판례정보일련번호": "200",
+                    "사건명": "데이터기본법 의미 사건",
+                    "판례내용": "모호한 법령명 후보 중 하나에 관한 판례",
+                }
+            },
         ],
     )
 
@@ -1023,10 +1050,15 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
     gap_kinds = [gap.kind for gap in bundle.gaps]
     deferred_interfaces = [item.interface for item in bundle.deferred]
     service_call_targets = [target for call_type, target, _ in source.calls if call_type == "service"]
+    loaded_authority_count = (
+        len(bundle.loaded.interpretations)
+        + len(bundle.loaded.cases)
+        + len(bundle.loaded.constitutional_decisions)
+    )
 
     return LegislativeExpertScenarioReport(
         scenario="context_bundle_ambiguous_question_law_candidate_guardrail",
-        question="question bundle이 같은 법령명 후보가 여러 개인 경우 첫 후보 본문을 자동 로드하지 않는가?",
+        question="question bundle이 같은 법령명 후보가 여러 개인 경우 첫 후보 본문이나 권위자료 detail을 자동 로드하지 않는가?",
         status="blocked_for_manual_review",
         public_interfaces=["load_legal_context_bundle"],
         must_have={
@@ -1039,11 +1071,24 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
             "no_statute_detail_auto_loaded": not any(
                 target in {"eflaw", "lsDelegated"} for target in service_call_targets
             ),
+            "authority_candidates_preserved": [
+                candidate.identity.interpretation_id
+                for candidate in bundle.candidates.interpretations
+            ]
+            == ["100"]
+            and [candidate.identity.decision_id for candidate in bundle.candidates.cases]
+            == ["200"],
+            "no_authority_detail_auto_loaded": loaded_authority_count == 0
+            and not any(target in {"expc", "prec", "detc"} for target in service_call_targets),
+            "authority_detail_followups_preserved": {"get_interpretation", "get_case"}.issubset(
+                set(deferred_interfaces)
+            ),
         },
         citations=[],
         risk_flags=[
             "ambiguous_question_law_candidates_must_not_be_silently_selected",
             "question_bundle_requires_selected_law_identity_before_current_law_claim",
+            "ambiguous_question_law_candidates_block_authority_detail_eager_load",
         ],
         next_actions=[
             "Resolve the intended LawIdentity with search_laws() or call statute_review with a selected identity before current-law reasoning.",
@@ -1054,6 +1099,16 @@ def _audit_context_bundle_ambiguous_question_law_candidate_guardrail() -> Legisl
             "candidate_law_ids": [identity.law_id for identity in bundle.candidates.laws],
             "candidate_names": [identity.name for identity in bundle.candidates.laws],
             "loaded_laws": len(bundle.loaded.laws),
+            "authority_candidate_ids": {
+                "interpretations": [
+                    candidate.identity.interpretation_id for candidate in bundle.candidates.interpretations
+                ],
+                "cases": [candidate.identity.decision_id for candidate in bundle.candidates.cases],
+                "constitutional_decisions": [
+                    candidate.identity.decision_id for candidate in bundle.candidates.constitutional_decisions
+                ],
+            },
+            "loaded_authority_count": loaded_authority_count,
             "gap_kinds": gap_kinds,
             "deferred_interfaces": deferred_interfaces,
             "service_call_targets": service_call_targets,

@@ -3097,6 +3097,11 @@ class MolegApi:
             ][:annex_form_limit]
 
         eager_detail_limits = bundle_eager_detail_limits(search_query, mode=mode, budget=budget)
+        if any(item.kind == "statute_identity" for item in ambiguities):
+            eager_detail_limits = {key: 0 for key in eager_detail_limits}
+            source_notes.append(
+                "Eager authority detail loading skipped until statute identity ambiguity is resolved."
+            )
         authority_ranking_query = " ".join(article_target_queries) if search_query else search_query
         eager_text_budget = BUNDLE_EAGER_TEXT_CHAR_LIMITS[budget]
         eager_text_used = 0

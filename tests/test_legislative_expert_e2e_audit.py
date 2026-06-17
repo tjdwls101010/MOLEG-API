@@ -101,11 +101,25 @@ def test_legislative_expert_e2e_audit_marks_blocking_guardrails():
     assert ambiguous_question.status == "blocked_for_manual_review"
     assert ambiguous_question.evidence["candidate_law_ids"] == ["111111", "222222"]
     assert ambiguous_question.evidence["loaded_laws"] == 0
+    assert ambiguous_question.evidence["authority_candidate_ids"] == {
+        "interpretations": ["100"],
+        "cases": ["200"],
+        "constitutional_decisions": [],
+    }
+    assert ambiguous_question.evidence["loaded_authority_count"] == 0
     assert "manual_review_required" in ambiguous_question.evidence["gap_kinds"]
     assert "search_laws" in ambiguous_question.evidence["deferred_interfaces"]
+    assert "get_interpretation" in ambiguous_question.evidence["deferred_interfaces"]
+    assert "get_case" in ambiguous_question.evidence["deferred_interfaces"]
     assert "eflaw" not in ambiguous_question.evidence["service_call_targets"]
+    assert "expc" not in ambiguous_question.evidence["service_call_targets"]
+    assert "prec" not in ambiguous_question.evidence["service_call_targets"]
     assert (
         "ambiguous_question_law_candidates_must_not_be_silently_selected"
+        in ambiguous_question.risk_flags
+    )
+    assert (
+        "ambiguous_question_law_candidates_block_authority_detail_eager_load"
         in ambiguous_question.risk_flags
     )
 

@@ -509,11 +509,20 @@ def test_context_bundle_ambiguous_question_candidates_are_not_promoted_to_law_te
     assert readiness.status == "blocked_for_manual_review"
     assert readiness.citations == []
     assert readiness.evidence["loaded_laws"] == 0
+    assert readiness.evidence["loaded_authority_count"] == 0
     assert "manual_review_required" in readiness.evidence["gap_kinds"]
     assert "search_laws" in readiness.evidence["deferred_interfaces"]
+    assert "get_interpretation" in readiness.evidence["deferred_interfaces"]
+    assert "get_case" in readiness.evidence["deferred_interfaces"]
     assert "eflaw" not in readiness.evidence["service_call_targets"]
+    assert "expc" not in readiness.evidence["service_call_targets"]
+    assert "prec" not in readiness.evidence["service_call_targets"]
     assert (
         "ambiguous_question_law_candidates_must_not_be_silently_selected"
+        in readiness.risk_flags
+    )
+    assert (
+        "ambiguous_question_law_candidates_block_authority_detail_eager_load"
         in readiness.risk_flags
     )
 
