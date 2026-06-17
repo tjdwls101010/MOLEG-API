@@ -6016,6 +6016,71 @@ def test_load_legal_context_bundle_preserves_source_access_failures_as_gaps():
     assert any("Administrative-rule search skipped" in note for note in bundle.source_notes)
 
 
+def test_load_legal_context_bundle_preserves_annex_search_retry_filters():
+    class AnnexSearchRateLimitedSource(FakeSource):
+        def search(self, target, params):
+            self.calls.append(("search", target, params))
+            if target in {"licbyl", "admbyl"}:
+                raise RateLimitError(f"law.go.kr rate limited target {target} after 3 attempt(s)")
+            return self.search_payloads.pop(0)
+
+    source = AnnexSearchRateLimitedSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+        ],
+        service_payloads=[
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "26",
+                                "조문제목": "자동차의 강제처리",
+                                "조문내용": "시장ㆍ군수ㆍ구청장은 무단방치 자동차를 처리할 수 있다.",
+                            }
+                        ]
+                    },
+                }
+            },
+            {
+                "lsDelegated": {
+                    "법령": {
+                        "법령정보": {"법령ID": "001747", "법령명": "자동차관리법"},
+                        "위임조문정보": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    bundle = MolegApi(source).load_legal_context_bundle(
+        "자동차관리법 별표 기준",
+        law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
+        mode="statute_review",
+    )
+
+    annex_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_annex_forms" and item.source_type == "annex_form"
+    ]
+    assert [(item.query, item.filters) for item in annex_deferred] == [
+        ("자동차관리법 별표 기준", {"source": "law", "search_scope": "source"}),
+        (
+            "자동차관리법 별표 기준",
+            {"source": "administrative_rule", "search_scope": "source"},
+        ),
+    ]
+
+
 def test_load_legal_context_bundle_preserves_requested_article_load_failures():
     source = FakeSource(
         search_payloads=[

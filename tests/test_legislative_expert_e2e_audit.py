@@ -488,9 +488,21 @@ def test_legislative_expert_e2e_audit_treats_source_access_failure_as_not_legal_
     assert failure.evidence["hit_count"] is None
     assert failure.evidence["source_calls"] == [["search", "eflaw", {"query": "자동차관리법", "display": 5}]]
     assert "source_access_failure" in failure.evidence["bundle_gap_kinds"]
-    assert failure.evidence["bundle_gap_interfaces"] == ["search_administrative_rules"]
-    assert failure.evidence["bundle_deferred_interfaces"] == ["search_administrative_rules"]
-    assert failure.evidence["bundle_deferred_filters"] == [{}]
+    assert failure.evidence["bundle_gap_interfaces"] == [
+        "search_administrative_rules",
+        "search_annex_forms",
+        "search_annex_forms",
+    ]
+    assert failure.evidence["bundle_deferred_interfaces"] == [
+        "search_administrative_rules",
+        "search_annex_forms",
+        "search_annex_forms",
+    ]
+    assert failure.evidence["bundle_deferred_filters"] == [
+        {},
+        {"source": "law", "search_scope": "source"},
+        {"source": "administrative_rule", "search_scope": "source"},
+    ]
     assert ["search", "admrul", {"query": "자동차관리법", "display": 5, "nw": 1}] in failure.evidence[
         "bundle_source_calls"
     ]

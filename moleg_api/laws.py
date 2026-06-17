@@ -2360,6 +2360,7 @@ class MolegApi:
                         query=identity.name,
                         recommended_interface="search_annex_forms",
                         source_type="annex_form",
+                        filters={"source": "law", "search_scope": "source"},
                     ),
                     *safe_list(
                         lambda identity=identity: self.search_annex_forms(
@@ -2375,6 +2376,7 @@ class MolegApi:
                         query=identity.name,
                         recommended_interface="search_annex_forms",
                         source_type="annex_form",
+                        filters={"source": "administrative_rule", "search_scope": "source"},
                     ),
                 ]
             )
@@ -2536,6 +2538,7 @@ class MolegApi:
                         query=candidate_query,
                         recommended_interface="search_annex_forms",
                         source_type="annex_form",
+                        filters={"source": "law", "search_scope": "source"},
                     )
                 ]
             )
@@ -2557,6 +2560,7 @@ class MolegApi:
                         query=candidate_query,
                         recommended_interface="search_annex_forms",
                         source_type="annex_form",
+                        filters={"source": "administrative_rule", "search_scope": "source"},
                     )
                 ]
             )
@@ -3168,6 +3172,7 @@ class MolegApi:
                             query=candidate_query,
                             recommended_interface="search_annex_forms",
                             source_type="annex_form",
+                            filters={"source": "law", "search_scope": "source"},
                         )
                     ]
                 )[:law_annex_limit],
@@ -3189,6 +3194,7 @@ class MolegApi:
                             query=candidate_query,
                             recommended_interface="search_annex_forms",
                             source_type="annex_form",
+                            filters={"source": "administrative_rule", "search_scope": "source"},
                         )
                     ]
                 )[:admin_annex_limit],

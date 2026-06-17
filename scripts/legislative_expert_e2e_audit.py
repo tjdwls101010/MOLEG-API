@@ -1349,8 +1349,8 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
     class BundleAdminRuleRateLimitedSource(ScenarioSource):
         def search(self, target: str, params: dict[str, Any]) -> dict[str, Any]:
             self.calls.append(("search", target, dict(params)))
-            if target == "admrul":
-                raise RateLimitError("law.go.kr rate limited target admrul after 3 attempt(s)")
+            if target in {"admrul", "licbyl", "admbyl"}:
+                raise RateLimitError(f"law.go.kr rate limited target {target} after 3 attempt(s)")
             return self.search_payloads.pop(0)
 
     bundle_source = BundleAdminRuleRateLimitedSource(
@@ -1375,8 +1375,8 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
     retry_deferred = [
         item
         for item in bundle.deferred
-        if item.interface == "search_administrative_rules"
-        and item.source_type == "administrative_rule"
+        if item.interface in {"search_administrative_rules", "search_annex_forms"}
+        and item.source_type in {"administrative_rule", "annex_form"}
     ]
 
     return LegislativeExpertScenarioReport(
@@ -1389,11 +1389,19 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
             "bundle_source_access_gap_preserved": [
                 gap.recommended_interface for gap in bundle_source_gaps
             ]
-            == ["search_administrative_rules"],
+            == ["search_administrative_rules", "search_annex_forms", "search_annex_forms"],
             "bundle_retry_deferred_preserved": [
                 (item.interface, item.query, item.filters) for item in retry_deferred
             ]
-            == [("search_administrative_rules", query, {})],
+            == [
+                ("search_administrative_rules", query, {}),
+                ("search_annex_forms", query, {"source": "law", "search_scope": "source"}),
+                (
+                    "search_annex_forms",
+                    query,
+                    {"source": "administrative_rule", "search_scope": "source"},
+                ),
+            ],
             "legal_no_result_not_recorded": True,
             "no_citations_loaded": True,
             "retry_or_later_access_required": True,

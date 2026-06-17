@@ -219,7 +219,9 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
     assert source_access_readiness.evidence["hit_count"] is None
     assert source_access_readiness.evidence["citations_loaded"] == 0
     assert source_access_readiness.evidence["bundle_gap_interfaces"] == [
-        "search_administrative_rules"
+        "search_administrative_rules",
+        "search_annex_forms",
+        "search_annex_forms",
     ]
     assert (
         "source_access_failure_is_not_legal_no_result"
