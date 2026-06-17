@@ -1838,6 +1838,25 @@ def test_search_interfaces_reject_blank_queries_before_source_call(call):
     assert source.calls == []
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda api: api.get_annex_form_body("   "),
+        lambda api: api.get_interpretation("   "),
+        lambda api: api.get_case("   "),
+        lambda api: api.get_constitutional_decision("   "),
+        lambda api: api.get_administrative_rule("   "),
+    ],
+)
+def test_detail_interfaces_reject_blank_identifiers_before_source_call(call):
+    source = FakeSource()
+
+    with pytest.raises(NoResultError):
+        call(MolegApi(source))
+
+    assert source.calls == []
+
+
 def test_get_annex_form_body_loads_law_text_export_from_candidate():
     source = FakeSource(text_payloads=["■ 식품위생법 시행령 [별표 2]\n과태료의 부과기준"])
     identity = AnnexFormIdentity(
@@ -1856,6 +1875,27 @@ def test_get_annex_form_body_loads_law_text_export_from_candidate():
     assert body.extraction_method == "lsBylTextDownLoad.do"
     assert body.extraction_confidence == "high"
     assert body.raw["source_target"] == "licbyl"
+    assert source.calls[0] == (
+        "post_text",
+        "lsBylTextDownLoad.do",
+        {
+            "bylSeq": "17677511",
+            "title": "과태료의 부과기준(제67조 관련)",
+            "mode": "0",
+        },
+    )
+
+
+def test_get_annex_form_body_strips_source_id_string_before_text_export():
+    source = FakeSource(text_payloads=["■ 식품위생법 시행령 [별표 2]\n과태료의 부과기준"])
+
+    body = MolegApi(source).get_annex_form_body(
+        " 17677511 ",
+        title="  과태료의 부과기준(제67조 관련)  ",
+    )
+
+    assert body.identity.annex_id == "17677511"
+    assert body.identity.title == "과태료의 부과기준(제67조 관련)"
     assert source.calls[0] == (
         "post_text",
         "lsBylTextDownLoad.do",
@@ -2800,7 +2840,7 @@ def test_get_interpretation_loads_full_text_by_identity():
         ]
     )
 
-    text = MolegApi(source).get_interpretation("330471")
+    text = MolegApi(source).get_interpretation(" 330471 ")
 
     assert text.identity.source_type == "moleg"
     assert text.identity.interpretation_id == "330471"
@@ -2925,7 +2965,7 @@ def test_get_case_loads_case_text_by_source_id():
         ]
     )
 
-    text = MolegApi(source).get_case("228541")
+    text = MolegApi(source).get_case(" 228541 ")
 
     assert text.identity.source_type == "case"
     assert text.identity.decision_id == "228541"
@@ -3012,7 +3052,7 @@ def test_get_constitutional_decision_loads_decision_text_by_source_id():
         ]
     )
 
-    text = MolegApi(source).get_constitutional_decision("58400")
+    text = MolegApi(source).get_constitutional_decision(" 58400 ")
 
     assert text.identity.source_type == "constitutional"
     assert text.identity.title == "자동차관리법제26조등위헌확인"

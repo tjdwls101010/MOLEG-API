@@ -121,13 +121,13 @@ Result:
 
 ```text
 scripts/legislative_expert_e2e_audit.py -> emitted JSON summaries for 69 scenarios
-scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 42 prompt plans
-scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 46 answer-discipline reports
+scripts/legislative_expert_prompt_dry_run.py -> emitted JSON summaries for 43 prompt plans
+scripts/legislative_expert_answer_discipline.py -> emitted JSON summaries for 47 answer-discipline reports
 tests/test_legislative_expert_e2e_audit.py -q -> 62 passed
-tests/test_legislative_expert_prompt_dry_run.py -q -> 42 passed
+tests/test_legislative_expert_prompt_dry_run.py -q -> 43 passed
 tests/test_legislative_expert_gate_crosswalk.py -q -> 2 passed
 tests/test_legislative_expert_artifact_safety.py -q -> 64 passed
-tests/test_legislative_expert_answer_discipline.py -q -> 47 passed
+tests/test_legislative_expert_answer_discipline.py -q -> 48 passed
 ```
 
 ## Operating Notes

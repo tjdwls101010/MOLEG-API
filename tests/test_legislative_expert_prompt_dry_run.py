@@ -31,6 +31,7 @@ def test_prompt_dry_run_covers_representative_legislative_prompts():
         "law_structure_hierarchy_candidate_review",
         "empty_delegation_graph_absence_review",
         "administrative_rule_search_candidate_detail_review",
+        "administrative_rule_name_ambiguity_review",
         "administrative_rule_issued_on_current_criteria_review",
         "administrative_rule_article_status_review",
         "administrative_rule_supplementary_transition_review",
@@ -594,6 +595,24 @@ def test_prompt_dry_run_requires_administrative_rule_detail_before_operational_c
         for action in report.forbidden_actions
     )
     assert any("current operational criteria" in action for action in report.forbidden_actions)
+
+
+def test_prompt_dry_run_blocks_ambiguous_administrative_rule_name_shortcut():
+    report = {
+        item.scenario: item
+        for item in run_legislative_expert_prompt_dry_run()
+    }["administrative_rule_name_ambiguity_review"]
+
+    required_interfaces = [
+        step.interface
+        for step in report.planned_steps
+        if step.required_before_answer
+    ]
+
+    assert report.status == "needs_more_source_loading"
+    assert required_interfaces == ["search_administrative_rules", "get_administrative_rule"]
+    assert any("multiple source identities" in guardrail for guardrail in report.guardrails)
+    assert any("first administrative-rule identity" in action for action in report.forbidden_actions)
 
 
 def test_prompt_dry_run_keeps_administrative_rule_issued_on_separate_from_as_of():

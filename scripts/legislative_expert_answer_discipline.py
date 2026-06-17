@@ -31,6 +31,7 @@ AnswerDisciplineStatus = Literal[
     "can_answer_with_loaded_sources",
     "must_load_more_sources",
     "must_not_answer_as_current_law",
+    "must_select_identity_before_answer",
 ]
 
 
@@ -167,6 +168,10 @@ def run_legislative_expert_answer_discipline() -> list[AnswerDisciplineReport]:
         _administrative_rule_search_candidate_discipline(
             prompt_reports["administrative_rule_search_candidate_detail_review"],
             readiness_reports["administrative_rule_search_candidate_detail_guardrail"],
+        ),
+        _administrative_rule_name_ambiguity_discipline(
+            prompt_reports["administrative_rule_name_ambiguity_review"],
+            readiness_reports["administrative_rule_name_ambiguity_guardrail"],
         ),
         _administrative_rule_issued_on_not_effective_as_of_discipline(
             prompt_reports["administrative_rule_issued_on_current_criteria_review"],
@@ -1363,6 +1368,41 @@ def _administrative_rule_search_candidate_discipline(
             "prompt_status": prompt.status,
             "readiness_status": readiness.status,
             "citations_loaded": readiness.evidence["citations_loaded"],
+            "service_call_targets": readiness.evidence["service_call_targets"],
+            "risk_flags": readiness.risk_flags,
+        },
+    )
+
+
+def _administrative_rule_name_ambiguity_discipline(
+    prompt: PromptDryRunReport,
+    readiness: LegislativeExpertScenarioReport,
+) -> AnswerDisciplineReport:
+    return AnswerDisciplineReport(
+        scenario="administrative_rule_name_ambiguity_answer_discipline",
+        status="must_select_identity_before_answer",
+        allowed_claims=[
+            "The administrative-rule name matched multiple exact source identities.",
+            "The candidate administrative-rule IDs can be disclosed as the set requiring selection.",
+        ],
+        forbidden_claims=[
+            "The first matching administrative-rule identity is the intended rule.",
+            "Administrative-rule body text, article text, supplementary provisions, or operational criteria were inspected.",
+            "A citation can be made from the ambiguous administrative-rule name before one identity is selected.",
+        ],
+        required_disclosures=[
+            "Disclose that the administrative-rule name is ambiguous across multiple source identities.",
+            "Disclose that no administrative-rule detail body was loaded.",
+        ],
+        required_followups=[
+            "select_administrative_rule_identity",
+            "get_administrative_rule",
+        ],
+        citations=readiness.citations,
+        evidence={
+            "prompt_status": prompt.status,
+            "readiness_status": readiness.status,
+            "candidate_ids": readiness.evidence["candidate_ids"],
             "service_call_targets": readiness.evidence["service_call_targets"],
             "risk_flags": readiness.risk_flags,
         },

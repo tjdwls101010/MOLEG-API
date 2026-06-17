@@ -33,6 +33,7 @@ def test_answer_discipline_reports_cover_high_risk_answer_states():
         "law_structure_hierarchy_candidate_answer_discipline",
         "empty_delegation_graph_absence_answer_discipline",
         "administrative_rule_search_candidate_answer_discipline",
+        "administrative_rule_name_ambiguity_answer_discipline",
         "administrative_rule_issued_on_not_effective_as_of_answer_discipline",
         "administrative_rule_article_status_answer_discipline",
         "administrative_rule_supplementary_transition_answer_discipline",
@@ -532,6 +533,24 @@ def test_answer_discipline_refuses_administrative_rule_criteria_from_search_hits
     assert any("candidate" in claim for claim in report.allowed_claims)
     assert any("operational criteria" in claim for claim in report.forbidden_claims)
     assert any("get_administrative_rule" in disclosure for disclosure in report.required_disclosures)
+
+
+def test_answer_discipline_requires_identity_selection_for_ambiguous_administrative_rule_name():
+    report = {
+        item.scenario: item
+        for item in run_legislative_expert_answer_discipline()
+    }["administrative_rule_name_ambiguity_answer_discipline"]
+
+    assert report.status == "must_select_identity_before_answer"
+    assert report.citations == []
+    assert report.required_followups == [
+        "select_administrative_rule_identity",
+        "get_administrative_rule",
+    ]
+    assert report.evidence["candidate_ids"] == ["2100000111111", "2100000222222"]
+    assert report.evidence["service_call_targets"] == []
+    assert any("first matching" in claim for claim in report.forbidden_claims)
+    assert any("ambiguous" in disclosure for disclosure in report.required_disclosures)
 
 
 def test_answer_discipline_refuses_issued_on_as_administrative_rule_as_of_proof():

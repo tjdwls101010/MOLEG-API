@@ -3527,9 +3527,15 @@ def annex_form_identity_from_identifier(
     if isinstance(identifier, AnnexFormIdentity):
         return identifier
     source_type = annex_source_type(source)
+    text = str(identifier).strip()
+    if not text:
+        raise NoResultError("Annex/form identifier is required")
+    normalized_title = title.strip() if title else text
+    if not normalized_title:
+        normalized_title = text
     return AnnexFormIdentity(
-        annex_id=str(identifier),
-        title=title or str(identifier),
+        annex_id=text,
+        title=normalized_title,
         source_type=source_type,
         source_target=annex_target_for(source_type),
     )
@@ -4516,7 +4522,7 @@ def interpretation_identity_from_identifier(
         return identifier.identity
     if isinstance(identifier, InterpretationIdentity):
         return identifier
-    text = str(identifier)
+    text = str(identifier).strip()
     if not text.isdigit():
         raise NoResultError("Interpretation detail lookup requires a source interpretation ID")
     return InterpretationIdentity(
@@ -4559,7 +4565,7 @@ def judicial_decision_identity_from_identifier(
                 f"{identifier.source_target} identity cannot be loaded through {source_target}"
             )
         return identifier
-    text = str(identifier)
+    text = str(identifier).strip()
     if not text.isdigit():
         raise NoResultError("Judicial decision detail lookup requires a source decision ID")
     return JudicialDecisionIdentity(

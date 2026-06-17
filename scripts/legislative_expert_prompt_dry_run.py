@@ -710,6 +710,31 @@ def run_legislative_expert_prompt_dry_run() -> list[PromptDryRunReport]:
             ],
         ),
         PromptDryRunReport(
+            scenario="administrative_rule_name_ambiguity_review",
+            prompt="데이터 처리 기준이라는 행정규칙 이름으로 본문을 바로 인용해줘.",
+            status="needs_more_source_loading",
+            planned_steps=[
+                PromptWorkflowStep(
+                    "moleg-api",
+                    "search_administrative_rules",
+                    "Resolve the exact administrative-rule name to candidate identities before loading detail.",
+                ),
+                PromptWorkflowStep(
+                    "moleg-api",
+                    "get_administrative_rule",
+                    "Load detail only after one administrative-rule identity is selected.",
+                ),
+            ],
+            guardrails=[
+                "An administrative-rule name can match multiple source identities.",
+                "get_administrative_rule(\"name\") must surface ambiguity instead of silently loading the first exact match.",
+            ],
+            forbidden_actions=[
+                "Do not choose the first administrative-rule identity when an exact name search returns multiple candidates.",
+                "Do not cite administrative-rule article text, supplementary provisions, or operational criteria until one identity is selected and loaded.",
+            ],
+        ),
+        PromptDryRunReport(
             scenario="administrative_rule_issued_on_current_criteria_review",
             prompt="2025년 1월 1일 기준으로 전기자동차 충전시설 운영 고시가 현행 처리기준인지 확인해줘.",
             status="needs_more_source_loading",
