@@ -4625,11 +4625,24 @@ def comparable_mechanism_identities(
     identities: dict[str, LawIdentity] = {}
     endpoints: dict[str, list[str]] = {}
     articles: dict[str, list[dict[str, str | None]]] = {}
+    primary_key_by_name: dict[str, str] = {}
 
     for law in laws:
         if law.source_type != "law":
             continue
-        key = law.name
+
+        if law.law_id:
+            key = f"id:{law.law_id}"
+            fallback_key = f"name:{law.name}"
+            if key not in identities and fallback_key in identities:
+                identities[key] = identities.pop(fallback_key)
+                endpoints[key] = endpoints.pop(fallback_key)
+                articles[key] = articles.pop(fallback_key)
+                if primary_key_by_name.get(law.name) == fallback_key:
+                    primary_key_by_name[law.name] = key
+        else:
+            key = primary_key_by_name.get(law.name, f"name:{law.name}")
+
         if key not in identities:
             identities[key] = LawIdentity(
                 law_id=law.law_id,
@@ -4649,10 +4662,15 @@ def comparable_mechanism_identities(
             )
             endpoints[key] = []
             articles[key] = []
-        elif not identities[key].law_id and law.law_id:
+            primary_key_by_name.setdefault(law.name, key)
+        elif law.law_id and (
+            not identities[key].law_id
+            or not identities[key].mst
+            or not identities[key].effective_date
+        ):
             current = identities[key]
             identities[key] = LawIdentity(
-                law_id=law.law_id,
+                law_id=law.law_id or current.law_id,
                 name=current.name,
                 basis=current.basis,
                 mst=law.mst or current.mst,

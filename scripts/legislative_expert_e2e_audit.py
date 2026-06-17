@@ -4499,6 +4499,12 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
                 "aiRltLs": {
                     "법령조문": [
                         {
+                            "법령ID": "004444",
+                            "법령명": "독점규제 및 공정거래에 관한 법률",
+                            "조문번호": "51",
+                            "조문제목": "과징금 특례",
+                        },
+                        {
                             "법령ID": "003333",
                             "법령명": "환경오염시설의 통합관리에 관한 법률",
                             "조문번호": "35",
@@ -4511,7 +4517,7 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
         service_payloads=[{"lstrmRltJo": []}],
     )
 
-    candidates = MolegApi(source).find_comparable_mechanisms("과징금", display=3)
+    candidates = MolegApi(source).find_comparable_mechanisms("과징금", display=4)
     service_call_targets = [target for kind, target, _ in source.calls if kind == "service"]
     article_service_targets = [
         target
@@ -4525,7 +4531,12 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
         status="needs_more_source_loading",
         public_interfaces=["find_comparable_mechanisms"],
         must_have={
-            "comparable_candidates_preserved": len(candidates) == 3,
+            "comparable_candidates_preserved": len(candidates) == 4,
+            "same_name_different_law_ids_preserved": [
+                (candidate.name, candidate.law_id) for candidate in candidates
+            ].count(("독점규제 및 공정거래에 관한 법률", "001111"))
+            == 1
+            and [candidate.law_id for candidate in candidates].count("004444") == 1,
             "article_anchor_metadata_preserved": candidates[0].raw_keys["source_articles"][0] == {
                 "article": "제50조",
                 "title": "과징금",
@@ -4547,6 +4558,7 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
         evidence={
             "concept": "과징금",
             "candidate_names": [candidate.name for candidate in candidates],
+            "candidate_law_ids": [candidate.law_id for candidate in candidates],
             "candidate_source_articles": [
                 candidate.raw_keys.get("source_articles", [])
                 for candidate in candidates

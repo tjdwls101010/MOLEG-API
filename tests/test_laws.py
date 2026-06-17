@@ -4817,6 +4817,67 @@ def test_find_comparable_mechanisms_returns_planning_law_identities_from_ai_surf
     ]
 
 
+def test_find_comparable_mechanisms_preserves_same_name_different_law_ids_as_separate_candidates():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "aiSearch": {
+                    "법령조문": [
+                        {
+                            "법령ID": "111111",
+                            "법령명": "데이터기본법",
+                            "법령일련번호": "270001",
+                            "조문번호": "5",
+                            "조문제목": "데이터 처리",
+                        }
+                    ]
+                }
+            },
+            {
+                "aiRltLs": {
+                    "법령조문": [
+                        {
+                            "법령ID": "222222",
+                            "법령명": "데이터기본법",
+                            "법령일련번호": "270002",
+                            "조문번호": "6",
+                            "조문제목": "데이터 결합",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {
+                "lstrmRltJo": [
+                    {
+                        "법령용어명": "데이터",
+                        "법령명": "데이터기본법",
+                        "조번호": "7",
+                        "조문내용": "데이터 이용 기준",
+                    }
+                ]
+            }
+        ],
+    )
+
+    identities = MolegApi(source).find_comparable_mechanisms("데이터", display=3)
+
+    assert [(identity.name, identity.law_id, identity.mst) for identity in identities] == [
+        ("데이터기본법", "111111", "270001"),
+        ("데이터기본법", "222222", "270002"),
+    ]
+    assert identities[0].raw_keys["discovery_endpoints"] == ["aiSearch", "lstrmRltJo"]
+    assert identities[0].raw_keys["source_articles"] == [
+        {"article": "제5조", "title": "데이터 처리", "source_target": "aiSearch"},
+        {"article": "제7조", "title": None, "source_target": "lstrmRltJo"},
+    ]
+    assert identities[1].raw_keys["discovery_endpoints"] == ["aiRltLs"]
+    assert identities[1].raw_keys["source_articles"] == [
+        {"article": "제6조", "title": "데이터 결합", "source_target": "aiRltLs"}
+    ]
+
+
 def test_find_comparable_mechanisms_raises_no_result_for_empty_sources():
     source = FakeSource(
         search_payloads=[

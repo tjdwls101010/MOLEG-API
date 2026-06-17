@@ -1306,12 +1306,14 @@ def test_legislative_expert_e2e_audit_keeps_comparable_mechanisms_as_candidates(
     assert comparable.status == "needs_more_source_loading"
     assert comparable.public_interfaces == ["find_comparable_mechanisms"]
     assert comparable.must_have["comparable_candidates_preserved"] is True
+    assert comparable.must_have["same_name_different_law_ids_preserved"] is True
     assert comparable.must_have["article_anchor_metadata_preserved"] is True
     assert comparable.must_have["no_comparable_article_loaded"] is True
     assert comparable.must_have["no_citable_comparison_loaded"] is True
     assert comparable.citations == []
     assert comparable.evidence["citations_loaded"] == 0
     assert comparable.evidence["article_service_targets"] == []
+    assert comparable.evidence["candidate_law_ids"] == ["001111", "002222", "004444", "003333"]
     assert "comparable_mechanism_candidate_requires_selected_article_loading" in comparable.risk_flags
 
 

@@ -1285,6 +1285,7 @@ def test_comparable_mechanism_candidates_are_not_promoted_to_comparison_citation
     assert readiness.status == "needs_more_source_loading"
     assert readiness.citations == []
     assert readiness.evidence["citations_loaded"] == 0
+    assert readiness.evidence["candidate_law_ids"] == ["001111", "002222", "004444", "003333"]
     assert readiness.evidence["article_service_targets"] == []
     assert "comparable_mechanism_candidate_requires_selected_article_loading" in readiness.risk_flags
     assert discipline.status == "must_load_more_sources"
