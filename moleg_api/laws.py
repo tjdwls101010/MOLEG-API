@@ -1603,8 +1603,10 @@ class MolegApi:
                     source_notes,
                     "Authority interpretation search",
                     gaps=gaps,
+                    deferred=deferred,
                     query=candidate_query,
                     recommended_interface="search_interpretations",
+                    source_type="interpretation",
                 )
             ]
         )
@@ -1620,8 +1622,10 @@ class MolegApi:
                     source_notes,
                     "Authority case search",
                     gaps=gaps,
+                    deferred=deferred,
                     query=candidate_query,
                     recommended_interface="search_cases",
+                    source_type="case",
                 )
             ]
         )
@@ -1637,8 +1641,10 @@ class MolegApi:
                     source_notes,
                     "Authority Constitutional Court search",
                     gaps=gaps,
+                    deferred=deferred,
                     query=candidate_query,
                     recommended_interface="search_constitutional_decisions",
+                    source_type="constitutional",
                 )
             ]
         )
@@ -2283,8 +2289,10 @@ class MolegApi:
                     source_notes,
                     f"Administrative-rule search for {identity.name}",
                     gaps=gaps,
+                    deferred=deferred,
                     query=identity.name,
                     recommended_interface="search_administrative_rules",
+                    source_type="administrative_rule",
                 )
             )
             interpretation_candidates.extend(
@@ -2296,8 +2304,10 @@ class MolegApi:
                     source_notes,
                     f"Interpretation search for {identity.name}",
                     gaps=gaps,
+                    deferred=deferred,
                     query=identity.name,
                     recommended_interface="search_interpretations",
+                    source_type="interpretation",
                 )
             )
             case_candidates.extend(
@@ -2309,8 +2319,10 @@ class MolegApi:
                     source_notes,
                     f"Case search for {identity.name}",
                     gaps=gaps,
+                    deferred=deferred,
                     query=identity.name,
                     recommended_interface="search_cases",
+                    source_type="case",
                 )
             )
             constitutional_candidates.extend(
@@ -2322,8 +2334,10 @@ class MolegApi:
                     source_notes,
                     f"Constitutional decision search for {identity.name}",
                     gaps=gaps,
+                    deferred=deferred,
                     query=identity.name,
                     recommended_interface="search_constitutional_decisions",
+                    source_type="constitutional",
                 )
             )
 
@@ -2342,8 +2356,10 @@ class MolegApi:
                         source_notes,
                         f"Law annex/form search for {identity.name}",
                         gaps=gaps,
+                        deferred=deferred,
                         query=identity.name,
                         recommended_interface="search_annex_forms",
+                        source_type="annex_form",
                     ),
                     *safe_list(
                         lambda identity=identity: self.search_annex_forms(
@@ -2355,8 +2371,10 @@ class MolegApi:
                         source_notes,
                         f"Administrative-rule annex/form search for {identity.name}",
                         gaps=gaps,
+                        deferred=deferred,
                         query=identity.name,
                         recommended_interface="search_annex_forms",
+                        source_type="annex_form",
                     ),
                 ]
             )
@@ -2484,8 +2502,10 @@ class MolegApi:
                         source_notes,
                         "Delegated-criteria administrative-rule query search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_administrative_rules",
+                        source_type="administrative_rule",
                     )
                 ]
             )
@@ -2512,8 +2532,10 @@ class MolegApi:
                         source_notes,
                         "Delegated-criteria law annex/form query search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_annex_forms",
+                        source_type="annex_form",
                     )
                 ]
             )
@@ -2531,8 +2553,10 @@ class MolegApi:
                         source_notes,
                         "Delegated-criteria administrative-rule annex/form query search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_annex_forms",
+                        source_type="annex_form",
                     )
                 ]
             )
@@ -2870,8 +2894,10 @@ class MolegApi:
                         source_notes,
                         "Promulgation bridge candidate search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=prom_law_nm,
                         recommended_interface="search_laws",
+                        source_type="law",
                     )
                 law_candidates = dedupe_identities([hit.identity for hit in candidate_hits])
                 search_query = prom_law_nm
@@ -3056,8 +3082,10 @@ class MolegApi:
                         source_notes,
                         "Administrative-rule search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_administrative_rules",
+                        source_type="administrative_rule",
                     )
                 ]
             )[: limits["administrative_rules"]]
@@ -3073,8 +3101,10 @@ class MolegApi:
                         source_notes,
                         "Interpretation search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_interpretations",
+                        source_type="interpretation",
                     )
                 ]
             )
@@ -3090,8 +3120,10 @@ class MolegApi:
                         source_notes,
                         "Case search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_cases",
+                        source_type="case",
                     )
                 ]
             )
@@ -3107,8 +3139,10 @@ class MolegApi:
                         source_notes,
                         "Constitutional decision search",
                         gaps=gaps,
+                        deferred=deferred,
                         query=candidate_query,
                         recommended_interface="search_constitutional_decisions",
+                        source_type="constitutional",
                     )
                 ]
             )
@@ -3130,8 +3164,10 @@ class MolegApi:
                             source_notes,
                             "Law annex/form search",
                             gaps=gaps,
+                            deferred=deferred,
                             query=candidate_query,
                             recommended_interface="search_annex_forms",
+                            source_type="annex_form",
                         )
                     ]
                 )[:law_annex_limit],
@@ -3149,8 +3185,10 @@ class MolegApi:
                             source_notes,
                             "Administrative-rule annex/form search",
                             gaps=gaps,
+                            deferred=deferred,
                             query=candidate_query,
                             recommended_interface="search_annex_forms",
+                            source_type="annex_form",
                         )
                     ]
                 )[:admin_annex_limit],
@@ -5428,8 +5466,12 @@ def safe_list(
     label: str,
     *,
     gaps: list[ContextGap] | None = None,
+    deferred: list[DeferredLookup] | None = None,
     query: str | None = None,
     recommended_interface: str | None = None,
+    source_type: str | None = None,
+    filters: dict[str, Any] | None = None,
+    reason: str | None = None,
 ) -> list[Any]:
     try:
         return fn()
@@ -5442,6 +5484,17 @@ def safe_list(
                 query=query,
                 recommended_interface=recommended_interface,
                 source_label=label,
+            )
+        if deferred is not None and recommended_interface is not None:
+            deferred.append(
+                DeferredLookup(
+                    interface=recommended_interface,
+                    query=str(query or ""),
+                    reason=reason
+                    or f"Retry {label} after source-access recovery before treating missing candidates as absence.",
+                    source_type=source_type,
+                    filters=dict(filters or {}),
+                )
             )
         return []
 

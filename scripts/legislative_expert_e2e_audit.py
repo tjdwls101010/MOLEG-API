@@ -1372,6 +1372,12 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
         mode="statute_review",
     )
     bundle_source_gaps = [gap for gap in bundle.gaps if gap.kind == "source_access_failure"]
+    retry_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_administrative_rules"
+        and item.source_type == "administrative_rule"
+    ]
 
     return LegislativeExpertScenarioReport(
         scenario="source_access_failure_not_no_result_guardrail",
@@ -1384,6 +1390,10 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
                 gap.recommended_interface for gap in bundle_source_gaps
             ]
             == ["search_administrative_rules"],
+            "bundle_retry_deferred_preserved": [
+                (item.interface, item.query, item.filters) for item in retry_deferred
+            ]
+            == [("search_administrative_rules", query, {})],
             "legal_no_result_not_recorded": True,
             "no_citations_loaded": True,
             "retry_or_later_access_required": True,
@@ -1407,6 +1417,8 @@ def _audit_source_access_failure_not_no_result_guardrail() -> LegislativeExpertS
             "source_calls": [[kind, target, params] for kind, target, params in source.calls],
             "bundle_gap_kinds": [gap.kind for gap in bundle.gaps],
             "bundle_gap_interfaces": [gap.recommended_interface for gap in bundle_source_gaps],
+            "bundle_deferred_interfaces": [item.interface for item in retry_deferred],
+            "bundle_deferred_filters": [item.filters for item in retry_deferred],
             "bundle_source_calls": [
                 [kind, target, params] for kind, target, params in bundle_source.calls
             ],

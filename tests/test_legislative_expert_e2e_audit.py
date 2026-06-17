@@ -479,6 +479,7 @@ def test_legislative_expert_e2e_audit_treats_source_access_failure_as_not_legal_
     assert failure.public_interfaces == ["search_laws", "load_legal_context_bundle"]
     assert failure.must_have["source_access_error_preserved"] is True
     assert failure.must_have["bundle_source_access_gap_preserved"] is True
+    assert failure.must_have["bundle_retry_deferred_preserved"] is True
     assert failure.must_have["legal_no_result_not_recorded"] is True
     assert failure.must_have["no_citations_loaded"] is True
     assert failure.must_have["retry_or_later_access_required"] is True
@@ -488,6 +489,8 @@ def test_legislative_expert_e2e_audit_treats_source_access_failure_as_not_legal_
     assert failure.evidence["source_calls"] == [["search", "eflaw", {"query": "자동차관리법", "display": 5}]]
     assert "source_access_failure" in failure.evidence["bundle_gap_kinds"]
     assert failure.evidence["bundle_gap_interfaces"] == ["search_administrative_rules"]
+    assert failure.evidence["bundle_deferred_interfaces"] == ["search_administrative_rules"]
+    assert failure.evidence["bundle_deferred_filters"] == [{}]
     assert ["search", "admrul", {"query": "자동차관리법", "display": 5, "nw": 1}] in failure.evidence[
         "bundle_source_calls"
     ]

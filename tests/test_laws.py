@@ -6004,6 +6004,15 @@ def test_load_legal_context_bundle_preserves_source_access_failures_as_gaps():
     ]
     assert "RateLimitError" in source_gaps[0].reason
     assert "admrul" in source_gaps[0].reason
+    retry_deferred = [
+        item
+        for item in bundle.deferred
+        if item.interface == "search_administrative_rules"
+        and item.source_type == "administrative_rule"
+    ]
+    assert [(item.query, item.filters) for item in retry_deferred] == [
+        ("자동차관리법 하위 기준", {})
+    ]
     assert any("Administrative-rule search skipped" in note for note in bundle.source_notes)
 
 
