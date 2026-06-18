@@ -5283,9 +5283,13 @@ def build_follow_up_searches(
             filters={"search_body": False},
         ),
     ]
+    planned_law_loads: set[tuple[str, str]] = set()
 
     for identity in law_candidates[:3]:
         if law_identity_has_source_identifier(identity):
+            key = law_load_followup_key(identity.law_id, identity.mst)
+            if key:
+                planned_law_loads.add(key)
             searches.append(
                 FollowUpSearch(
                     interface="get_law",
@@ -5335,6 +5339,24 @@ def build_follow_up_searches(
                     filters=article_filters,
                 )
             )
+        if law.source_type == "law" and not law.article and (law.law_id or law.mst):
+            key = law_load_followup_key(law.law_id, law.mst)
+            if key and key not in planned_law_loads:
+                law_filters: dict[str, Any] = {"basis": "effective"}
+                if law.law_id:
+                    law_filters["law_id"] = law.law_id
+                if law.mst:
+                    law_filters["mst"] = law.mst
+                searches.append(
+                    FollowUpSearch(
+                        interface="get_law",
+                        query=law.name,
+                        reason="Load the related law text before using this query-expansion candidate as legal authority.",
+                        source_type="law",
+                        filters=law_filters,
+                    )
+                )
+                planned_law_loads.add(key)
     if include_websearch_hint:
         searches.append(
             FollowUpSearch(
@@ -5345,6 +5367,14 @@ def build_follow_up_searches(
             )
         )
     return searches
+
+
+def law_load_followup_key(law_id: str | None, mst: str | None) -> tuple[str, str] | None:
+    if law_id:
+        return ("law_id", law_id)
+    if mst:
+        return ("mst", mst)
+    return None
 
 
 def law_identity_followup_filters(

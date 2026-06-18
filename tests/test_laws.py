@@ -3524,6 +3524,48 @@ def test_expand_legal_query_get_law_followup_uses_mst_when_law_id_is_missing():
     ]
 
 
+def test_expand_legal_query_adds_get_law_followup_for_identified_related_law_without_article():
+    source = FakeSource(
+        search_payloads=[
+            {"LawSearch": {"law": []}},
+            {"lstrmAI": []},
+            {"dlytrm": []},
+            {"aiSearch": []},
+            {
+                "aiRltLs": [
+                    {
+                        "법령ID": "009999",
+                        "법령명": "자동차손해배상 보장법",
+                        "법령일련번호": "280001",
+                    }
+                ]
+            },
+        ],
+        service_payloads=[
+            {"lstrmRlt": []},
+            {"dlytrmRlt": []},
+            {"lstrmRltJo": []},
+        ],
+    )
+
+    expansion = MolegApi(source).expand_legal_query(
+        "자동차 방치 문제",
+        include_websearch_hint=False,
+    )
+
+    assert expansion.related_laws[0].name == "자동차손해배상 보장법"
+    assert expansion.related_laws[0].article is None
+    get_law_followups = [
+        search for search in expansion.follow_up_searches if search.interface == "get_law"
+    ]
+    assert [(search.query, search.filters) for search in get_law_followups] == [
+        (
+            "자동차손해배상 보장법",
+            {"basis": "effective", "law_id": "009999", "mst": "280001"},
+        )
+    ]
+
+
 def test_expand_legal_query_does_not_emit_unloadable_get_law_followup_for_name_only_candidate():
     source = FakeSource(
         search_payloads=[
