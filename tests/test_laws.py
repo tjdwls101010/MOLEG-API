@@ -5615,6 +5615,20 @@ def test_find_comparable_mechanisms_returns_planning_law_identities_from_ai_surf
         "concept": "과징금",
         "discovery_endpoints": ["aiSearch", "aiRltLs"],
         "source_articles": [{"article": "제50조", "title": "과징금", "source_target": "aiSearch"}],
+        "source_article_followups": [
+            DeferredLookup(
+                interface="get_article",
+                query="독점규제 및 공정거래에 관한 법률 제50조",
+                reason="Load selected comparable mechanism article before citing or comparing legal structure.",
+                source_type="law_article",
+                filters={
+                    "article": "제50조",
+                    "basis": "effective",
+                    "law_id": "001111",
+                    "mst": "270001",
+                },
+            )
+        ],
         "source_type": "law",
     }
     assert identities[1].raw_keys["discovery_endpoints"] == ["aiSearch", "lstrmRltJo"]
@@ -5622,6 +5636,56 @@ def test_find_comparable_mechanisms_returns_planning_law_identities_from_ai_surf
         ("search", "aiSearch", {"query": "과징금", "display": 3, "search": 0}),
         ("search", "aiRltLs", {"query": "과징금", "search": 0}),
         ("service", "lstrmRltJo", {"query": "과징금"}),
+    ]
+
+
+def test_find_comparable_mechanisms_source_article_followup_loads_selected_article():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "aiSearch": {
+                    "법령조문": [
+                        {
+                            "법령ID": "001111",
+                            "법령명": "독점규제 및 공정거래에 관한 법률",
+                            "법령일련번호": "270001",
+                            "조문번호": "50",
+                            "조문제목": "과징금",
+                        }
+                    ]
+                }
+            },
+            {"aiRltLs": {"법령조문": []}},
+        ],
+        service_payloads=[
+            {"lstrmRltJo": []},
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001111",
+                        "법령명_한글": "독점규제 및 공정거래에 관한 법률",
+                    },
+                    "조문": {
+                        "조문번호": "50",
+                        "조문제목": "과징금",
+                        "조문내용": "제50조(과징금) 공정거래위원회는 과징금을 부과할 수 있다.",
+                    },
+                }
+            },
+        ],
+    )
+    api = MolegApi(source)
+
+    candidate = api.find_comparable_mechanisms("과징금", display=1)[0]
+    article = api.load_followup(candidate.raw_keys["source_article_followups"][0])
+
+    assert article.article == "제50조"
+    assert "과징금을 부과" in article.text
+    assert source.calls == [
+        ("search", "aiSearch", {"query": "과징금", "display": 1, "search": 0}),
+        ("search", "aiRltLs", {"query": "과징금", "search": 0}),
+        ("service", "lstrmRltJo", {"query": "과징금"}),
+        ("service", "eflawjosub", {"ID": "001111", "JO": "005000"}),
     ]
 
 

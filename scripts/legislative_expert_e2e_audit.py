@@ -4884,6 +4884,10 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
                 "title": "과징금",
                 "source_target": "aiSearch",
             },
+            "source_article_followups_preserved": [
+                item.interface for item in candidates[0].raw_keys["source_article_followups"]
+            ]
+            == ["get_article"],
             "no_comparable_article_loaded": article_service_targets == [],
             "no_citable_comparison_loaded": True,
         },
@@ -4903,6 +4907,13 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
             "candidate_law_ids": [candidate.law_id for candidate in candidates],
             "candidate_source_articles": [
                 candidate.raw_keys.get("source_articles", [])
+                for candidate in candidates
+            ],
+            "candidate_source_article_followups": [
+                [
+                    _followup_summary(followup)
+                    for followup in candidate.raw_keys.get("source_article_followups", [])
+                ]
                 for candidate in candidates
             ],
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],

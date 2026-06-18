@@ -5234,6 +5234,10 @@ def comparable_mechanism_identities(
             **identity.raw_keys,
             "discovery_endpoints": endpoints[key],
             "source_articles": articles[key],
+            "source_article_followups": comparable_source_article_followups(
+                identity,
+                articles[key],
+            ),
         }
         if source_failures:
             raw_keys["source_failures"] = source_failure_payloads(source_failures)
@@ -5255,6 +5259,37 @@ def comparable_mechanism_identities(
         if len(results) >= display:
             break
     return results
+
+
+def comparable_source_article_followups(
+    identity: LawIdentity,
+    source_articles: list[dict[str, str | None]],
+) -> list[DeferredLookup]:
+    if not law_identity_has_source_identifier(identity):
+        return []
+    followups: list[DeferredLookup] = []
+    for source_article in source_articles:
+        article = source_article.get("article")
+        if not article:
+            continue
+        filters: dict[str, Any] = {
+            "article": article,
+            "basis": identity.basis,
+        }
+        if identity.law_id:
+            filters["law_id"] = identity.law_id
+        if identity.mst:
+            filters["mst"] = identity.mst
+        followups.append(
+            DeferredLookup(
+                interface="get_article",
+                query=f"{identity.name} {article}",
+                reason="Load selected comparable mechanism article before citing or comparing legal structure.",
+                source_type="law_article",
+                filters=filters,
+            )
+        )
+    return followups
 
 
 def build_follow_up_searches(
