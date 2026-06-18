@@ -1899,6 +1899,28 @@ def test_search_annex_forms_preserves_branch_annex_numbers():
     assert hits[0].identity.raw_keys["별표가지번호"] == "2"
 
 
+def test_search_annex_forms_omits_followup_when_source_id_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "licbyl": [
+                    {
+                        "별표명": "자동차등록번호판 특례 기준",
+                        "관련법령명": "자동차관리법",
+                        "별표번호": "별표 1",
+                        "별표종류": "별표",
+                    }
+                ]
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_annex_forms("자동차", source="law")
+
+    assert hits[0].identity.annex_id is None
+    assert hits[0].follow_up is None
+
+
 def test_search_annex_forms_normalizes_administrative_rule_candidates():
     source = FakeSource(
         search_payloads=[
@@ -3094,6 +3116,10 @@ def test_search_interpretations_all_ministries_preserves_partial_hits_when_one_s
         ("moleg", "expc", None),
         ("ministry", MINISTRY_INTERPRETATION_SOURCES["산업통상부"].target, "산업통상부"),
     ]
+    assert [hit.follow_up.interface if hit.follow_up else None for hit in hits] == [
+        "get_interpretation",
+        "get_interpretation",
+    ]
     failures = hits[0].identity.raw_keys["source_failures"]
     assert failures == hits[1].identity.raw_keys["source_failures"]
     assert failures[0]["kind"] == "source_access_failure"
@@ -3102,6 +3128,58 @@ def test_search_interpretations_all_ministries_preserves_partial_hits_when_one_s
     assert "RateLimitError" in failures[0]["reason"]
     assert "moelCgmExpc" in failures[0]["reason"]
     assert MINISTRY_INTERPRETATION_SOURCES["고용노동부"].target in [call[1] for call in source.calls]
+
+
+def test_search_interpretations_omits_followup_for_ministry_without_detail_endpoint():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "CgmExpcSearch": {
+                    "ntsCgmExpc": [
+                        {
+                            "법령해석일련번호": "997001",
+                            "안건명": "국세청 해석 질의",
+                            "해석기관명": "국세청",
+                            "해석일자": "20240220",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations(
+        "부가가치세",
+        source="ministry",
+        ministry="국세청",
+        display=1,
+    )
+
+    assert hits[0].identity.source_target == MINISTRY_INTERPRETATION_SOURCES["국세청"].target
+    assert hits[0].identity.interpretation_id == "997001"
+    assert hits[0].follow_up is None
+
+
+def test_search_interpretations_omits_followup_when_source_id_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "안건명": "자동차관리법 관련 법령해석례",
+                            "회신기관명": "법제처",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_interpretations("자동차", display=1)
+
+    assert hits[0].identity.interpretation_id is None
+    assert hits[0].follow_up is None
 
 
 def test_search_interpretations_preserves_source_failure_when_no_aggregate_hits_survive():
@@ -3253,6 +3331,29 @@ def test_search_cases_normalizes_case_hits_and_court_filter():
         "prec",
         {"query": "손해배상", "display": 5, "search": 1, "org": "400201"},
     )
+
+
+def test_search_cases_omits_followup_when_source_id_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "PrecSearch": {
+                    "prec": [
+                        {
+                            "사건명": "손해배상",
+                            "사건번호": "2020다12345",
+                            "선고일자": "20240115",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_cases("손해배상", display=1)
+
+    assert hits[0].identity.decision_id is None
+    assert hits[0].follow_up is None
 
 
 def test_get_case_loads_case_text_by_source_id():

@@ -4975,6 +4975,7 @@ def attach_interpretation_source_failures(
                 raw_keys={**hit.identity.raw_keys, "source_failures": failures},
             ),
             raw=hit.raw,
+            follow_up=hit.follow_up,
         )
         for hit in hits
     ]
@@ -5444,8 +5445,10 @@ def administrative_rule_hit_follow_up(identity: AdministrativeRuleIdentity) -> D
     )
 
 
-def annex_form_hit_follow_up(identity: AnnexFormIdentity) -> DeferredLookup:
+def annex_form_hit_follow_up(identity: AnnexFormIdentity) -> DeferredLookup | None:
     source_id = identity.annex_id
+    if not source_id:
+        return None
     return DeferredLookup(
         interface="get_annex_form_body",
         query=identity.title,
@@ -5455,7 +5458,9 @@ def annex_form_hit_follow_up(identity: AnnexFormIdentity) -> DeferredLookup:
     )
 
 
-def interpretation_hit_follow_up(identity: InterpretationIdentity) -> DeferredLookup:
+def interpretation_hit_follow_up(identity: InterpretationIdentity) -> DeferredLookup | None:
+    if not identity.interpretation_id or not interpretation_detail_supported(identity):
+        return None
     return DeferredLookup(
         interface="get_interpretation",
         query=identity.title,
@@ -5465,7 +5470,18 @@ def interpretation_hit_follow_up(identity: InterpretationIdentity) -> DeferredLo
     )
 
 
-def judicial_decision_hit_follow_up(identity: JudicialDecisionIdentity) -> DeferredLookup:
+def interpretation_detail_supported(identity: InterpretationIdentity) -> bool:
+    if identity.source_target == OFFICIAL_INTERPRETATION_SOURCE.target:
+        return OFFICIAL_INTERPRETATION_SOURCE.can_get
+    for spec in MINISTRY_INTERPRETATION_SOURCES.values():
+        if spec.target == identity.source_target:
+            return spec.can_get
+    return True
+
+
+def judicial_decision_hit_follow_up(identity: JudicialDecisionIdentity) -> DeferredLookup | None:
+    if not identity.decision_id:
+        return None
     if identity.source_type == "constitutional":
         interface = "get_constitutional_decision"
         reason = (
