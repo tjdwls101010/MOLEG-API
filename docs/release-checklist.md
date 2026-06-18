@@ -54,13 +54,48 @@ assert MolegApi
 PY
 ```
 
+## Trusted Publisher Setup
+
+Configure PyPI Trusted Publisher with these values:
+
+- Owner: `tjdwls101010`
+- Repository: `MOLEG-API`
+- Workflow: `workflow.yml`
+- Environment: `pypi` or all environments
+
+Configure TestPyPI Trusted Publisher separately with the same owner/repository
+and workflow. Use environment `testpypi` if you want the tighter environment
+match, or all environments while bootstrapping.
+
+The workflow file is `.github/workflows/workflow.yml`. It is manual-only
+(`workflow_dispatch`) and refuses production PyPI publishes unless it is run
+from the `main` branch.
+
 ## Publication Order
 
-1. Publish to TestPyPI.
+1. In GitHub Actions, run `Publish to PyPI` with `repository=testpypi`.
 2. Install from TestPyPI in a clean environment.
 3. Run the import smoke test.
-4. Publish the same version to PyPI.
+4. In GitHub Actions, run `Publish to PyPI` with `repository=pypi` from `main`.
 5. Create a GitHub release and tag.
+
+TestPyPI install smoke:
+
+```bash
+python -m pip install \
+  --index-url https://test.pypi.org/simple/ \
+  --no-deps \
+  moleg-api==0.1.0
+
+python - <<'PY'
+from moleg_api import LawIdentity, MolegApi
+
+identity = LawIdentity(law_id="001234", name="테스트법", basis="effective")
+assert identity.to_dict()["name"] == "테스트법"
+assert MolegApi
+print("testpypi install ok")
+PY
+```
 
 Do not publish credentials, `.env` files, live payload dumps with secrets, build
 artifacts, or local database files.

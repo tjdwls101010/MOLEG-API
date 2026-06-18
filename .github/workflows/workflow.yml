@@ -1,0 +1,113 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Package index to publish to"
+        required: true
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.repository }}
+
+    steps:
+      - name: Refuse production publish outside main
+        if: ${{ inputs.repository == 'pypi' && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "PyPI publishes must run from the main branch."
+          exit 1
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install build twine
+
+      - name: Compile package
+        run: python -m compileall moleg_api scripts tests -q
+
+      - name: Check patch hygiene
+        run: git diff --check
+
+      - name: Run deterministic tests
+        run: python -m pytest -q -m "not live"
+
+      - name: Build distribution
+        run: |
+          rm -rf dist
+          python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Verify wheel import outside repository
+        run: |
+          target="$(mktemp -d)"
+          python -m pip install dist/*.whl --no-deps --target "$target"
+          cd /tmp
+          INSTALL_TARGET="$target" PYTHONPATH="$target" python - <<'PY'
+          import importlib.resources
+          import os
+          from pathlib import Path
+
+          import moleg_api
+          from moleg_api import Basis, DeferredLookup, LawIdentity, MolegApi
+
+          package_file = Path(moleg_api.__file__).resolve()
+          install_target = Path(os.environ["INSTALL_TARGET"]).resolve()
+          assert package_file.is_relative_to(install_target), package_file
+          assert importlib.resources.files("moleg_api").joinpath("py.typed").is_file()
+          assert all(hasattr(moleg_api, name) for name in moleg_api.__all__)
+
+          identity = LawIdentity(law_id="001234", name="테스트법", basis="effective")
+          data = identity.to_dict()
+          assert data["law_id"] == "001234"
+          assert data["name"] == "테스트법"
+
+          lookup = DeferredLookup(
+              interface="get_law",
+              query="테스트법",
+              reason="Load selected context",
+              filters={"articles": {"제3조", "제1조", "제2조"}},
+          )
+          lookup_data = lookup.to_dict()
+          assert lookup_data["filters"]["articles"] == ["제1조", "제2조", "제3조"]
+          assert Basis
+          assert MolegApi
+          PY
+
+      - name: Publish to TestPyPI
+        if: ${{ inputs.repository == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+      - name: Publish to PyPI
+        if: ${{ inputs.repository == 'pypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
