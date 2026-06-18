@@ -190,6 +190,22 @@ def test_load_followup_rejects_websearch_handoff():
         MolegApi(FakeSource()).load_followup(lookup)
 
 
+def test_load_followup_rejects_external_tool_handoff_namespaces():
+    api = MolegApi(FakeSource())
+
+    for interface, message in [
+        ("websearch.latest_social_facts", "use WebSearch"),
+        ("congress-db.bill_final_outcomes", "use congress-db"),
+    ]:
+        lookup = FollowUpSearch(
+            interface=interface,
+            query="데이터기본법 개정안",
+            reason="Use the external tool before MOLEG current-law reasoning.",
+        )
+        with pytest.raises(UnsupportedFormatError, match=message):
+            api.load_followup(lookup)
+
+
 def test_resolve_promulgated_law_matches_formatted_promulgation_numbers():
     source = FakeSource(
         search_payloads=[

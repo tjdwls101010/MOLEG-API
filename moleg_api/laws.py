@@ -366,9 +366,13 @@ class MolegApi:
         filters = followup_filters(lookup)
         query = followup_query(lookup)
 
-        if interface == "websearch":
+        if interface == "websearch" or interface.startswith("websearch."):
             raise UnsupportedFormatError(
                 "websearch follow-up is outside MOLEG-API; use WebSearch for latest or non-MOLEG facts."
+            )
+        if interface == "congress-db" or interface.startswith("congress-db."):
+            raise UnsupportedFormatError(
+                "congress-db follow-up is outside MOLEG-API; use congress-db for National Assembly bill facts and promulgation bridge fields."
             )
         if interface == "expand_legal_query":
             return self.expand_legal_query(
