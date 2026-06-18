@@ -255,6 +255,48 @@ def test_load_followup_preserves_article_scope_for_search_followups():
     ]
 
 
+def test_load_followup_executes_query_expansion_related_article_context_followup():
+    source = FakeSource(
+        service_payloads=[
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001234",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "26",
+                        "조문제목": "자동차의 강제처리",
+                        "조문내용": "제26조(자동차의 강제처리) 자동차 소유자는 처리명령을 따라야 한다.",
+                    },
+                }
+            }
+        ]
+    )
+    followup = FollowUpSearch(
+        interface="load_article_context",
+        query="자동차관리법",
+        reason="Load related article text before using this candidate.",
+        source_type="law_article",
+        filters={
+            "article": "제26조",
+            "basis": "effective",
+            "law_id": "001234",
+            "mst": "270001",
+        },
+    )
+
+    context = MolegApi(source).load_followup(followup)
+
+    assert context.requested_article.article == "제26조"
+    assert context.current_article is not None
+    assert context.current_article.article == "제26조"
+    assert "처리명령" in context.current_article.text
+    assert source.calls == [
+        ("service", "eflawjosub", {"ID": "001234", "JO": "002600"})
+    ]
+
+
 def test_resolve_promulgated_law_matches_formatted_promulgation_numbers():
     source = FakeSource(
         search_payloads=[
@@ -3380,6 +3422,18 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
         search for search in expansion.follow_up_searches if search.interface == "search_laws"
     ]
     assert all(search.filters.get("basis") == "effective" for search in law_searches)
+    related_article_load = next(
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "load_article_context"
+        and search.query == "자동차관리법"
+    )
+    assert related_article_load.filters == {
+        "article": "제26조",
+        "basis": "effective",
+        "law_id": "001234",
+        "mst": "270001",
+    }
     administrative_search = next(
         search
         for search in expansion.follow_up_searches

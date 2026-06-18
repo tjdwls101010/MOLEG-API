@@ -5320,6 +5320,21 @@ def build_follow_up_searches(
                 filters=filters,
             )
         )
+        if law.source_type == "law" and law.article and (law.law_id or law.mst):
+            article_filters: dict[str, Any] = {"article": law.article, "basis": "effective"}
+            if law.law_id:
+                article_filters["law_id"] = law.law_id
+            if law.mst:
+                article_filters["mst"] = law.mst
+            searches.append(
+                FollowUpSearch(
+                    interface="load_article_context",
+                    query=law.name,
+                    reason="Load the related article text before using this query-expansion candidate as legal authority.",
+                    source_type="law_article",
+                    filters=article_filters,
+                )
+            )
     if include_websearch_hint:
         searches.append(
             FollowUpSearch(
