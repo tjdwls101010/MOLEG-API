@@ -1760,6 +1760,30 @@ def test_search_administrative_rules_preserves_branch_source_article_reference()
     assert hits[0].identity.source_article == "제10조의2"
 
 
+def test_search_administrative_rules_omits_followup_when_source_identity_is_missing():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙명": "119항공대 운영 규정",
+                            "행정규칙종류": "훈령",
+                            "소관부처명": "소방청",
+                        }
+                    ]
+                }
+            }
+        ]
+    )
+
+    hits = MolegApi(source).search_administrative_rules("119항공대")
+
+    assert hits[0].identity.serial_id is None
+    assert hits[0].identity.rule_id is None
+    assert hits[0].follow_up is None
+
+
 def test_search_administrative_rules_keeps_issued_on_distinct_from_effective_date():
     source = FakeSource(
         search_payloads=[

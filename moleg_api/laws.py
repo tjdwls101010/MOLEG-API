@@ -5430,7 +5430,9 @@ def law_hit_follow_up(identity: LawIdentity) -> DeferredLookup | None:
     )
 
 
-def administrative_rule_hit_follow_up(identity: AdministrativeRuleIdentity) -> DeferredLookup:
+def administrative_rule_hit_follow_up(identity: AdministrativeRuleIdentity) -> DeferredLookup | None:
+    if not identity.serial_id and not identity.rule_id:
+        return None
     filters: dict[str, Any] = {}
     if identity.serial_id:
         filters["id"] = identity.serial_id
