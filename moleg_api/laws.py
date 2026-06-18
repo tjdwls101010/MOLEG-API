@@ -2703,7 +2703,12 @@ class MolegApi:
         deferred = [
             item
             for item in bundle.deferred
-            if item.interface not in {"get_administrative_rule", "get_annex_form_body"}
+            if item.interface
+            not in {
+                "get_administrative_rule",
+                "load_administrative_rule_context",
+                "get_annex_form_body",
+            }
         ]
         loaded_administrative_rules: list[AdministrativeRuleText] = []
         loaded_annex_forms: list[AnnexFormText] = []
@@ -2832,7 +2837,7 @@ class MolegApi:
                     exc,
                     gaps,
                     candidate=candidate,
-                    recommended_interface="get_administrative_rule",
+                    recommended_interface="load_administrative_rule_context",
                     source_label="Delegated-criteria administrative-rule detail",
                 )
 
@@ -6571,9 +6576,12 @@ def deferred_from_candidates(
             lookup_source_type = "annex_form"
         elif identity is not None:
             lookup_source_type = getattr(identity, "source_type", source_type)
+        lookup_interface = interface
+        if interface == "get_administrative_rule" and isinstance(identity, AdministrativeRuleIdentity):
+            lookup_interface = "load_administrative_rule_context"
         deferred.append(
             DeferredLookup(
-                interface=interface,
+                interface=lookup_interface,
                 query=str(title or source_id),
                 reason="Load full text only if Claude needs this candidate after ranking the bundle.",
                 source_type=lookup_source_type,

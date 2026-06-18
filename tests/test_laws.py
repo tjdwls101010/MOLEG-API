@@ -3765,7 +3765,7 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
     assert len(bundle.candidates.constitutional_decisions) == 2
     assert len(bundle.candidates.annex_forms) == 4
     admin_deferred = [
-        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+        item for item in bundle.deferred if item.interface == "load_administrative_rule_context"
     ]
     annex_deferred = [
         item for item in bundle.deferred if item.interface == "get_annex_form_body"
@@ -4397,7 +4397,8 @@ def test_load_delegated_criteria_keeps_detail_deferred_when_statute_anchor_is_am
     assert bundle.loaded.annex_forms == []
     assert any(gap.kind == "manual_review_required" for gap in bundle.gaps)
     assert any(
-        item.interface == "get_administrative_rule" and item.filters.get("id") == "2100000999999"
+        item.interface == "load_administrative_rule_context"
+        and item.filters.get("id") == "2100000999999"
         for item in bundle.deferred
     )
     assert any(
@@ -5075,13 +5076,13 @@ def test_load_delegated_criteria_preserves_detail_source_failures_as_deferred_ga
         gap
         for gap in bundle.gaps
         if gap.kind == "source_access_failure"
-        and gap.recommended_interface == "get_administrative_rule"
+        and gap.recommended_interface == "load_administrative_rule_context"
     ]
     assert len(admin_gaps) == 1
     assert "RateLimitError" in admin_gaps[0].reason
     assert "admrul" in admin_gaps[0].reason
     admin_deferred = [
-        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+        item for item in bundle.deferred if item.interface == "load_administrative_rule_context"
     ]
     assert [(item.query, item.filters.get("id")) for item in admin_deferred] == [
         ("자동차관리법 고시", "21자동차관리법")
@@ -5559,7 +5560,9 @@ def test_load_legal_context_bundle_stages_question_context():
     assert any(item.interface == "get_interpretation" for item in bundle.deferred)
     assert any(item.interface == "get_case" for item in bundle.deferred)
     admin_deferred = [
-        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+        item
+        for item in bundle.deferred
+        if item.interface == "load_administrative_rule_context"
     ]
     annex_deferred = [
         item for item in bundle.deferred if item.interface == "get_annex_form_body"
@@ -6760,7 +6763,9 @@ def test_load_legal_context_bundle_searches_moved_destination_for_admin_and_anne
         "자동차등록 신청서",
     ]
     admin_deferred = [
-        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+        item
+        for item in bundle.deferred
+        if item.interface == "load_administrative_rule_context"
     ]
     annex_deferred = [
         item for item in bundle.deferred if item.interface == "get_annex_form_body"

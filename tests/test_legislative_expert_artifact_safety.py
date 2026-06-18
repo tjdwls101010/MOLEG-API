@@ -145,7 +145,7 @@ def test_ambiguous_anchor_delegated_criteria_candidates_are_not_promoted_to_oper
     assert readiness.evidence["loaded_annex_forms"] == 0
     assert readiness.evidence["service_call_targets"] == []
     assert readiness.evidence["text_call_targets"] == []
-    assert "get_administrative_rule" in readiness.evidence["deferred_interfaces"]
+    assert "load_administrative_rule_context" in readiness.evidence["deferred_interfaces"]
     assert "get_annex_form_body" in readiness.evidence["deferred_interfaces"]
     assert (
         "ambiguous_delegated_criteria_anchor_must_not_load_operational_detail"
@@ -473,7 +473,7 @@ def test_context_bundle_moved_operational_candidates_require_detail_loading():
     assert readiness.evidence["loaded_administrative_rules"] == 0
     assert readiness.evidence["loaded_annex_forms"] == 0
     assert {citation.source_type for citation in readiness.citations} == {"law"}
-    assert "get_administrative_rule" in readiness.evidence["deferred_interfaces"]
+    assert "load_administrative_rule_context" in readiness.evidence["deferred_interfaces"]
     assert "get_annex_form_body" in readiness.evidence["deferred_interfaces"]
     assert (
         "administrative_rule_and_annex_candidates_not_loaded_operational_criteria"

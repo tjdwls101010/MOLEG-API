@@ -820,6 +820,7 @@ def test_prompt_plans_have_matching_answer_readiness_guardrails():
     assert delegated_loaded_readiness.public_interfaces == ["load_institutional_system", "load_followup"]
     assert delegated_loaded_readiness.must_have["administrative_rule_followup_executable"] is True
     assert delegated_loaded_readiness.must_have["annex_followup_executable"] is True
+    assert delegated_loaded_readiness.must_have["administrative_rule_context_guardrails_loaded"] is True
     assert delegated_mismatch_readiness.status == "needs_more_source_loading"
     assert delegated_mismatch_readiness.public_interfaces == ["load_delegated_criteria"]
     assert "delegated_criteria_source_mismatch" in delegated_mismatch_readiness.evidence["gap_kinds"]

@@ -713,7 +713,7 @@ def test_legislative_expert_e2e_audit_searches_moved_bundle_destination_candidat
     assert "자동차관리법 제12조 등록 운영기준" in status.evidence["search_queries"]
     assert status.evidence["administrative_rule_candidates"] == ["자동차등록 운영규정"]
     assert status.evidence["annex_form_candidates"] == ["자동차등록 기준", "자동차등록 신청서"]
-    assert "get_administrative_rule" in status.evidence["deferred_interfaces"]
+    assert "load_administrative_rule_context" in status.evidence["deferred_interfaces"]
     assert "get_annex_form_body" in status.evidence["deferred_interfaces"]
     assert status.evidence["loaded_administrative_rules"] == 0
     assert status.evidence["loaded_annex_forms"] == 0
@@ -1530,12 +1530,13 @@ def test_legislative_expert_e2e_audit_marks_followup_loaded_delegated_criteria_r
     assert loaded.must_have["candidate_stage_preserved_with_loaded_detail"] is True
     assert loaded.must_have["administrative_rule_followup_executable"] is True
     assert loaded.must_have["annex_followup_executable"] is True
+    assert loaded.must_have["administrative_rule_context_guardrails_loaded"] is True
     assert loaded.must_have["administrative_rule_body_loaded"] is True
     assert loaded.must_have["administrative_rule_annex_body_loaded"] is True
     assert loaded.must_have["structured_annex_rows_loaded"] is True
     assert loaded.evidence["call_targets"][-2:] == ["admrul", "admRulBylTextDownLoad.do"]
     assert loaded.evidence["loaded_detail_interfaces"] == [
-        "load_followup:get_administrative_rule",
+        "load_followup:load_administrative_rule_context",
         "load_followup:get_annex_form_body",
     ]
     assert loaded.evidence["followup_filters"] == [
@@ -1636,7 +1637,7 @@ def test_legislative_expert_e2e_audit_blocks_delegated_criteria_detail_for_ambig
     assert blocked.evidence["annex_form_candidates"] == ["데이터 처리 기준"]
     assert blocked.evidence["loaded_administrative_rules"] == 0
     assert blocked.evidence["loaded_annex_forms"] == 0
-    assert "get_administrative_rule" in blocked.evidence["deferred_interfaces"]
+    assert "load_administrative_rule_context" in blocked.evidence["deferred_interfaces"]
     assert "get_annex_form_body" in blocked.evidence["deferred_interfaces"]
     assert blocked.evidence["service_call_targets"] == []
     assert blocked.evidence["text_call_targets"] == []

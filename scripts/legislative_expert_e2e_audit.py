@@ -492,7 +492,7 @@ def _reports_from_tracer_archetypes() -> list[LegislativeExpertScenarioReport]:
                         "delegation_graph_loaded": result.evidence["delegated_rules"] == 1,
                         "administrative_rule_candidate_preserved": result.evidence["admin_rule_candidates"] == 1,
                         "deferred_followups_preserved": {
-                            "get_administrative_rule",
+                            "load_administrative_rule_context",
                             "get_annex_form_body",
                         }.issubset(result.deferred),
                         "candidate_not_cited_as_loaded_source": not any(
@@ -2172,7 +2172,7 @@ def _audit_context_bundle_moved_article_destination_candidate_search() -> Legisl
                 item.identity.title for item in bundle.candidates.annex_forms
             ]
             == ["자동차등록 기준", "자동차등록 신청서"],
-            "candidate_detail_deferred": "get_administrative_rule" in deferred_interfaces
+            "candidate_detail_deferred": "load_administrative_rule_context" in deferred_interfaces
             and "get_annex_form_body" in deferred_interfaces,
             "no_operational_detail_loaded": not bundle.loaded.administrative_rules
             and not bundle.loaded.annex_forms,
@@ -3970,7 +3970,7 @@ def _audit_institutional_system_empty_delegation_graph_guardrail() -> Legislativ
     administrative_detail_deferred = [
         item
         for item in bundle.deferred
-        if item.interface == "get_administrative_rule"
+        if item.interface == "load_administrative_rule_context"
         and item.source_type == "administrative_rule"
     ]
 
@@ -5018,10 +5018,11 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
 
     bundle = api.load_institutional_system([identity], budget="minimal")
     administrative_rule_lookup = next(
-        item for item in bundle.deferred if item.interface == "get_administrative_rule"
+        item for item in bundle.deferred if item.interface == "load_administrative_rule_context"
     )
     annex_lookup = next(item for item in bundle.deferred if item.interface == "get_annex_form_body")
-    administrative_rule = api.load_followup(administrative_rule_lookup)
+    administrative_rule_context = api.load_followup(administrative_rule_lookup)
+    administrative_rule = administrative_rule_context.rule
     annex_body = api.load_followup(annex_lookup)
     call_targets = [target for _, target, _ in source.calls]
 
@@ -5036,7 +5037,7 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
         must_have={
             "candidate_stage_preserved_with_loaded_detail": len(bundle.candidates.administrative_rules) == 1
             and len(bundle.candidates.annex_forms) == 1,
-            "administrative_rule_followup_executable": administrative_rule_lookup.interface == "get_administrative_rule"
+            "administrative_rule_followup_executable": administrative_rule_lookup.interface == "load_administrative_rule_context"
             and administrative_rule_lookup.filters.get("id") == "2100000248758",
             "annex_followup_executable": annex_lookup.interface == "get_annex_form_body"
             and annex_lookup.filters.get("annex_id") == "330000001",
@@ -5047,6 +5048,8 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             "structured_annex_rows_loaded": bool(
                 annex_body.structured_data and len(annex_body.structured_data.rows) == 2
             ),
+            "administrative_rule_context_guardrails_loaded": administrative_rule_context.current_articles
+            == administrative_rule_context.loaded_articles,
             "detail_sources_loaded_through_followup_interface": call_targets[-2:] == ["admrul", "admRulBylTextDownLoad.do"],
         },
         citations=[
@@ -5488,7 +5491,7 @@ def _audit_delegated_criteria_ambiguous_anchor_guardrail() -> LegislativeExpertS
             == ["데이터 처리 기준"],
             "no_operational_detail_loaded": not bundle.loaded.administrative_rules
             and not bundle.loaded.annex_forms,
-            "detail_followups_preserved": {"get_administrative_rule", "get_annex_form_body"}.issubset(
+            "detail_followups_preserved": {"load_administrative_rule_context", "get_annex_form_body"}.issubset(
                 set(deferred_interfaces)
             ),
             "detail_source_not_called": service_call_targets == [] and text_call_targets == [],
