@@ -5615,6 +5615,19 @@ def test_find_comparable_mechanisms_returns_planning_law_identities_from_ai_surf
         "concept": "과징금",
         "discovery_endpoints": ["aiSearch", "aiRltLs"],
         "source_articles": [{"article": "제50조", "title": "과징금", "source_target": "aiSearch"}],
+        "source_law_followups": [
+            DeferredLookup(
+                interface="get_law",
+                query="독점규제 및 공정거래에 관한 법률",
+                reason="Load selected comparable law text before citing or comparing legal structure.",
+                source_type="law",
+                filters={
+                    "basis": "effective",
+                    "law_id": "001111",
+                    "mst": "270001",
+                },
+            )
+        ],
         "source_article_followups": [
             DeferredLookup(
                 interface="get_article",
@@ -5686,6 +5699,53 @@ def test_find_comparable_mechanisms_source_article_followup_loads_selected_artic
         ("search", "aiRltLs", {"query": "과징금", "search": 0}),
         ("service", "lstrmRltJo", {"query": "과징금"}),
         ("service", "eflawjosub", {"ID": "001111", "JO": "005000"}),
+    ]
+
+
+def test_find_comparable_mechanisms_source_law_followup_loads_candidate_without_article_anchor():
+    source = FakeSource(
+        search_payloads=[
+            {"aiSearch": {"법령조문": []}},
+            {
+                "aiRltLs": {
+                    "법령조문": [
+                        {
+                            "법령ID": "009999",
+                            "법령명": "자동차손해배상 보장법",
+                            "법령일련번호": "280001",
+                        }
+                    ]
+                }
+            },
+        ],
+        service_payloads=[
+            {"lstrmRltJo": []},
+            {
+                "eflaw": {
+                    "기본정보": {
+                        "법령ID": "009999",
+                        "법령명_한글": "자동차손해배상 보장법",
+                        "법령일련번호": "280001",
+                        "시행일자": "20250101",
+                    },
+                    "조문": {"조문단위": []},
+                }
+            },
+        ],
+    )
+    api = MolegApi(source)
+
+    candidate = api.find_comparable_mechanisms("자동차", display=1)[0]
+    law = api.load_followup(candidate.raw_keys["source_law_followups"][0])
+
+    assert candidate.raw_keys["source_articles"] == []
+    assert candidate.raw_keys["source_article_followups"] == []
+    assert law.identity.name == "자동차손해배상 보장법"
+    assert source.calls == [
+        ("search", "aiSearch", {"query": "자동차", "display": 1, "search": 0}),
+        ("search", "aiRltLs", {"query": "자동차", "search": 0}),
+        ("service", "lstrmRltJo", {"query": "자동차"}),
+        ("service", "eflaw", {"MST": "280001"}),
     ]
 
 

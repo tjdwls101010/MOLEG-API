@@ -1496,6 +1496,7 @@ def test_legislative_expert_e2e_audit_keeps_comparable_mechanisms_as_candidates(
     assert comparable.must_have["same_name_different_law_ids_preserved"] is True
     assert comparable.must_have["article_anchor_metadata_preserved"] is True
     assert comparable.must_have["source_article_followups_preserved"] is True
+    assert comparable.must_have["source_law_followups_preserved"] is True
     assert comparable.must_have["no_comparable_article_loaded"] is True
     assert comparable.must_have["no_citable_comparison_loaded"] is True
     assert comparable.citations == []
@@ -1509,6 +1510,18 @@ def test_legislative_expert_e2e_audit_keeps_comparable_mechanisms_as_candidates(
             "source_type": "law_article",
             "filters": {
                 "article": "제50조",
+                "basis": "effective",
+                "law_id": "001111",
+                "mst": "270001",
+            },
+        }
+    ]
+    assert comparable.evidence["candidate_source_law_followups"][0] == [
+        {
+            "interface": "get_law",
+            "query": "독점규제 및 공정거래에 관한 법률",
+            "source_type": "law",
+            "filters": {
                 "basis": "effective",
                 "law_id": "001111",
                 "mst": "270001",

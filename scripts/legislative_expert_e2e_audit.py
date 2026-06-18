@@ -4888,6 +4888,10 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
                 item.interface for item in candidates[0].raw_keys["source_article_followups"]
             ]
             == ["get_article"],
+            "source_law_followups_preserved": [
+                item.interface for item in candidates[0].raw_keys["source_law_followups"]
+            ]
+            == ["get_law"],
             "no_comparable_article_loaded": article_service_targets == [],
             "no_citable_comparison_loaded": True,
         },
@@ -4913,6 +4917,13 @@ def _audit_comparable_mechanism_candidate_detail_guardrail() -> LegislativeExper
                 [
                     _followup_summary(followup)
                     for followup in candidate.raw_keys.get("source_article_followups", [])
+                ]
+                for candidate in candidates
+            ],
+            "candidate_source_law_followups": [
+                [
+                    _followup_summary(followup)
+                    for followup in candidate.raw_keys.get("source_law_followups", [])
                 ]
                 for candidate in candidates
             ],

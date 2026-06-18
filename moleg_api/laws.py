@@ -5234,6 +5234,7 @@ def comparable_mechanism_identities(
             **identity.raw_keys,
             "discovery_endpoints": endpoints[key],
             "source_articles": articles[key],
+            "source_law_followups": comparable_source_law_followups(identity),
             "source_article_followups": comparable_source_article_followups(
                 identity,
                 articles[key],
@@ -5259,6 +5260,20 @@ def comparable_mechanism_identities(
         if len(results) >= display:
             break
     return results
+
+
+def comparable_source_law_followups(identity: LawIdentity) -> list[DeferredLookup]:
+    if not law_identity_has_source_identifier(identity):
+        return []
+    return [
+        DeferredLookup(
+            interface="get_law",
+            query=identity.name,
+            reason="Load selected comparable law text before citing or comparing legal structure.",
+            source_type="law",
+            filters=law_identity_followup_filters(identity, include_basis=True),
+        )
+    ]
 
 
 def comparable_source_article_followups(
