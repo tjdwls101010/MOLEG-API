@@ -4238,6 +4238,65 @@ def test_load_institutional_system_stages_multiple_explicit_statutes():
     ]
 
 
+def test_load_institutional_system_admin_rule_deferred_uses_rule_id_when_serial_id_is_missing():
+    identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
+    source = FakeSource(
+        search_payloads=[
+            {
+                "AdmRulSearch": {
+                    "admrul": [
+                        {
+                            "행정규칙ID": "012345",
+                            "행정규칙명": "전자금융거래법 고시",
+                            "행정규칙종류": "고시",
+                            "발령일자": "20250101",
+                        }
+                    ]
+                }
+            },
+            {"ExpcSearch": {"expc": []}},
+            {"PrecSearch": {"prec": []}},
+            {"DetcSearch": {"detc": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ],
+        service_payloads=[
+            institutional_law_payload("100001", "전자금융거래법", "300001"),
+            institutional_structure_payload("100001", "전자금융거래법", "300001", "전자금융거래법 시행령"),
+            institutional_delegation_payload("100001", "전자금융거래법"),
+            {
+                "admrul": {
+                    "행정규칙ID": "012345",
+                    "행정규칙명": "전자금융거래법 고시",
+                    "행정규칙종류": "고시",
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "목적",
+                                "조문내용": "전자금융거래 기준을 정한다.",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+    )
+    api = MolegApi(source)
+
+    bundle = api.load_institutional_system([identity], budget="minimal")
+    admin_deferred = next(
+        item
+        for item in bundle.deferred
+        if item.interface == "load_administrative_rule_context"
+    )
+    context = api.load_followup(admin_deferred)
+
+    assert admin_deferred.filters == {"rule_id": "012345"}
+    assert context.rule.identity.rule_id == "012345"
+    assert source.calls[-1] == ("service", "admrul", {"LID": "012345"})
+
+
 def test_load_institutional_system_marks_future_effective_statute_as_not_current_as_of():
     identity = LawIdentity(law_id="100001", mst="300001", name="전자금융거래법", basis="effective")
     source = FakeSource(
