@@ -168,6 +168,7 @@ class LawHit:
 
     identity: LawIdentity
     raw: dict[str, Any] = field(default_factory=dict)
+    follow_up: DeferredLookup | None = None
 
 
 @dataclass(frozen=True)
@@ -356,6 +357,7 @@ class AdministrativeRuleHit:
 
     identity: AdministrativeRuleIdentity
     raw: dict[str, Any] = field(default_factory=dict)
+    follow_up: DeferredLookup | None = None
 
 
 @dataclass(frozen=True)
@@ -437,6 +439,7 @@ class AnnexFormHit:
 
     identity: AnnexFormIdentity
     raw: dict[str, Any] = field(default_factory=dict)
+    follow_up: DeferredLookup | None = None
 
 
 @dataclass(frozen=True)
@@ -489,6 +492,7 @@ class InterpretationHit:
 
     identity: InterpretationIdentity
     raw: dict[str, Any] = field(default_factory=dict)
+    follow_up: DeferredLookup | None = None
 
 
 @dataclass(frozen=True)
@@ -538,6 +542,7 @@ class JudicialDecisionHit:
 
     identity: JudicialDecisionIdentity
     raw: dict[str, Any] = field(default_factory=dict)
+    follow_up: DeferredLookup | None = None
 
 
 @dataclass(frozen=True)

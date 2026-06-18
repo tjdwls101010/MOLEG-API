@@ -71,6 +71,13 @@ def test_search_laws_defaults_to_effective_basis_and_normalizes_hits():
     assert identity.promulgation_number == "21527"
     assert identity.effective_date == "20260407"
     assert identity.ministry == "기후에너지환경부"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="get_law",
+        query="기후위기 대응을 위한 탄소중립ㆍ녹색성장 기본법",
+        reason="Load selected law text before citing current legal substance.",
+        source_type="law",
+        filters={"basis": "effective", "law_id": "014152", "mst": "261457"},
+    )
     assert source.calls[0][1] == "eflaw"
 
 
@@ -1707,6 +1714,13 @@ def test_search_administrative_rules_normalizes_current_rule_hits():
     assert identity.source_law_name == "항공안전법"
     assert identity.source_article == "제5조제2항"
     assert identity.source_article_title == "항공업무"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="load_administrative_rule_context",
+        query="119항공대 운영 규정",
+        reason="Load selected administrative-rule text before citing operational criteria.",
+        source_type="administrative_rule",
+        filters={"id": "2100000248758", "rule_id": "012345"},
+    )
     assert source.calls[0] == (
         "search",
         "admrul",
@@ -1842,6 +1856,18 @@ def test_search_annex_forms_normalizes_law_candidates_without_exposing_targets()
     assert identity.file_link == "https://example.test/annex.hwp"
     assert identity.pdf_link == "https://example.test/annex.pdf"
     assert identity.detail_link == "https://example.test/detail"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="get_annex_form_body",
+        query="자동차등록번호판의 기준",
+        reason="Load selected annex/form body before citing attached criteria or forms.",
+        source_type="annex_form",
+        filters={
+            "id": "220000001",
+            "annex_id": "220000001",
+            "source": "law",
+            "related_name": "자동차관리법",
+        },
+    )
     assert source.calls[0] == (
         "search",
         "licbyl",
@@ -2775,11 +2801,65 @@ def test_search_interpretations_defaults_to_official_moleg_source():
     assert identity.case_number == "21-0001"
     assert identity.reply_agency == "법제처"
     assert identity.interpretation_date == "20240115"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="get_interpretation",
+        query="자동차관리법 관련 법령해석례",
+        reason="Load selected interpretation detail before citing question, answer, or reason.",
+        source_type="moleg",
+        filters={"id": "330471", "source": "moleg"},
+    )
     assert source.calls[0] == (
         "search",
         "expc",
         {"query": "자동차", "display": 5, "search": 1},
     )
+
+
+def test_search_hit_followup_executes_selected_interpretation_detail_lookup():
+    source = FakeSource(
+        search_payloads=[
+            {
+                "ExpcSearch": {
+                    "expc": [
+                        {
+                            "법령해석례일련번호": "330471",
+                            "안건명": "자동차관리법 관련 법령해석례",
+                            "안건번호": "21-0001",
+                            "회신기관명": "법제처",
+                            "회신일자": "20240115",
+                        }
+                    ]
+                }
+            }
+        ],
+        service_payloads=[
+            {
+                "expc": {
+                    "법령해석례일련번호": "330471",
+                    "안건명": "자동차관리법 관련 법령해석례",
+                    "안건번호": "21-0001",
+                    "해석일자": "20240115",
+                    "해석기관명": "법제처",
+                    "질의요지": "자동차 등록 기준은 어떻게 적용되는가?",
+                    "회답": "자동차관리법에 따라 등록 기준을 적용한다.",
+                    "이유": "관련 조문과 입법 취지를 종합하면 그렇다.",
+                    "관련법령": "자동차관리법 제1조",
+                }
+            }
+        ],
+    )
+    api = MolegApi(source)
+
+    hit = api.search_interpretations("자동차", display=1)[0]
+    assert hit.follow_up is not None
+    text = api.load_followup(hit.follow_up)
+
+    assert text.identity.interpretation_id == "330471"
+    assert "등록 기준을 적용" in text.answer
+    assert source.calls == [
+        ("search", "expc", {"query": "자동차", "display": 1, "search": 1}),
+        ("service", "expc", {"ID": "330471"}),
+    ]
 
 
 def test_search_interpretations_uses_ministry_registry():
@@ -3161,6 +3241,13 @@ def test_search_cases_normalizes_case_hits_and_court_filter():
     assert hits[0].identity.case_number == "2020다12345"
     assert hits[0].identity.decision_date == "20240115"
     assert hits[0].identity.court == "대법원"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="get_case",
+        query="손해배상",
+        reason="Load selected case detail before citing holdings, summary, or full text.",
+        source_type="case",
+        filters={"id": "228541", "source": "case"},
+    )
     assert source.calls[0] == (
         "search",
         "prec",
@@ -3247,6 +3334,13 @@ def test_search_constitutional_decisions_normalizes_hits():
     assert hits[0].identity.source_target == "detc"
     assert hits[0].identity.decision_id == "58400"
     assert hits[0].identity.decision_date == "20240229"
+    assert hits[0].follow_up == DeferredLookup(
+        interface="get_constitutional_decision",
+        query="자동차관리법제26조등위헌확인",
+        reason="Load selected Constitutional Court decision detail before citing holdings or reviewed statutes.",
+        source_type="constitutional",
+        filters={"id": "58400", "source": "constitutional"},
+    )
     assert source.calls[0] == (
         "search",
         "detc",

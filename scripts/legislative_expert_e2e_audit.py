@@ -96,6 +96,17 @@ def _references_target_article(
     return any(item.law_name == law_name and item.article == article for item in references)
 
 
+def _followup_summary(followup: Any) -> dict[str, Any] | None:
+    if followup is None:
+        return None
+    return {
+        "interface": followup.interface,
+        "query": followup.query,
+        "source_type": followup.source_type,
+        "filters": followup.filters,
+    }
+
+
 def run_legislative_expert_e2e_audit() -> list[LegislativeExpertScenarioReport]:
     """Run deterministic E2E readiness scenarios through public interfaces."""
 
@@ -1188,6 +1199,8 @@ def _audit_law_search_candidate_detail_guardrail() -> LegislativeExpertScenarioR
             "identity_metadata_preserved": hits[0].identity.law_id == "001747"
             and hits[0].identity.mst == "270001"
             and hits[0].identity.basis == "effective",
+            "detail_followup_preserved": hits[0].follow_up is not None
+            and hits[0].follow_up.interface == "get_law",
             "no_law_text_loaded": service_call_targets == [],
             "no_citable_article_or_duty_loaded": True,
         },
@@ -1205,6 +1218,7 @@ def _audit_law_search_candidate_detail_guardrail() -> LegislativeExpertScenarioR
             "query": law_name,
             "candidate_names": [hit.identity.name for hit in hits],
             "candidate_basis": [hit.identity.basis for hit in hits],
+            "detail_followups": [_followup_summary(hit.follow_up) for hit in hits],
             "search_call_targets": [target for kind, target, _ in source.calls if kind == "search"],
             "service_call_targets": service_call_targets,
             "citations_loaded": 0,
@@ -1292,6 +1306,8 @@ def _audit_interpretation_search_candidate_detail_guardrail() -> LegislativeExpe
             and hit.identity.reply_agency == "법제처",
             "decision_metadata_preserved": hit.identity.case_number == "21-0001"
             and hit.identity.interpretation_date == "20240115",
+            "detail_followup_preserved": hit.follow_up is not None
+            and hit.follow_up.interface == "get_interpretation",
             "no_interpretation_detail_loaded": service_call_targets == [],
             "no_citable_interpretation_substance_loaded": True,
         },
@@ -1314,6 +1330,7 @@ def _audit_interpretation_search_candidate_detail_guardrail() -> LegislativeExpe
                     "interpretation_date": item.identity.interpretation_date,
                     "reply_agency": item.identity.reply_agency,
                     "source_target": item.identity.source_target,
+                    "follow_up": _followup_summary(item.follow_up),
                 }
                 for item in hits
             ],
@@ -2328,6 +2345,8 @@ def _audit_case_search_candidate_detail_guardrail() -> LegislativeExpertScenario
             "decision_metadata_preserved": hit.identity.case_number == "2020두12345"
             and hit.identity.decision_date == "20240115"
             and hit.identity.court == "대법원",
+            "detail_followup_preserved": hit.follow_up is not None
+            and hit.follow_up.interface == "get_case",
             "no_case_detail_loaded": service_call_targets == [],
             "no_citable_holding_loaded": True,
         },
@@ -2350,6 +2369,7 @@ def _audit_case_search_candidate_detail_guardrail() -> LegislativeExpertScenario
                     "decision_date": item.identity.decision_date,
                     "court": item.identity.court,
                     "source_target": item.identity.source_target,
+                    "follow_up": _followup_summary(item.follow_up),
                 }
                 for item in hits
             ],
@@ -2443,6 +2463,8 @@ def _audit_constitutional_search_candidate_detail_guardrail() -> LegislativeExpe
             and hit.identity.source_target == "detc",
             "decision_metadata_preserved": hit.identity.case_number == "2020헌마1"
             and hit.identity.decision_date == "20240229",
+            "detail_followup_preserved": hit.follow_up is not None
+            and hit.follow_up.interface == "get_constitutional_decision",
             "no_constitutional_detail_loaded": service_call_targets == [],
             "no_citable_constitutional_reasoning_loaded": True,
         },
@@ -2464,6 +2486,7 @@ def _audit_constitutional_search_candidate_detail_guardrail() -> LegislativeExpe
                     "case_number": item.identity.case_number,
                     "decision_date": item.identity.decision_date,
                     "source_target": item.identity.source_target,
+                    "follow_up": _followup_summary(item.follow_up),
                 }
                 for item in hits
             ],
@@ -4232,6 +4255,8 @@ def _audit_administrative_rule_search_candidate_detail_guardrail() -> Legislativ
             and hit.identity.effective_date == "20250101"
             and hit.identity.source_law_name == "자동차관리법"
             and hit.identity.source_article == "제26조",
+            "detail_followup_preserved": hit.follow_up is not None
+            and hit.follow_up.interface == "load_administrative_rule_context",
             "no_administrative_rule_detail_loaded": service_call_targets == [],
             "no_citable_operational_criteria_loaded": True,
         },
@@ -4255,6 +4280,7 @@ def _audit_administrative_rule_search_candidate_detail_guardrail() -> Legislativ
                     "effective_date": item.identity.effective_date,
                     "source_law_name": item.identity.source_law_name,
                     "source_article": item.identity.source_article,
+                    "follow_up": _followup_summary(item.follow_up),
                 }
                 for item in hits
             ],
@@ -4918,6 +4944,8 @@ def _audit_annex_form_search_candidate_detail_guardrail() -> LegislativeExpertSc
             and hit.identity.source_target == "licbyl",
             "annex_metadata_preserved": hit.identity.related_name == "식품위생법 시행령"
             and hit.identity.annex_type == "별표",
+            "detail_followup_preserved": hit.follow_up is not None
+            and hit.follow_up.interface == "get_annex_form_body",
             "no_annex_body_loaded": text_call_targets == [],
             "no_citable_annex_criteria_loaded": True,
         },
@@ -4939,6 +4967,7 @@ def _audit_annex_form_search_candidate_detail_guardrail() -> LegislativeExpertSc
                     "related_name": item.identity.related_name,
                     "annex_type": item.identity.annex_type,
                     "source_target": item.identity.source_target,
+                    "follow_up": _followup_summary(item.follow_up),
                 }
                 for item in hits
             ],

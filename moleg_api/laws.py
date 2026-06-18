@@ -648,10 +648,17 @@ class MolegApi:
             params["org"] = ministry
 
         payload = self.source.search(target, params)
-        return [
-            LawHit(identity=normalize_law_identity(row, basis=basis), raw=row)
-            for row in unwrap_search_laws(payload)
-        ]
+        hits: list[LawHit] = []
+        for row in unwrap_search_laws(payload):
+            identity = normalize_law_identity(row, basis=basis)
+            hits.append(
+                LawHit(
+                    identity=identity,
+                    raw=row,
+                    follow_up=law_hit_follow_up(identity),
+                )
+            )
+        return hits
 
     def resolve_promulgated_law(
         self,
@@ -1154,13 +1161,17 @@ class MolegApi:
             params["date"] = compact_date(issued_on)
 
         payload = self.source.search("admrul", params)
-        return [
-            AdministrativeRuleHit(
-                identity=normalize_administrative_rule_identity(row),
-                raw=row,
+        hits: list[AdministrativeRuleHit] = []
+        for row in unwrap_search_administrative_rules(payload):
+            identity = normalize_administrative_rule_identity(row)
+            hits.append(
+                AdministrativeRuleHit(
+                    identity=identity,
+                    raw=row,
+                    follow_up=administrative_rule_hit_follow_up(identity),
+                )
             )
-            for row in unwrap_search_administrative_rules(payload)
-        ]
+        return hits
 
     def search_annex_forms(
         self,
@@ -1197,17 +1208,21 @@ class MolegApi:
             params["org"] = ministry
 
         payload = self.source.search(target, params)
-        return [
-            AnnexFormHit(
-                identity=normalize_annex_form_identity(
-                    row,
-                    source_type=source_type,
-                    source_target=target,
-                ),
-                raw=row,
+        hits: list[AnnexFormHit] = []
+        for row in unwrap_target_rows(payload, target):
+            identity = normalize_annex_form_identity(
+                row,
+                source_type=source_type,
+                source_target=target,
             )
-            for row in unwrap_target_rows(payload, target)
-        ]
+            hits.append(
+                AnnexFormHit(
+                    identity=identity,
+                    raw=row,
+                    follow_up=annex_form_hit_follow_up(identity),
+                )
+            )
+        return hits
 
     def get_annex_form_body(
         self,
@@ -1527,18 +1542,20 @@ class MolegApi:
                     source_label=f"Interpretation search for {spec.ministry or spec.target}",
                 )
                 continue
-            hits.extend(
-                InterpretationHit(
-                    identity=normalize_interpretation_identity(
-                        row,
-                        source_type=spec.source_type,
-                        source_target=spec.target,
-                        ministry=spec.ministry,
-                    ),
-                    raw=row,
+            for row in unwrap_search_interpretations(payload, spec.target):
+                identity = normalize_interpretation_identity(
+                    row,
+                    source_type=spec.source_type,
+                    source_target=spec.target,
+                    ministry=spec.ministry,
                 )
-                for row in unwrap_search_interpretations(payload, spec.target)
-            )
+                hits.append(
+                    InterpretationHit(
+                        identity=identity,
+                        raw=row,
+                        follow_up=interpretation_hit_follow_up(identity),
+                    )
+                )
         if not hits and first_failure is not None:
             raise first_failure
         if source_failures:
@@ -1631,17 +1648,21 @@ class MolegApi:
             params["nb"] = case_number
 
         payload = self.source.search("prec", params)
-        return [
-            JudicialDecisionHit(
-                identity=normalize_judicial_decision_identity(
-                    row,
-                    source_type="case",
-                    source_target="prec",
-                ),
-                raw=row,
+        hits: list[JudicialDecisionHit] = []
+        for row in unwrap_search_judicial_decisions(payload, "prec"):
+            identity = normalize_judicial_decision_identity(
+                row,
+                source_type="case",
+                source_target="prec",
             )
-            for row in unwrap_search_judicial_decisions(payload, "prec")
-        ]
+            hits.append(
+                JudicialDecisionHit(
+                    identity=identity,
+                    raw=row,
+                    follow_up=judicial_decision_hit_follow_up(identity),
+                )
+            )
+        return hits
 
     def get_case(
         self,
@@ -1721,17 +1742,21 @@ class MolegApi:
             params["nb"] = case_number
 
         payload = self.source.search("detc", params)
-        return [
-            JudicialDecisionHit(
-                identity=normalize_judicial_decision_identity(
-                    row,
-                    source_type="constitutional",
-                    source_target="detc",
-                ),
-                raw=row,
+        hits: list[JudicialDecisionHit] = []
+        for row in unwrap_search_judicial_decisions(payload, "detc"):
+            identity = normalize_judicial_decision_identity(
+                row,
+                source_type="constitutional",
+                source_target="detc",
             )
-            for row in unwrap_search_judicial_decisions(payload, "detc")
-        ]
+            hits.append(
+                JudicialDecisionHit(
+                    identity=identity,
+                    raw=row,
+                    follow_up=judicial_decision_hit_follow_up(identity),
+                )
+            )
+        return hits
 
     def get_constitutional_decision(
         self,
@@ -5385,11 +5410,77 @@ def law_identity_followup_filters(
     filters = {"basis": identity.basis} if include_basis else {}
     if identity.law_id:
         filters["law_id"] = identity.law_id
-    elif identity.mst:
+    if identity.mst:
         filters["mst"] = identity.mst
-    else:
+    if not identity.law_id and not identity.mst:
         filters["law_name"] = identity.name
     return filters
+
+
+def law_hit_follow_up(identity: LawIdentity) -> DeferredLookup | None:
+    if not law_identity_has_source_identifier(identity):
+        return None
+    return DeferredLookup(
+        interface="get_law",
+        query=identity.name,
+        reason="Load selected law text before citing current legal substance.",
+        source_type="law",
+        filters=law_identity_followup_filters(identity, include_basis=True),
+    )
+
+
+def administrative_rule_hit_follow_up(identity: AdministrativeRuleIdentity) -> DeferredLookup:
+    filters: dict[str, Any] = {}
+    if identity.serial_id:
+        filters["id"] = identity.serial_id
+    if identity.rule_id:
+        filters["rule_id"] = identity.rule_id
+    return DeferredLookup(
+        interface="load_administrative_rule_context",
+        query=identity.name,
+        reason="Load selected administrative-rule text before citing operational criteria.",
+        source_type="administrative_rule",
+        filters=filters,
+    )
+
+
+def annex_form_hit_follow_up(identity: AnnexFormIdentity) -> DeferredLookup:
+    source_id = identity.annex_id
+    return DeferredLookup(
+        interface="get_annex_form_body",
+        query=identity.title,
+        reason="Load selected annex/form body before citing attached criteria or forms.",
+        source_type="annex_form",
+        filters=deferred_lookup_filters(identity, source_id),
+    )
+
+
+def interpretation_hit_follow_up(identity: InterpretationIdentity) -> DeferredLookup:
+    return DeferredLookup(
+        interface="get_interpretation",
+        query=identity.title,
+        reason="Load selected interpretation detail before citing question, answer, or reason.",
+        source_type=identity.source_type,
+        filters=deferred_lookup_filters(identity, identity.interpretation_id),
+    )
+
+
+def judicial_decision_hit_follow_up(identity: JudicialDecisionIdentity) -> DeferredLookup:
+    if identity.source_type == "constitutional":
+        interface = "get_constitutional_decision"
+        reason = (
+            "Load selected Constitutional Court decision detail before citing holdings or reviewed statutes."
+        )
+    else:
+        interface = "get_case"
+        reason = "Load selected case detail before citing holdings, summary, or full text."
+    return DeferredLookup(
+        interface=interface,
+        query=identity.title,
+        reason=reason,
+        source_type=identity.source_type,
+        filters=deferred_lookup_filters(identity, identity.decision_id),
+    )
 
 
 def bundle_limits(budget: BundleBudget) -> dict[str, int]:

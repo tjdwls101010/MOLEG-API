@@ -382,11 +382,20 @@ def test_legislative_expert_e2e_audit_keeps_law_search_hits_as_candidates():
     assert law_search.public_interfaces == ["search_laws"]
     assert law_search.must_have["law_candidate_preserved"] is True
     assert law_search.must_have["identity_metadata_preserved"] is True
+    assert law_search.must_have["detail_followup_preserved"] is True
     assert law_search.must_have["no_law_text_loaded"] is True
     assert law_search.must_have["no_citable_article_or_duty_loaded"] is True
     assert law_search.citations == []
     assert law_search.evidence["citations_loaded"] == 0
     assert law_search.evidence["service_call_targets"] == []
+    assert law_search.evidence["detail_followups"] == [
+        {
+            "interface": "get_law",
+            "query": "자동차관리법",
+            "source_type": "law",
+            "filters": {"basis": "effective", "law_id": "001747", "mst": "270001"},
+        }
+    ]
     assert "law_search_hit_requires_selected_law_or_article_loading" in law_search.risk_flags
 
 
@@ -818,11 +827,15 @@ def test_legislative_expert_e2e_audit_keeps_interpretation_search_hits_as_candid
     assert interpretation.public_interfaces == ["search_interpretations"]
     assert interpretation.must_have["interpretation_candidate_preserved"] is True
     assert interpretation.must_have["authority_metadata_preserved"] is True
+    assert interpretation.must_have["detail_followup_preserved"] is True
     assert interpretation.must_have["no_interpretation_detail_loaded"] is True
     assert interpretation.must_have["no_citable_interpretation_substance_loaded"] is True
     assert interpretation.citations == []
     assert interpretation.evidence["citations_loaded"] == 0
     assert interpretation.evidence["service_call_targets"] == []
+    assert interpretation.evidence["interpretation_candidates"][0]["follow_up"]["interface"] == (
+        "get_interpretation"
+    )
     assert "interpretation_search_hit_requires_get_interpretation_detail" in interpretation.risk_flags
 
 
@@ -838,11 +851,13 @@ def test_legislative_expert_e2e_audit_keeps_case_search_hits_as_candidates():
     assert case.public_interfaces == ["search_cases"]
     assert case.must_have["case_candidate_preserved"] is True
     assert case.must_have["decision_metadata_preserved"] is True
+    assert case.must_have["detail_followup_preserved"] is True
     assert case.must_have["no_case_detail_loaded"] is True
     assert case.must_have["no_citable_holding_loaded"] is True
     assert case.citations == []
     assert case.evidence["citations_loaded"] == 0
     assert case.evidence["service_call_targets"] == []
+    assert case.evidence["case_candidates"][0]["follow_up"]["interface"] == "get_case"
     assert "case_search_hit_requires_get_case_detail" in case.risk_flags
 
 
@@ -879,11 +894,16 @@ def test_legislative_expert_e2e_audit_keeps_constitutional_search_hits_as_candid
     assert constitutional.public_interfaces == ["search_constitutional_decisions"]
     assert constitutional.must_have["constitutional_candidate_preserved"] is True
     assert constitutional.must_have["decision_metadata_preserved"] is True
+    assert constitutional.must_have["detail_followup_preserved"] is True
     assert constitutional.must_have["no_constitutional_detail_loaded"] is True
     assert constitutional.must_have["no_citable_constitutional_reasoning_loaded"] is True
     assert constitutional.citations == []
     assert constitutional.evidence["citations_loaded"] == 0
     assert constitutional.evidence["service_call_targets"] == []
+    assert (
+        constitutional.evidence["constitutional_candidates"][0]["follow_up"]["interface"]
+        == "get_constitutional_decision"
+    )
     assert (
         "constitutional_search_hit_requires_get_constitutional_decision_detail"
         in constitutional.risk_flags
@@ -1308,11 +1328,18 @@ def test_legislative_expert_e2e_audit_keeps_administrative_rule_search_hits_as_c
     assert administrative_rule.public_interfaces == ["search_administrative_rules"]
     assert administrative_rule.must_have["administrative_rule_candidate_preserved"] is True
     assert administrative_rule.must_have["identity_metadata_preserved"] is True
+    assert administrative_rule.must_have["detail_followup_preserved"] is True
     assert administrative_rule.must_have["no_administrative_rule_detail_loaded"] is True
     assert administrative_rule.must_have["no_citable_operational_criteria_loaded"] is True
     assert administrative_rule.citations == []
     assert administrative_rule.evidence["citations_loaded"] == 0
     assert administrative_rule.evidence["service_call_targets"] == []
+    assert (
+        administrative_rule.evidence["administrative_rule_candidates"][0]["follow_up"][
+            "interface"
+        ]
+        == "load_administrative_rule_context"
+    )
     assert (
         "administrative_rule_search_hit_requires_get_administrative_rule_detail"
         in administrative_rule.risk_flags
@@ -1489,11 +1516,15 @@ def test_legislative_expert_e2e_audit_keeps_annex_form_search_hits_as_candidates
     assert annex.public_interfaces == ["search_annex_forms"]
     assert annex.must_have["annex_candidate_preserved"] is True
     assert annex.must_have["annex_metadata_preserved"] is True
+    assert annex.must_have["detail_followup_preserved"] is True
     assert annex.must_have["no_annex_body_loaded"] is True
     assert annex.must_have["no_citable_annex_criteria_loaded"] is True
     assert annex.citations == []
     assert annex.evidence["citations_loaded"] == 0
     assert annex.evidence["text_call_targets"] == []
+    assert annex.evidence["annex_candidates"][0]["follow_up"]["interface"] == (
+        "get_annex_form_body"
+    )
     assert "annex_form_search_hit_requires_get_annex_form_body" in annex.risk_flags
 
 
