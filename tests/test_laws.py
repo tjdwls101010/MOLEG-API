@@ -206,6 +206,55 @@ def test_load_followup_rejects_external_tool_handoff_namespaces():
             api.load_followup(lookup)
 
 
+def test_load_followup_preserves_article_scope_for_search_followups():
+    source = FakeSource(
+        search_payloads=[
+            {"AdmRulSearch": {"admrul": []}},
+            {"licbyl": []},
+            {"admbyl": []},
+        ]
+    )
+    api = MolegApi(source)
+
+    api.load_followup(
+        FollowUpSearch(
+            interface="search_administrative_rules",
+            query="자동차관리법",
+            reason="Search lower rules for the related article.",
+            source_type="administrative_rule",
+            filters={"article": "제26조", "include_history": False, "display": 3},
+        )
+    )
+    api.load_followup(
+        FollowUpSearch(
+            interface="search_annex_forms",
+            query="자동차관리법",
+            reason="Search attached criteria for the related article.",
+            source_type="annex_form",
+            filters={
+                "article": "제26조",
+                "sources": ["law", "administrative_rule"],
+                "search_scope": "source",
+                "display": 3,
+            },
+        )
+    )
+
+    assert source.calls == [
+        ("search", "admrul", {"query": "자동차관리법 제26조", "display": 3, "nw": 1}),
+        (
+            "search",
+            "licbyl",
+            {"query": "자동차관리법 제26조", "display": 3, "search": 2},
+        ),
+        (
+            "search",
+            "admbyl",
+            {"query": "자동차관리법 제26조", "display": 3, "search": 2},
+        ),
+    ]
+
+
 def test_resolve_promulgated_law_matches_formatted_promulgation_numbers():
     source = FakeSource(
         search_payloads=[
@@ -3255,6 +3304,12 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
                         "조문번호": "26",
                         "조문제목": "자동차의 강제처리",
                         "조문내용": "자동차 소유자는...",
+                    },
+                    {
+                        "행정규칙ID": "2100000248758",
+                        "행정규칙명": "자동차 방치처리 고시",
+                        "조문번호": "7",
+                        "조문제목": "처리기준",
                     }
                 ]
             },
@@ -3317,7 +3372,10 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
     assert expansion.related_articles[0].law_name == "자동차관리법"
     assert expansion.related_articles[0].article == "제26조"
     assert expansion.related_laws[0].name == "자동차관리법"
-    assert expansion.related_laws[1].name == "자동차손해배상 보장법"
+    assert expansion.related_laws[1].name == "자동차 방치처리 고시"
+    assert expansion.related_laws[1].source_type == "administrative_rule"
+    assert expansion.related_laws[1].article == "제7조"
+    assert expansion.related_laws[2].name == "자동차손해배상 보장법"
     law_searches = [
         search for search in expansion.follow_up_searches if search.interface == "search_laws"
     ]
@@ -3328,6 +3386,16 @@ def test_expand_legal_query_builds_planning_context_without_exposing_targets():
         if search.interface == "search_administrative_rules"
     )
     assert administrative_search.filters == {"include_history": False}
+    related_administrative_search = next(
+        search
+        for search in expansion.follow_up_searches
+        if search.interface == "search_administrative_rules"
+        and search.query == "자동차 방치처리 고시"
+    )
+    assert related_administrative_search.filters == {
+        "include_history": False,
+        "article": "제7조",
+    }
     annex_search = next(
         search for search in expansion.follow_up_searches if search.interface == "search_annex_forms"
     )

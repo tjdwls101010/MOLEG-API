@@ -494,7 +494,7 @@ class MolegApi:
             )
         if interface == "search_administrative_rules":
             return self.search_administrative_rules(
-                query,
+                followup_query_with_article(query, filters),
                 ministry=followup_str(filters, "ministry"),
                 rule_type=followup_str(filters, "rule_type"),
                 issued_on=followup_str(filters, "issued_on"),
@@ -519,7 +519,7 @@ class MolegApi:
             for source in followup_annex_sources(filters):
                 hits.extend(
                     self.search_annex_forms(
-                        query,
+                        followup_query_with_article(query, filters),
                         source=source,
                         search_scope=followup_annex_search_scope(filters),
                         annex_type=followup_str(filters, "annex_type"),
@@ -5808,6 +5808,16 @@ def followup_interface(lookup: DeferredLookup | FollowUpSearch) -> str:
 def followup_query(lookup: DeferredLookup | FollowUpSearch) -> str:
     query = string_value(getattr(lookup, "query", None))
     return query.strip() if query else ""
+
+
+def followup_query_with_article(query: str, filters: dict[str, Any]) -> str:
+    article = followup_str(filters, "article", "jo")
+    if not article:
+        return query
+    article_label = article_label_for_filter(article)
+    if article_label in query:
+        return query
+    return " ".join(part for part in (query, article_label) if part)
 
 
 def followup_filters(lookup: DeferredLookup | FollowUpSearch) -> dict[str, Any]:
