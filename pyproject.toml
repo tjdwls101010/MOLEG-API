@@ -31,6 +31,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/tjdwls101010/MOLEG-API"
+Documentation = "https://github.com/tjdwls101010/MOLEG-API/tree/main/docs"
+Repository = "https://github.com/tjdwls101010/MOLEG-API"
+Issues = "https://github.com/tjdwls101010/MOLEG-API/issues"
+
 [project.optional-dependencies]
 dev = [
   "psycopg[binary]>=3.2,<4",
