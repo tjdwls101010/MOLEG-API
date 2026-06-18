@@ -5011,31 +5011,35 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             {"DetcSearch": {"detc": []}},
             {"licbyl": []},
             _administrative_rule_annex_search_payload(),
-            *_empty_delegated_criteria_query_search_payloads(),
         ],
         text_payloads=[pipe_table_text()],
     )
     api = MolegApi(source)
 
-    bundle = api.load_delegated_criteria(
-        identity,
-        query="무단방치 자동차 처리 기준",
-        budget="minimal",
+    bundle = api.load_institutional_system([identity], budget="minimal")
+    administrative_rule_lookup = next(
+        item for item in bundle.deferred if item.interface == "get_administrative_rule"
     )
-    administrative_rule = bundle.loaded.administrative_rules[0]
-    annex_body = bundle.loaded.annex_forms[0]
+    annex_lookup = next(item for item in bundle.deferred if item.interface == "get_annex_form_body")
+    administrative_rule = api.load_followup(administrative_rule_lookup)
+    annex_body = api.load_followup(annex_lookup)
     call_targets = [target for _, target, _ in source.calls]
 
     return LegislativeExpertScenarioReport(
         scenario="delegated_criteria_after_followups",
-        question="자동차 방치 처리 기준의 행정규칙/별표 본문을 task-level interface 한 번으로 인용할 수 있는가?",
+        question="자동차 방치 처리 기준의 행정규칙/별표 후보를 후속조회 레코드 그대로 로드해 인용할 수 있는가?",
         status="ready_for_reasoning",
         public_interfaces=[
-            "load_delegated_criteria",
+            "load_institutional_system",
+            "load_followup",
         ],
         must_have={
             "candidate_stage_preserved_with_loaded_detail": len(bundle.candidates.administrative_rules) == 1
             and len(bundle.candidates.annex_forms) == 1,
+            "administrative_rule_followup_executable": administrative_rule_lookup.interface == "get_administrative_rule"
+            and administrative_rule_lookup.filters.get("id") == "2100000248758",
+            "annex_followup_executable": annex_lookup.interface == "get_annex_form_body"
+            and annex_lookup.filters.get("annex_id") == "330000001",
             "administrative_rule_body_loaded": "무단방치 자동차 처리 기준" in administrative_rule.text,
             "administrative_rule_source_reference_preserved": administrative_rule.identity.source_law_name == "자동차관리법"
             and administrative_rule.identity.source_article == "제26조",
@@ -5043,7 +5047,7 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             "structured_annex_rows_loaded": bool(
                 annex_body.structured_data and len(annex_body.structured_data.rows) == 2
             ),
-            "detail_sources_loaded_inside_task_interface": call_targets[-2:] == ["admrul", "admRulBylTextDownLoad.do"],
+            "detail_sources_loaded_through_followup_interface": call_targets[-2:] == ["admrul", "admRulBylTextDownLoad.do"],
         },
         citations=[
             SourceCitation("law", "eflaw", "자동차관리법", "제26조", "current statute"),
@@ -5051,10 +5055,14 @@ def _audit_delegated_criteria_after_followups() -> LegislativeExpertScenarioRepo
             SourceCitation("administrative_rule", "admrul", "무단방치 자동차 처리 규정", "제2조", "loaded administrative rule"),
             SourceCitation("annex", "admbyl", "무단방치 자동차 처리 기준", authority="loaded administrative-rule annex table"),
         ],
-        risk_flags=["delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey"],
+        risk_flags=["followup_loaded_context_is_bounded_not_exhaustive_lower_rule_survey"],
         next_actions=["Use WebSearch only for latest enforcement practice or policy context outside MOLEG."],
         evidence={
-            "loaded_detail_interfaces": ["load_administrative_rule_context", "get_annex_form_body"],
+            "loaded_detail_interfaces": [
+                f"load_followup:{administrative_rule_lookup.interface}",
+                f"load_followup:{annex_lookup.interface}",
+            ],
+            "followup_filters": [administrative_rule_lookup.filters, annex_lookup.filters],
             "administrative_rule_articles": [article.article for article in administrative_rule.articles],
             "source_law_name": administrative_rule.identity.source_law_name,
             "source_article": administrative_rule.identity.source_article,

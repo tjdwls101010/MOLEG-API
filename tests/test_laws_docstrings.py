@@ -164,6 +164,36 @@ def test_skill_integration_interface_list_matches_public_methods():
     assert "These interfaces are implemented as the skill-facing contract" in section
 
 
+def test_load_followup_routes_all_literal_followup_interfaces_emitted_by_moleg_api():
+    source = Path("moleg_api/laws.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    emitted_interfaces = {
+        node.value.value
+        for node in ast.walk(module)
+        if isinstance(node, ast.keyword)
+        and node.arg == "interface"
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    }
+    routed_interfaces = set()
+    for node in ast.walk(module):
+        if not isinstance(node, ast.FunctionDef) or node.name != "load_followup":
+            continue
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Compare):
+                continue
+            if not isinstance(child.left, ast.Name) or child.left.id != "interface":
+                continue
+            routed_interfaces.update(
+                comparator.value
+                for comparator in child.comparators
+                if isinstance(comparator, ast.Constant)
+                and isinstance(comparator.value, str)
+            )
+
+    assert emitted_interfaces - routed_interfaces == set()
+
+
 def test_skill_author_cookbook_distinguishes_pre_publication_install_paths():
     cookbook = Path("docs/SKILL-AUTHOR-COOKBOOK.md").read_text(encoding="utf-8")
     installation = cookbook.split("## Installation And Setup", 1)[1].split(

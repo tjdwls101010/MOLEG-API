@@ -1526,20 +1526,31 @@ def test_legislative_expert_e2e_audit_marks_followup_loaded_delegated_criteria_r
 
     loaded = by_scenario["delegated_criteria_after_followups"]
     assert loaded.status == "ready_for_reasoning"
-    assert loaded.public_interfaces == ["load_delegated_criteria"]
+    assert loaded.public_interfaces == ["load_institutional_system", "load_followup"]
     assert loaded.must_have["candidate_stage_preserved_with_loaded_detail"] is True
+    assert loaded.must_have["administrative_rule_followup_executable"] is True
+    assert loaded.must_have["annex_followup_executable"] is True
     assert loaded.must_have["administrative_rule_body_loaded"] is True
     assert loaded.must_have["administrative_rule_annex_body_loaded"] is True
     assert loaded.must_have["structured_annex_rows_loaded"] is True
     assert loaded.evidence["call_targets"][-2:] == ["admrul", "admRulBylTextDownLoad.do"]
     assert loaded.evidence["loaded_detail_interfaces"] == [
-        "load_administrative_rule_context",
-        "get_annex_form_body",
+        "load_followup:get_administrative_rule",
+        "load_followup:get_annex_form_body",
+    ]
+    assert loaded.evidence["followup_filters"] == [
+        {"id": "2100000248758"},
+        {
+            "id": "330000001",
+            "annex_id": "330000001",
+            "source": "administrative_rule",
+            "related_name": "무단방치 자동차 처리 규정",
+        },
     ]
     assert {"administrative_rule", "annex"}.issubset(
         {citation.source_type for citation in loaded.citations}
     )
-    assert "delegated_criteria_loader_is_bounded_not_exhaustive_lower_rule_survey" in loaded.risk_flags
+    assert "followup_loaded_context_is_bounded_not_exhaustive_lower_rule_survey" in loaded.risk_flags
 
 
 def test_legislative_expert_e2e_audit_uses_delegated_criteria_query_for_candidate_discovery():
