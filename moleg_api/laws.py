@@ -416,12 +416,57 @@ class MolegApi:
             )
         if interface == "load_article_context":
             basis = followup_basis(filters)
-            return self.load_article_context(
+            as_of = followup_str(filters, "as_of")
+            article = followup_article(filters, query)
+            follow_moved = followup_bool(filters, "follow_moved", True)
+            context = self.load_article_context(
                 followup_law_identity(lookup, filters, basis=basis),
-                followup_article(filters, query),
-                as_of=followup_str(filters, "as_of"),
+                article,
+                as_of=as_of,
                 basis=basis,
-                follow_moved=followup_bool(filters, "follow_moved", True),
+                follow_moved=follow_moved,
+            )
+            moved_to = followup_str(filters, "moved_to")
+            if (
+                not moved_to
+                or not follow_moved
+                or context.requested_article.moved_to
+                or context.current_article is None
+            ):
+                return context
+            destination = article_label_for_filter(moved_to)
+            requested = replace(context.requested_article, moved_to=destination)
+            try:
+                destination_article = self.get_article(
+                    requested.identity,
+                    destination,
+                    as_of=as_of,
+                    basis=basis,
+                )
+            except MolegApiError as exc:
+                gaps = list(context.gaps)
+                deferred = list(context.deferred)
+                append_moved_destination_lookup_gap(
+                    exc,
+                    requested.identity,
+                    destination,
+                    gaps,
+                    deferred,
+                    as_of=as_of,
+                    basis=basis,
+                )
+                return replace(
+                    context,
+                    requested_article=requested,
+                    current_article=None,
+                    gaps=gaps,
+                    deferred=deferred,
+                )
+            return replace(
+                context,
+                requested_article=requested,
+                current_article=destination_article,
+                loaded_articles=[*context.loaded_articles, destination_article],
             )
         if interface == "trace_law_history":
             return self.trace_law_history(

@@ -6817,10 +6817,38 @@ def test_load_legal_context_bundle_marks_whole_law_deleted_and_moved_articles_as
                     }
                 }
             },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "9",
+                        "조문제목": "이동",
+                        "조문내용": "제9조는 제12조로 이동 <2025. 1. 1.>",
+                        "조문제개정유형": "이동",
+                    },
+                }
+            },
+            {
+                "eflawjosub": {
+                    "기본정보": {
+                        "법령ID": "001747",
+                        "법령명_한글": "자동차관리법",
+                    },
+                    "조문": {
+                        "조문번호": "12",
+                        "조문제목": "자동차등록",
+                        "조문내용": "제12조(자동차등록) 자동차 소유자는 등록하여야 한다.",
+                    },
+                }
+            },
         ],
     )
 
-    bundle = MolegApi(source).load_legal_context_bundle(
+    api = MolegApi(source)
+    bundle = api.load_legal_context_bundle(
         "자동차관리법 현행 조문",
         law_identifier=LawIdentity(law_id="001747", name="자동차관리법", basis="effective"),
         mode="statute_review",
@@ -6859,6 +6887,17 @@ def test_load_legal_context_bundle_marks_whole_law_deleted_and_moved_articles_as
     ]
     assert any("deleted article source state" in note for note in bundle.source_notes)
     assert any("moved article source state" in note for note in bundle.source_notes)
+
+    followed_context = api.load_followup(movement_deferred[0])
+    assert followed_context.requested_article.article == "제9조"
+    assert followed_context.requested_article.moved_to == "제12조"
+    assert followed_context.current_article is not None
+    assert followed_context.current_article.article == "제12조"
+    assert [article.article for article in followed_context.loaded_articles] == ["제9조", "제12조"]
+    assert source.calls[-2:] == [
+        ("service", "eflawjosub", {"ID": "001747", "JO": "000900"}),
+        ("service", "eflawjosub", {"ID": "001747", "JO": "001200"}),
+    ]
 
 
 def test_load_legal_context_bundle_preserves_primary_law_load_failures():
