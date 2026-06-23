@@ -1,6 +1,8 @@
 name: Publish to PyPI
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       repository:
@@ -24,11 +26,11 @@ jobs:
     name: Build and publish
     runs-on: ubuntu-latest
     environment:
-      name: ${{ inputs.repository }}
+      name: ${{ inputs.repository || 'pypi' }}
 
     steps:
       - name: Refuse production publish outside main
-        if: ${{ inputs.repository == 'pypi' && github.ref != 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi' && github.ref != 'refs/heads/main' }}
         run: |
           echo "PyPI publishes must run from the main branch."
           exit 1
@@ -102,12 +104,12 @@ jobs:
           PY
 
       - name: Publish to TestPyPI
-        if: ${{ inputs.repository == 'testpypi' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repository == 'testpypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
       - name: Publish to PyPI
-        if: ${{ inputs.repository == 'pypi' }}
+        if: ${{ github.event_name == 'release' || inputs.repository == 'pypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
