@@ -27,6 +27,9 @@ DEFAULT_CA_FILE_CANDIDATES = (
     "/opt/homebrew/etc/openssl@3/cert.pem",
     "/usr/local/etc/openssl@3/cert.pem",
 )
+# law.go.kr OC is a free, non-secret account id. Ship a shared default so the
+# package works without registration; override via `oc=` or `MOLEG_OC`.
+DEFAULT_OC = "chunghun1"
 LOCAL_ENV_FILES = (".env.local", ".env")
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -51,7 +54,7 @@ class MolegSource(Protocol):
 
 
 class LawGoKrClient:
-    """JSON client for law.go.kr using `MOLEG_OC` by default."""
+    """JSON client for law.go.kr; resolves the OC credential with a shared default."""
 
     def __init__(
         self,
@@ -66,9 +69,7 @@ class LawGoKrClient:
         ssl_context: ssl.SSLContext | None = None,
         ca_file: str | None = None,
     ) -> None:
-        self.oc = oc or local_env_value("MOLEG_OC")
-        if not self.oc:
-            raise SourceApiError("MOLEG_OC is required for live law.go.kr calls")
+        self.oc = oc or local_env_value("MOLEG_OC") or DEFAULT_OC
         self.search_url = search_url
         self.service_url = service_url
         self.lsw_url = lsw_url

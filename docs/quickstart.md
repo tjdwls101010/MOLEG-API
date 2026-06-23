@@ -22,14 +22,19 @@ python -m pip install -e ".[dev]"
 
 ## Configure Credentials
 
-Live law.go.kr calls require an OpenAPI credential:
+Live law.go.kr calls use an OpenAPI credential (the "OC"). The package ships with
+a shared default OC, so calls work without registration. To use your own — best
+if you call the API heavily, since the shared default can hit law.go.kr rate
+limits — set it:
 
 ```bash
 export MOLEG_OC="your-law-go-kr-oc"
 ```
 
-`MolegApi()` uses `LawGoKrClient()`, which reads `MOLEG_OC` from the environment.
-Do not commit credentials to `.env`, fixtures, docs, or packaged files.
+`MolegApi()` uses `LawGoKrClient()`, which resolves the OC in this order: the
+`oc=` argument, then `MOLEG_OC` (environment or a local `.env`/`.env.local`),
+then the bundled default. Do not commit your own credentials to `.env`,
+fixtures, docs, or packaged files.
 
 ## Search Then Load
 

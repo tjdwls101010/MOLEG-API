@@ -286,6 +286,15 @@ def test_law_client_process_env_wins_over_env_file(tmp_path, monkeypatch):
     assert client.oc == "process-secret"
 
 
+def test_law_client_falls_back_to_bundled_default_oc(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOLEG_OC", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    client = LawGoKrClient(ssl_context=object())
+
+    assert client.oc == "chunghun1"
+
+
 def test_env_example_documents_required_runtime_keys_without_values():
     entries = {}
     for line in Path(".env.example").read_text(encoding="utf-8").splitlines():

@@ -2,6 +2,10 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-06-23 — Ship a shared default OC credential
+
+law.go.kr's OC credential is free and non-secret (an account email id), so the package now ships a shared default (`chunghun1`) used when no `oc=` argument or `MOLEG_OC` is set, letting consumers call the API without registering. Trade-off accepted: all default-credential traffic funnels through one OC, so heavy use can hit law.go.kr rate limits or risk suspension of that OC, and callers who need isolation set their own `MOLEG_OC`. Chose the personal OC over a separate publish-only OC for now because the package is alpha with low adoption; revisit if traffic grows.
+
 ## 2026-06-17 — Article status is public source state
 
 MOLEG article payloads expose source-backed status fields such as `조문제개정유형`, `조문변경여부`, and movement metadata, and a deleted article can still be returned by a current article lookup. MOLEG-API therefore exposes article status on `ArticleText` / `AdministrativeRuleArticleText` so the skill can distinguish citable source state from current operative text without parsing `raw`.

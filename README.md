@@ -26,11 +26,20 @@ From a repository checkout:
 python -m pip install .
 ```
 
-Live law.go.kr calls require an OpenAPI credential in `MOLEG_OC`:
+Live law.go.kr calls use an OpenAPI credential called the "OC" — your law.go.kr
+account's email id. The package ships with a shared default OC, so calls work
+out of the box with no registration required.
+
+To use your own OC (recommended if you call the API heavily — the shared default
+funnels all traffic through one credential and can hit law.go.kr rate limits),
+register at law.go.kr and set it:
 
 ```bash
 export MOLEG_OC="your-law-go-kr-oc"
 ```
+
+Resolution order: the `oc=` argument to `LawGoKrClient`, then `MOLEG_OC`
+(environment or a local `.env`/`.env.local`), then the bundled default.
 
 ## Quick Example
 
