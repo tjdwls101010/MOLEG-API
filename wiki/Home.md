@@ -61,7 +61,8 @@ python -m moleg_api get-article --law 001760 제26조  # load a chosen candidate
 - [Source Coverage & Limits](Sources-and-Coverage.md) — supported source families and what stays out of scope.
 - [Data Models](API-Reference.md) — the public dataclasses and their serialization.
 - [Error Handling](Error-Handling.md) — the exception hierarchy and source-access versus legal-absence.
+- [Maintainer Notes](Maintainer-Notes.md) — package layout, compatibility facades, and refactor guardrails.
 
 ## Status
 
-The package is alpha (`0.1.x`). The interface is ready for package-level experimentation, but law.go.kr live behavior can vary by source, credential, and endpoint availability. Treat search results as candidates until a selected detail loader has retrieved source text. moleg-api is a legal-source loader, not legal advice.
+The package is alpha (`0.2.x`). The interface is ready for package-level experimentation, but law.go.kr live behavior can vary by source, credential, and endpoint availability. Treat search results as candidates until a selected detail loader has retrieved source text. moleg-api is a legal-source loader, not legal advice.

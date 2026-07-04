@@ -10,3 +10,4 @@
 - [Sources & Coverage](Sources-and-Coverage.md)
 - [Gotchas](Gotchas.md)
 - [Error Handling](Error-Handling.md)
+- [Maintainer Notes](Maintainer-Notes.md)
