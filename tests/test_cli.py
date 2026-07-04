@@ -24,6 +24,7 @@ from moleg_api.models import (
     AnnexFormText,
     AuthorityContext,
     BundleRequest,
+    CandidateContext,
     ContextGap,
     DelegationGraph,
     JudicialDecisionHit,
@@ -32,6 +33,7 @@ from moleg_api.models import (
     LawIdentity,
     LawStructure,
     LawText,
+    LegalContextBundle,
     LoadedContext,
     StructuredTableData,
 )
@@ -301,6 +303,16 @@ class StubApi:
         return method
 
 
+class RecordingInstitutionalApi(StubApi):
+    def __init__(self, result=None):
+        super().__init__(result=result)
+        self.calls = []
+
+    def load_institutional_system(self, statute_identifiers, **kwargs):
+        self.calls.append((statute_identifiers, kwargs))
+        return self._result
+
+
 def _run(argv, api):
     return main(argv, api=api)
 
@@ -364,6 +376,34 @@ def test_main_success_envelope_shape(capsys):
     assert out["ok"] is True and out["command"] == "get-law" and out["kind"] == "law_text"
     assert out["source"].startswith("법제처")
     assert "data" in out
+
+
+def test_main_load_institutional_system_dispatches_statutes(capsys):
+    bundle = LegalContextBundle(
+        request=BundleRequest(
+            query=None,
+            mode="institutional_system",
+            budget="minimal",
+            articles=["제1조"],
+            statute_ids=["001638"],
+        ),
+        loaded=LoadedContext(),
+        candidates=CandidateContext(),
+    )
+    api = RecordingInstitutionalApi(result=bundle)
+
+    code = _run(
+        ["load-institutional-system", "--statute", "001638", "--article", "제1조", "--budget", "minimal"],
+        api,
+    )
+
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert api.calls == [(["001638"], {"articles": ["제1조"], "budget": "minimal", "as_of": None})]
+    assert out["ok"] is True
+    assert out["command"] == "load-institutional-system"
+    assert out["kind"] == "legal_context_bundle"
+    assert out["data"]["request"]["statute_ids"] == ["001638"]
 
 
 def test_catalog_lists_conventions_and_kinds(capsys):
