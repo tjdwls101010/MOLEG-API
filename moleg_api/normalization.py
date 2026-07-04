@@ -975,7 +975,23 @@ def unwrap_search_interpretations(payload: dict[str, Any], target: str) -> list[
 def unwrap_search_judicial_decisions(payload: dict[str, Any], target: str) -> list[dict[str, Any]]:
     for envelope in ("PrecSearch", "precSearch", "DetcSearch", "detcSearch"):
         if isinstance(payload.get(envelope), dict):
-            rows = payload[envelope].get(target)
+            env = payload[envelope]
+            # law.go.kr names the row-element key by its own casing, not the
+            # request target: "prec" (lowercase) for cases but "Detc"
+            # (capitalized) for constitutional decisions. Match it
+            # case-insensitively, excluding the scalar "target" echo field.
+            rows = env.get(target)
+            if rows is None:
+                rows = next(
+                    (
+                        env[key]
+                        for key in env
+                        if isinstance(key, str)
+                        and key.lower() == target.lower()
+                        and key != "target"
+                    ),
+                    None,
+                )
             return [row for row in ensure_list(rows) if isinstance(row, dict)]
     rows = payload.get(target)
     if rows is not None:
@@ -1545,36 +1561,47 @@ def normalize_delegated_rules(payload: dict[str, Any]) -> list[DelegatedRule]:
             continue
         if "위임정보" in row or "조정보" in row:
             source = row.get("조정보") if isinstance(row.get("조정보"), dict) else {}
-            info = row.get("위임정보") if isinstance(row.get("위임정보"), dict) else {}
+            raw_info = row.get("위임정보")
+            # 위임정보 is list-valued when one article delegates to several
+            # targets (e.g. 과태료·범칙금액 amount tables). Collapsing it to {}
+            # silently drops every multi-target article, so emit one rule per
+            # delegation target instead.
+            if isinstance(raw_info, list):
+                infos = [item for item in raw_info if isinstance(item, dict)]
+            elif isinstance(raw_info, dict):
+                infos = [raw_info]
+            else:
+                infos = [{}]
         else:
             source = row
-            info = row
-        rule = DelegatedRule(
-            source_article=article_label_from_parts(
-                first_value(source, "조문번호", "조번호", "조항호목"),
-                first_value(source, "조문가지번호", "조가지번호"),
-            ),
-            source_article_title=string_or_none(first_value(source, "조문제목", "조제목")),
-            delegated_type=string_or_none(first_value(info, "위임구분", "법종구분")),
-            delegated_name=string_or_none(
-                first_value(info, "위임법령제목", "위임행정규칙제목", "위임자치법규제목", "위임행정규칙명", "법령명")
-            ),
-            delegated_law_id=string_or_none(first_value(info, "법령ID", "위임법령ID")),
-            delegated_mst=string_or_none(first_value(info, "위임법령일련번호", "위임행정규칙일련번호", "위임자치법규일련번호", "법령일련번호")),
-            delegated_article=article_label_from_parts(
-                first_value(info, "위임법령조문번호", "위임행정규칙조번호"),
-                first_value(
-                    info,
-                    "위임법령조문가지번호",
-                    "위임행정규칙조가지번호",
-                    "위임행정규칙조문가지번호",
+            infos = [row]
+        for info in infos:
+            rule = DelegatedRule(
+                source_article=article_label_from_parts(
+                    first_value(source, "조문번호", "조번호", "조항호목"),
+                    first_value(source, "조문가지번호", "조가지번호"),
                 ),
-            ),
-            text=string_or_none(first_value(info, "라인텍스트", "조내용", "링크텍스트")),
-            raw=row,
-        )
-        if rule.delegated_name or rule.text:
-            rules.append(rule)
+                source_article_title=string_or_none(first_value(source, "조문제목", "조제목")),
+                delegated_type=string_or_none(first_value(info, "위임구분", "법종구분")),
+                delegated_name=string_or_none(
+                    first_value(info, "위임법령제목", "위임행정규칙제목", "위임자치법규제목", "위임행정규칙명", "법령명")
+                ),
+                delegated_law_id=string_or_none(first_value(info, "법령ID", "위임법령ID")),
+                delegated_mst=string_or_none(first_value(info, "위임법령일련번호", "위임행정규칙일련번호", "위임자치법규일련번호", "법령일련번호")),
+                delegated_article=article_label_from_parts(
+                    first_value(info, "위임법령조문번호", "위임행정규칙조번호"),
+                    first_value(
+                        info,
+                        "위임법령조문가지번호",
+                        "위임행정규칙조가지번호",
+                        "위임행정규칙조문가지번호",
+                    ),
+                ),
+                text=string_or_none(first_value(info, "라인텍스트", "조내용", "링크텍스트")),
+                raw=row,
+            )
+            if rule.delegated_name or rule.text:
+                rules.append(rule)
     return rules
 
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib.metadata import PackageNotFoundError, version as _dist_version
 from typing import Any
 
 from .errors import (
@@ -41,6 +42,14 @@ from .errors import (
 )
 from .laws import MolegApi
 from .models import DeferredLookup
+
+
+def _pkg_version() -> str:
+    try:
+        return _dist_version("moleg-api")
+    except PackageNotFoundError:
+        return "unknown"
+
 
 # Exit codes distinguish outcomes a shell/agent must branch on.
 EXIT_OK = 0            # includes a zero-hit search (ok:true, count:0)
@@ -464,9 +473,19 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         discipline.append("선택 조문의 전후 문구 델타만 — 개정이유·입법의도·전체 변경 조문 망라 아님. trace-law-history·국회 법안자료로 보강.")
 
     elif tname == "DelegationGraph":
-        if not getattr(result, "rules", None):
-            flags["count"] = 0
+        rules = getattr(result, "rules", None) or []
+        flags["count"] = len(rules)
+        if not rules:
             discipline.append("이 조회로 위임규정 못 찾음 ≠ 위임 없음 — 법령 체계도·다른 조문 범위·행정규칙·별표 경로를 더 확인.")
+        else:
+            discipline.append("위임 목록은 하위법령·인용법령 위임만 — 별표(과태료·범칙금액·기준표 등) 자체는 여기 없다. 금액·기준표는 위임된 시행령·시행규칙의 별표를 search-annex-forms(또는 load-delegated-criteria)로 확인.")
+            ident = getattr(result, "identity", None)
+            name = (getattr(ident, "name", None) or getattr(ident, "law_id", None) or "") if ident else ""
+            if name:
+                next_cmds.append({
+                    "why": "위임된 별표·금액·기준표 확인",
+                    "cmd": f"moleg search-annex-forms {json.dumps(name, ensure_ascii=False)} --source law",
+                })
 
     elif tname == "LawStructure":
         discipline.append("체계도는 계층 컨텍스트일 뿐 — 시행령·규칙·행정규칙이 이 법 아래 있음은 보이나, 조문 단위 위임·하위규칙 본문·운영기준 증명 아님. find-delegated-rules로 확인.")
@@ -632,6 +651,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="법제처 law.go.kr 법령 자료 조회 CLI. 항상 JSON 엔벨로프 1개를 stdout으로 출력.",
     )
     parser.add_argument("--raw", action="store_true", help="원본 소스 payload(raw)까지 직렬화(디버그).")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"moleg-api {_pkg_version()}",
+        help="설치된 moleg-api 버전을 출력하고 종료.",
+    )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
     sub.add_parser("catalog", help="27개 서브커맨드·규약·kind 목록을 한 번에.")
@@ -740,9 +765,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date-from", dest="date_from", default=None)
     p.add_argument("--date-to", dest="date_to", default=None)
 
-    p = sub.add_parser("compare-law-versions", help="개정 전후 조문 문구 비교.")
-    _add_law(p); p.add_argument("--before", default=None); p.add_argument("--after", default=None)
-    p.add_argument("--article", default=None)
+    p = sub.add_parser("compare-law-versions", help="개정 전후 조문 문구 비교(소스 제공 전후 쌍).")
+    _add_law(p); p.add_argument("--article", default=None)
 
     p = sub.add_parser("find-delegated-rules", help="위임 규정·하위 법령.")
     _add_law(p); p.add_argument("--article", default=None)
@@ -834,7 +858,7 @@ def _call(api: MolegApi, args: argparse.Namespace) -> Any:
         date_range = (args.date_from, args.date_to) if (args.date_from and args.date_to) else None
         return api.trace_law_history(args.law, date_range=date_range, article=args.article)
     if c == "compare-law-versions":
-        return api.compare_law_versions(args.law, before=args.before, after=args.after, article=args.article)
+        return api.compare_law_versions(args.law, article=args.article)
     if c == "find-delegated-rules":
         return api.find_delegated_rules(args.law, article=args.article)
     if c == "get-law-structure":
