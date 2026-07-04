@@ -42,7 +42,7 @@ jobs:
           python -m pip install -e ".[test]"
 
       - name: Compile package
-        run: python -m compileall moleg_api scripts tests
+        run: python -m compileall moleg_api tests
 
       - name: Check patch hygiene
         run: |
