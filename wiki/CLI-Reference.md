@@ -19,6 +19,8 @@ Every command accepts a global `--raw` flag (placed before the subcommand) that 
 moleg --raw get-article --law 001248 제3조
 ```
 
+`moleg --version` prints the installed package version and exits; `moleg --help` lists every command.
+
 Per-command flags are documented on `moleg <command> --help`. The full command list, standing conventions, and routing rules live in `moleg catalog` (see [Start with `catalog`](#start-with-catalog)).
 
 ## The envelope

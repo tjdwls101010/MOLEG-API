@@ -184,3 +184,68 @@ def test_live_expand_legal_query_smoke():
 
     assert expansion.original_query == "자동차 방치"
     assert expansion.follow_up_searches
+
+
+def test_live_constitutional_search_high_frequency_term_smoke():
+    # 0.2.1 #4A: capitalized 'Detc' row key was dropping all hits to 0.
+    api = live_api()
+
+    hits = api.search_constitutional_decisions("개인정보", display=20)
+
+    assert hits, "high-frequency 헌재 term should return hits after the row-key fix"
+    assert hits[0].identity.decision_id
+
+
+def test_live_constitutional_detail_by_case_number_smoke():
+    # 0.2.1 #4B: get_constitutional_decision resolves a 사건번호 to its serial.
+    api = live_api()
+
+    hits = api.search_constitutional_decisions("개인정보", display=5)
+    hit = first_hit_or_skip(hits, "constitutional decision")
+    case_number = hit.identity.case_number
+    if not case_number:
+        pytest.skip("No 사건번호 on the sampled hit")
+
+    text = api.get_constitutional_decision(case_number)
+
+    assert text.identity.decision_id
+    assert text.text
+
+
+def test_live_find_delegated_rules_name_and_recall_smoke():
+    # 0.2.1 #2: resolved statute name + multi-target recall.
+    api = live_api()
+
+    graph = api.find_delegated_rules("001638")  # 도로교통법
+
+    assert graph.identity.name and not graph.identity.name.isdigit()
+    articles = {rule.source_article for rule in graph.rules}
+    assert "제160조" in articles and "제162조" in articles
+
+
+def test_live_load_delegated_criteria_reaches_subordinate_annex_smoke():
+    # 0.2.1 #1: 별표 in the delegated 시행령·시행규칙 are surfaced first-party,
+    # not pushed to websearch.
+    api = live_api()
+
+    bundle = api.load_delegated_criteria("001638", articles=["제160조", "제162조"])
+
+    annex_titles = [annex.identity.title for annex in bundle.loaded.annex_forms]
+    candidate_titles = [c.identity.title for c in bundle.candidates.annex_forms]
+    all_titles = " ".join(annex_titles + candidate_titles)
+    assert bundle.candidates.annex_forms or bundle.loaded.annex_forms
+    assert "과태료" in all_titles or "범칙" in all_titles
+    gap_kinds = [gap.kind for gap in bundle.gaps]
+    assert gap_kinds != ["websearch_required"]
+
+
+def test_live_annex_form_body_recovers_label_smoke():
+    # 0.2.1 #3: a bare-id annex body load recovers its authoritative label.
+    api = live_api()
+
+    hits = api.search_annex_forms("도로교통법 시행령", source="law", annex_type="별표", display=5)
+    hit = first_hit_or_skip(hits, "law annex")
+    body = api.get_annex_form_body(hit.identity.annex_id)  # bare id, no title
+
+    assert body.identity.title and body.identity.title != body.identity.annex_id
+    assert body.identity.related_name

@@ -2124,7 +2124,14 @@ def test_get_annex_form_body_loads_law_text_export_from_candidate():
 
     body = MolegApi(source).get_annex_form_body(identity)
 
-    assert body.identity == identity
+    # Caller-supplied identity fields are preserved; missing metadata
+    # (annex_type/annex_number) is backfilled from the loaded body header.
+    assert body.identity.annex_id == "17677511"
+    assert body.identity.title == "과태료의 부과기준(제67조 관련)"
+    assert body.identity.related_name == "식품위생법 시행령"
+    assert body.identity.source_target == "licbyl"
+    assert body.identity.annex_type == "별표"
+    assert body.identity.annex_number == "2"
     assert "과태료의 부과기준" in body.text
     assert body.file_type == "text/plain"
     assert body.extraction_method == "lsBylTextDownLoad.do"

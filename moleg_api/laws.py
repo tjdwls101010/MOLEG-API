@@ -59,6 +59,7 @@ from .models import (
     LawHistory,
     LawIdentity,
     LawStructure,
+    LawStructureNode,
     LawText,
     StructuredTableData,
 )
@@ -249,6 +250,9 @@ INTERPRETATION_SOURCE_VALUES = ("moleg", "ministry", "all", "all_ministries")
 COURT_VALUES = ("all", "supreme", "lower")
 BUNDLE_MODE_VALUES = ("question", "promulgated_bill", "statute_review")
 BUNDLE_BUDGET_VALUES = ("minimal", "standard", "broad")
+# 헌재 사건번호 shape, e.g. 2005헌마1139 / 2015헌바9 (digits + 헌 + class letter(s)
+# + digits) — distinct from the pure-digit 헌재결정례일련번호 detail id.
+_CONSTITUTIONAL_CASE_NUMBER_RE = re.compile(r"^\d+헌[가-힣]+\d+$")
 
 
 @dataclass(frozen=True)
@@ -951,6 +955,7 @@ class MolegApi:
         `resolve_promulgated_law` before history when starting from a bill.
         """
         identity = identity_from_identifier(law_identifier, basis="effective")
+        identity = self._resolve_identity_name(identity)
         bill_id_map = normalize_history_bill_id_map(promulgation_bridge)
         if article is not None:
             params = identity_params(identity, as_of=None, basis="effective")
@@ -1017,10 +1022,7 @@ class MolegApi:
         # The lsHistory list search matches on the law *name*; a bare law_id
         # identity carries the id as its name, which returns a "no results"
         # table and a parse failure. Recover the real name first.
-        if not identity.name or str(identity.name).isdigit():
-            resolved_name = self._law_name_for(identity)
-            if resolved_name:
-                identity = replace(identity, name=resolved_name)
+        identity = self._resolve_identity_name(identity)
         rows: list[dict[str, Any]] = []
         page = 1
         pages_seen = 0
@@ -1118,6 +1120,15 @@ class MolegApi:
                 return str(name)
         return None
 
+    def _resolve_identity_name(self, identity: LawIdentity) -> LawIdentity:
+        """Backfill the real statute name when an identity still carries a bare
+        law_id as its name (degrades to the input unchanged on lookup failure)."""
+        if not identity.name or str(identity.name).isdigit():
+            resolved_name = self._law_name_for(identity)
+            if resolved_name:
+                return replace(identity, name=resolved_name)
+        return identity
+
     def _load_versioned_law_raw(self, identity: LawIdentity, mst: str) -> dict[str, Any]:
         """Load one statute version's raw payload by MST (promulgated detail)."""
         versioned = replace(identity, mst=mst)
@@ -1212,6 +1223,7 @@ class MolegApi:
         payload = self.source.service("lsDelegated", params)
         raw_delegation = unwrap_service_payload(payload, "lsDelegated")
         root_identity = maybe_identity(raw_delegation.get("법령정보"), basis="effective") or identity
+        root_identity = self._resolve_identity_name(root_identity)
         rules = normalize_delegated_rules(raw_delegation)
         if article is not None:
             wanted = article_label_for_filter(article)
@@ -1385,6 +1397,10 @@ class MolegApi:
         )
         if not text.strip():
             raise NoResultError("No annex/form body text returned")
+        # A bare-id identity keeps the numeric id as its title (and no
+        # related_name/annex_type); recover the authoritative label from the
+        # body header before deciding on structuring or returning the identity.
+        identity = enrich_annex_identity_from_body(identity, text)
         structured_data = (
             structure_annex_form_text(text, identity)
             if attempt_structuring and annex_form_is_table_like(identity)
@@ -1896,6 +1912,19 @@ class MolegApi:
         Related: call `search_constitutional_decisions` first; use `get_case`
         for ordinary judicial decisions.
         """
+        # The detail endpoint keys on the internal 헌재결정례일련번호 (a pure-digit
+        # serial), a different system from the 사건번호 (e.g. 2005헌마1139). When a
+        # 사건번호 is passed, resolve it to the serial via search first.
+        if isinstance(identifier, str) and _CONSTITUTIONAL_CASE_NUMBER_RE.match(identifier.strip()):
+            case_number = identifier.strip()
+            resolved = self.search_constitutional_decisions(
+                case_number, case_number=case_number, display=1
+            )
+            if not resolved:
+                raise NoResultError(
+                    f"No Constitutional Court decision found for case number {case_number!r}"
+                )
+            identifier = resolved[0].identity
         identity_hint = judicial_decision_identity_from_identifier(
             identifier,
             source_type="constitutional",
@@ -2912,6 +2941,49 @@ class MolegApi:
         annex_form_candidates = list(bundle.candidates.annex_forms)
         delegated_scope = delegated_criteria_target_scope(bundle)
 
+        # Criteria/amount 별표 live inside the delegated 시행령·시행규칙, not the
+        # parent Act, and law.go.kr's lsDelegated never surfaces 별표 pointers. On
+        # the bare-anchor path (no --query) the inherited discovery searches only
+        # the parent law's own name and finds nothing, so reach the subordinate
+        # legislation's annexes directly by their resolved names. With an explicit
+        # query the block below already drives annex discovery by that query.
+        delegated_rule_names = (
+            delegated_subordinate_rule_names(bundle, delegated_scope)
+            if not explicit_query
+            else []
+        )
+        if delegated_rule_names:
+            subordinate_annex_limit = candidate_limits["annex_forms"]
+            # Restrict to 별표 (criteria/amount tables); 서식·별지 forms are not
+            # operational criteria and would otherwise crowd out the penalty/fine
+            # tables the anchor articles delegate.
+            delegated_annex_candidates = dedupe_candidates(
+                [
+                    hit
+                    for rule_name in delegated_rule_names
+                    for hit in safe_list(
+                        lambda rule_name=rule_name: self.search_annex_forms(
+                            rule_name,
+                            source="law",
+                            search_scope="source",
+                            annex_type="별표",
+                            display=subordinate_annex_limit,
+                        ),
+                        source_notes,
+                        f"Delegated-criteria subordinate-rule annex/form search for {rule_name}",
+                        gaps=gaps,
+                        deferred=deferred,
+                        query=rule_name,
+                        recommended_interface="search_annex_forms",
+                        source_type="annex_form",
+                        filters={"source": "law", "search_scope": "source", "annex_type": "별표"},
+                    )
+                ]
+            )
+            annex_form_candidates = dedupe_candidates(
+                [*delegated_annex_candidates, *annex_form_candidates]
+            )[:subordinate_annex_limit]
+
         if explicit_query:
             query_administrative_candidates = dedupe_candidates(
                 [
@@ -3083,6 +3155,12 @@ class MolegApi:
                 "annex_form",
             )
         )
+
+        # websearch_required is a generic "no first-party path succeeded" prompt
+        # inherited from load_institutional_system. When the delegated annex
+        # search did surface first-party 별표, that prompt is misleading — drop it.
+        if loaded_annex_forms or annex_form_candidates:
+            gaps = [gap for gap in gaps if getattr(gap, "kind", None) != "websearch_required"]
 
         return replace(
             bundle,
@@ -3929,6 +4007,82 @@ def annex_form_is_table_like(identity: AnnexFormIdentity) -> bool:
     return any(token in signals for token in ("별표", "기준표", "표", "기준", "부과기준"))
 
 
+_ANNEX_HEADER_RE = re.compile(
+    r"^\s*■\s*(?P<law>.+?)\s*\[\s*(?P<label>(?:별표|별지)[^\]]*?)\s*\]"
+)
+_ANNEX_BOX_CHARS = "┏┓┗┛┃┠┨┯┷━│─┌┐└┘├┤┼╋┣┫┳┻╂┿"
+# Adopt a header's source-law as related_name only when it reads like a statute
+# or subordinate/administrative rule, so junk header text is not treated as a
+# citable source reference (which feeds delegated-criteria source verification).
+_LEGISLATION_SUFFIXES = ("법", "법률", "령", "규칙", "조례", "규정", "고시", "훈령", "예규", "지침", "준칙")
+
+
+def _looks_like_legislation_name(name: str) -> bool:
+    return name.endswith(_LEGISLATION_SUFFIXES)
+
+
+def enrich_annex_identity_from_body(
+    identity: AnnexFormIdentity, text: str
+) -> AnnexFormIdentity:
+    """Recover the authoritative annex/form label from the loaded body header.
+
+    The text-download endpoint returns plain text with no title field, so a
+    bare-id identity (loaded via ``--id`` with no title) keeps the numeric id as
+    its title, which also silences table structuring. Parse the
+    ``■ <법령> [별표 N] ...`` header to backfill title/related_name/annex_type,
+    filling only fields currently missing so a rich search-hit identity is never
+    overwritten.
+    """
+    lines = text.splitlines()
+    header_idx: int | None = None
+    match: re.Match[str] | None = None
+    for idx, line in enumerate(lines[:6]):
+        m = _ANNEX_HEADER_RE.match(line)
+        if m:
+            header_idx = idx
+            match = m
+            break
+    if match is None or header_idx is None:
+        return identity
+
+    law = match.group("law").strip()
+    label = match.group("label").strip()
+    annex_type = "별표" if label.startswith("별표") else "별지"
+
+    updates: dict[str, Any] = {}
+    if not identity.related_name and _looks_like_legislation_name(law):
+        updates["related_name"] = law
+    if not identity.annex_type:
+        updates["annex_type"] = annex_type
+    if not identity.annex_number:
+        number = re.search(r"\d+", label)
+        if number:
+            updates["annex_number"] = number.group(0)
+
+    if not identity.title or identity.title == identity.annex_id:
+        # 별표 bodies place the annex name on its own line after the header;
+        # forms carry it inside the bracket. Prefer the name line, fall back to
+        # the bracketed "<법령> [별표 N]" label.
+        name_line: str | None = None
+        for line in lines[header_idx + 1 : header_idx + 8]:
+            stripped = line.strip()
+            if not stripped or stripped in ("(앞쪽)", "(뒤쪽)"):
+                continue
+            if stripped[0] in _ANNEX_BOX_CHARS or stripped.startswith("■"):
+                break
+            if any("가" <= ch <= "힣" for ch in stripped):
+                name_line = stripped
+            break
+        if name_line and annex_type == "별표":
+            updates["title"] = f"{law} [{label}] {name_line}"
+        else:
+            updates["title"] = f"{law} [{label}]"
+
+    if not updates:
+        return identity
+    return replace(identity, **updates)
+
+
 def structure_annex_form_text(text: str, identity: AnnexFormIdentity) -> StructuredTableData:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     pipe_table = parse_pipe_table(lines, identity)
@@ -4524,6 +4678,54 @@ def delegated_criteria_target_scope(bundle: LegalContextBundle) -> dict[str, set
         if graph.identity.name:
             law_names.add(graph.identity.name)
     return {"law_ids": law_ids, "law_msts": law_msts, "law_names": law_names, "articles": articles}
+
+
+def flatten_structure_nodes(nodes: list[LawStructureNode]) -> list[LawStructureNode]:
+    flat: list[LawStructureNode] = []
+    for node in nodes:
+        flat.append(node)
+        if node.children:
+            flat.extend(flatten_structure_nodes(node.children))
+    return flat
+
+
+def delegated_subordinate_rule_names(
+    bundle: LegalContextBundle, scope: dict[str, set[str]]
+) -> list[str]:
+    """Names of subordinate legislation (시행령·시행규칙) delegated from the target
+    statute, used to search their own annexes — criteria/amount 별표 live inside
+    the lower rules, and lsDelegated never surfaces 별표 pointers.
+
+    Delegations whose source article is in the requested scope are preferred; the
+    law-structure 시행령·시행규칙 nodes are always included as a fallback so a bare
+    anchor still reaches them.
+    """
+    names: list[str] = []
+    seen: set[str] = set()
+    scope_articles = scope.get("articles") or set()
+
+    def add(name: str | None) -> None:
+        if not name:
+            return
+        key = str(name).strip()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        names.append(key)
+
+    for graph in bundle.loaded.delegations:
+        for rule in graph.rules:
+            if not rule.delegated_name:
+                continue
+            if scope_articles and rule.source_article:
+                if comparable_article_label(rule.source_article) not in scope_articles:
+                    continue
+            add(rule.delegated_name)
+    for structure in bundle.loaded.law_structures:
+        for node in flatten_structure_nodes(structure.instruments):
+            if node.instrument_type in ("enforcement_decree", "enforcement_rule"):
+                add(node.name)
+    return names
 
 
 def delegated_criteria_scope_label(scope: dict[str, set[str]]) -> str:
