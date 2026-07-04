@@ -47,3 +47,25 @@ class RetryExhaustedError(SourceApiError):
 
 class ParseFailureError(MolegApiError):
     """A source response could not be normalized into the public model."""
+
+
+class AsOfBeforeCoverageError(MolegApiError):
+    """The requested as_of date predates law.go.kr's consolidated-version coverage.
+
+    A valid identifier and a well-formed date, but no consolidated version text
+    exists at (or before) that date — a permanent coverage-floor condition, not a
+    transient source failure. Carries the earliest available version date so the
+    caller can steer to amendment history instead of retrying.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        law_id: str | None = None,
+        earliest_available: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.law_id = law_id
+        self.earliest_available = earliest_available

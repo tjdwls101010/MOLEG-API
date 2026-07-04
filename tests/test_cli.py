@@ -148,7 +148,8 @@ def test_as_of_mismatch_flags_unfulfilled_version_request():
     art = ArticleText(identity=law_ident(effective_date="20260102"), article="제3조", text="본문")
     sig = signals_for("get-article", art, ns(as_of="2018-01-01"))
     assert sig["flags"]["version_request_unfulfilled"] is True
-    assert any("시행 이력" in d or "찾지 못" in d for d in sig["discipline"])
+    assert sig["flags"]["version_mismatch"] == {"requested": "20180101", "loaded": "20260102"}
+    assert any("as_of" in d and "trace-law-history" in d for d in sig["discipline"])
     # and never a false "historical" claim from the request alone
     assert "as_of_basis" not in sig["flags"]
 

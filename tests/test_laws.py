@@ -3043,7 +3043,8 @@ def test_search_interpretations_all_keeps_official_and_ministry_labels_distinct(
 def test_search_interpretations_all_requires_ministry():
     source = FakeSource()
 
-    with pytest.raises(NoResultError, match="source='all'"):
+    # Missing --ministry is a usage error (exit 5), not a silent empty result.
+    with pytest.raises(UnsupportedFormatError, match="source='all'"):
         MolegApi(source).search_interpretations("재산권", source="all")
 
     assert source.calls == []
@@ -4610,7 +4611,8 @@ def test_load_delegated_criteria_loads_selected_rule_and_annex_bodies():
         budget="minimal",
     )
 
-    assert bundle.request.mode == "institutional_system"
+    assert bundle.request.mode == "delegated_criteria"
+    assert bundle.request.query == "무단방치 자동차 처리 기준"
     assert bundle.loaded.laws[0].identity.name == "자동차관리법"
     assert bundle.loaded.delegations[0].rules[0].delegated_name == "자동차관리법 시행령"
     assert [rule.identity.name for rule in bundle.loaded.administrative_rules] == ["자동차관리법 고시"]
@@ -7775,7 +7777,7 @@ def test_load_legal_context_bundle_resolves_promulgation_bridge_success_path():
     assert any(item.interface == "trace_law_history" for item in bundle.deferred)
     assert any(item.interface == "compare_law_versions" for item in bundle.deferred)
     assert bundle.gaps[-1].kind == "websearch_required"
-    assert source.calls[0] == ("search", "law", {"query": "데이터기본법", "display": 20})
+    assert source.calls[0] == ("search", "law", {"query": "데이터기본법", "display": 20, "nw": 1})
     assert source.calls[1] == ("service", "eflaw", {"MST": "260001"})
 
 
@@ -9502,5 +9504,5 @@ def test_load_legal_context_bundle_preserves_bridge_lag_candidates():
             },
         )
     ]
-    assert source.calls[0] == ("search", "law", {"query": "자동차관리법", "display": 20})
-    assert source.calls[1] == ("search", "law", {"query": "자동차관리법", "display": 2})
+    assert source.calls[0] == ("search", "law", {"query": "자동차관리법", "display": 20, "nw": 1})
+    assert source.calls[1] == ("search", "law", {"query": "자동차관리법", "display": 2, "nw": 1})
