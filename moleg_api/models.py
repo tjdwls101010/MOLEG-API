@@ -25,7 +25,7 @@ AnnexType = Literal[
 InterpretationSearchSource = Literal["moleg", "ministry", "all", "all_ministries"]
 CaseCourt = Literal["all", "supreme", "lower"]
 BundleMode = Literal["question", "promulgated_bill", "statute_review"]
-BundleRequestMode = Literal["question", "promulgated_bill", "statute_review", "institutional_system"]
+BundleRequestMode = Literal["question", "promulgated_bill", "statute_review", "institutional_system", "delegated_criteria"]
 BundleBudget = Literal["minimal", "standard", "broad"]
 
 
@@ -237,6 +237,7 @@ class HistoryEvent:
     revision_type: str | None = None
     article: str | None = None
     article_text: str | None = None
+    article_link: str | None = None
     reason: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -255,7 +256,7 @@ class LawHistory:
 class LawDiffChange:
     """One before/after article comparison row."""
 
-    article: str
+    article: str | None
     before_text: str
     after_text: str
     title: str | None = None

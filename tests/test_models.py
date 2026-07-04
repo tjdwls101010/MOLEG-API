@@ -84,6 +84,7 @@ def test_bundle_request_mode_covers_returned_bundle_modes_without_widening_call_
         "promulgated_bill",
         "statute_review",
         "institutional_system",
+        "delegated_criteria",
     }
     assert get_type_hints(models.BundleRequest)["budget"] == models.BundleBudget
 

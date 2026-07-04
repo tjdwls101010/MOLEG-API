@@ -28,11 +28,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError, version as _dist_version
 from typing import Any
 
 from .errors import (
     AmbiguousLawError,
+    AsOfBeforeCoverageError,
     MolegApiError,
     NoResultError,
     ParseFailureError,
@@ -287,6 +289,34 @@ def _deferred_next(deferred: list[Any], *, cap: int = 3) -> tuple[list[dict[str,
     return items, overflow
 
 
+def _today_compact() -> str:
+    return date.today().strftime("%Y%m%d")
+
+
+def _compact_digits(value: Any) -> str:
+    return "".join(ch for ch in str(value) if ch.isdigit()) if value else ""
+
+
+def parse_as_of(raw: str) -> str:
+    """Strictly parse an --as-of value to canonical YYYYMMDD.
+
+    Accepts YYYY-MM-DD or YYYYMMDD only, with real calendar validation (rejects
+    month 13, Feb 30, day 99, and non-dates). A malformed date is a usage error,
+    not a silent fallback to the current version.
+    """
+    text = raw.strip()
+    for fmt in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y%m%d")
+        except ValueError:
+            continue
+    raise CliError(
+        f"--as-of 값 {raw!r}을(를) 날짜로 해석할 수 없다 — YYYY-MM-DD 또는 YYYYMMDD 형식만 허용(월 1~12·일 유효 범위).",
+        kind="usage_error",
+        exit_code=EXIT_USAGE,
+    )
+
+
 def _law_time_flags(identity: Any, as_of: str | None) -> tuple[dict[str, Any], list[str]]:
     flags: dict[str, Any] = {}
     lines: list[str] = []
@@ -296,18 +326,28 @@ def _law_time_flags(identity: Any, as_of: str | None) -> tuple[dict[str, Any], l
     eff = getattr(identity, "effective_date", None)
     if eff:
         flags["effective_date"] = eff
-    # --as-of loads the version in force at that date (the loader resolves the
-    # historical version). Verify the returned effective_date; a returned version
-    # newer than the requested date means no version was in force then.
+    e = _compact_digits(eff)
+    # 공포됐어도 시행일이 미래면 아직 효력이 없다. 반환 버전의 시행일을 오늘과 직접
+    # 대조해 '미시행'을 신호한다 — as_of 유무와 무관(미래 버전은 어느 경로로도 올 수 있다).
+    if len(e) == 8 and e > _today_compact():
+        flags["not_effective_as_of"] = True
+        lines.append(
+            "이 버전은 시행일이 미래 — 공포됐으나 아직 미시행이다. 현행 시행 문구로 인용 금지; "
+            "현재 시행 중 본문은 --as-of 없이(현행) 로드하라."
+        )
+    # --as-of는 그 시점에 시행 중이던 버전을 로드한다(로더가 역사 버전을 해결). 반환
+    # effective_date를 확인하라 — 요청 시점과 다르면 인접 버전이 반환된 것이다.
     if as_of:
         flags["as_of"] = as_of
-        a = "".join(ch for ch in as_of if ch.isdigit())
-        e = "".join(ch for ch in str(eff) if ch.isdigit()) if eff else ""
-        if a and e and e > a:
-            flags["version_request_unfulfilled"] = True
+        a = _compact_digits(as_of)
+        if a and e and e != a:
+            flags["version_mismatch"] = {"requested": a, "loaded": e}
+            if e > a:
+                # 하위호환: SKILL.md·catalog가 참조하는 기존 플래그 유지.
+                flags["version_request_unfulfilled"] = True
             lines.append(
-                "요청 시점에 시행 중이던 버전을 찾지 못해 이후 버전이 반환됨 — 그 시점 이전엔 시행 이력이 없을 수 있다. "
-                "조회 기준일을 답에 명기하라."
+                "요청한 시점(as_of)과 반환된 버전의 시행일이 다르다 — 반환 effective_date 기준으로 해석하라. "
+                "그 시점의 정확한 시행 버전 이력은 trace-law-history로 확인."
             )
     return flags, lines
 
@@ -356,6 +396,17 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         if count == 0:
             flags["searched"] = _searched_scope(command, args)
             discipline.append("0건 — 이 검색어·범위로 못 찾음일 뿐, 부재의 증명 아님.")
+            query = getattr(args, "query", None)
+            # 헌재·판례 검색 기본은 제목(사건명) — doctrine·법리 키워드는 --search-body(본문 전체)라야 매칭된다.
+            if eff_command in ("search-constitutional-decisions", "search-cases") and not getattr(args, "search_body", False) and query:
+                next_cmds.append({"why": "제목이 아닌 본문(판시·주문·이유) 전체 검색으로 재시도", "cmd": f"moleg {eff_command} {json.dumps(query, ensure_ascii=False)} --search-body"})
+                discipline.append("헌재·판례 검색 기본은 제목 검색 — doctrine·본문 키워드로 0건이면 --search-body로 재시도하라.")
+            # 별표 검색은 스코프(title=별표 제목 / source=소관 법령명)에 따라 결과가 갈린다 — 반대 스코프로 재시도.
+            elif eff_command == "search-annex-forms" and query:
+                scope = getattr(args, "search_scope", "title") or "title"
+                other = "source" if scope == "title" else "title"
+                next_cmds.append({"why": f"별표 검색 스코프 전환({scope}→{other})으로 재시도", "cmd": f"moleg search-annex-forms {json.dumps(query, ensure_ascii=False)} --search-scope {other}"})
+                discipline.append("별표 검색 title=별표 제목 / source=소관 법령명 매칭(토큰 근접) — 0건이면 반대 스코프로 재시도하라.")
             # mechanical alternate: drop a narrowing filter if one was set.
             broaden = _broaden_next(command, args)
             if broaden:
@@ -388,6 +439,8 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
     if tname == "LawText":
         tf, tl = _law_time_flags(result.identity, as_of)
         flags.update(tf); discipline.extend(tl)
+        if flags.get("not_effective_as_of"):
+            source = "법제처 / 공포본(장래 시행 — 아직 미시행)"
         if _has_supplementary(result):
             flags["has_supplementary"] = True
             discipline.append("시행일·적용례·경과조치는 supplementary_provisions에 별도 — 조문 본문·법령 effective_date만으로 전환 범위 답 금지.")
@@ -401,6 +454,8 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         flags.update(af); discipline.extend(al)
         tf, tl = _law_time_flags(result.identity, as_of)
         flags.update(tf); discipline.extend(tl)
+        if flags.get("not_effective_as_of"):
+            source = "법제처 / 공포본 조문(장래 시행 — 아직 미시행)"
         discipline.append("정의·예외·적용대상·요건은 text의 항·호·목 중첩에 있다 — 조문제목·상위 조문내용만으로 요약 금지.")
         moved = _real_moved_to(result)
         if moved:
@@ -460,6 +515,11 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         if command == "get-constitutional-decision" or (st and "detc" in str(st)):
             kind, source = "constitutional_text", "법제처 / 헌재결정 본문"
             discipline.append("헌재 결정 — 판시사항·심판대상조문을 로드된 본문에서만 인용, doctrine 망라 단정 금지.")
+            disposition = getattr(result.identity, "decision_type", None)
+            if disposition:
+                flags["disposition"] = disposition
+            elif not (getattr(result, "holdings", None) or getattr(result, "summary", None) or getattr(result, "reviewed_statutes", None)):
+                discipline.append("주문·처분 결과가 구조화 필드에 없음 — full_text의 【주 문】을 직접 읽어 각하/기각/합헌/위헌을 판단하고, 각하·기각을 본안(merits) 판단으로 오인하지 마라.")
         else:
             kind, source = "case_text", "법제처 / 판례 본문"
 
@@ -540,22 +600,44 @@ def _law_list_signals(hits: list[Any]) -> dict[str, Any]:
     flags: dict[str, Any] = {}
     discipline: list[str] = []
     next_cmds: list[dict[str, str]] = []
+    today = _today_compact()
     by_name: dict[str, list[Any]] = {}
     for h in hits:
         by_name.setdefault(getattr(h.identity, "name", ""), []).append(h)
     ambiguous = any(len(v) > 1 for v in by_name.values())
+    # The current in-force version is the LATEST 시행일 that is ≤ today; every
+    # other candidate (older OR future) is not currently in force. bare
+    # `get-law --law` returns that current version, so only it gets the bare
+    # steer; the rest get an --as-of targeting their own effective_date.
+    effs_all = [_compact_digits(getattr(h.identity, "effective_date", None)) for h in hits]
+    in_force_effs = [e for e in effs_all if len(e) == 8 and e <= today]
+    current_eff = max(in_force_effs) if in_force_effs else None
+    first_eff = effs_all[0] if effs_all else ""
+    future_top = len(first_eff) == 8 and first_eff > today
+    if future_top:
+        flags["top_candidate_not_yet_effective"] = True
     if ambiguous:
         flags["ambiguous_versions"] = True
-        discipline.append("동명 후보가 시행일 다름 — 현행본은 그냥 get-law --law, 특정 시점 버전은 --as-of <시행일>로 로드.")
-    for i, h in enumerate(hits[:3]):
+        discipline.append(
+            "동명 후보가 시행일 다름 — 현행본은 그냥 get-law --law(로더가 현행 시행본 해결), 특정 시점 버전은 --as-of <시행일>. "
+            "목록은 최신 공포순이라 상단이 미시행(장래 시행)일 수 있으니 effective_date를 오늘과 대조하라."
+        )
+    elif future_top:
+        discipline.append(
+            "최신 후보가 아직 미시행(장래 시행)이다 — get-law --law는 현행 시행본을 반환한다. effective_date를 오늘과 대조해 인용하라."
+        )
+    for h in hits[:3]:
         ident = h.identity
         law_id = getattr(ident, "law_id", "") or ""
         eff = getattr(ident, "effective_date", None)
+        e = _compact_digits(eff)
+        is_current = bool(current_eff) and e == current_eff
+        status = "현행" if is_current else ("미시행" if (len(e) == 8 and e > today) else "과거")
         cmd = f"moleg get-law --law {law_id}"
-        # first (latest) candidate is current; older candidates load by --as-of
-        if ambiguous and i > 0 and eff:
-            cmd += f" --as-of {eff}"
-        next_cmds.append({"why": f"후보 로드: {getattr(ident, 'name', '')}" + (f" (시행 {eff})" if eff else ""), "cmd": cmd})
+        if not is_current and e:
+            cmd += f" --as-of {e}"
+        why = f"후보 로드: {getattr(ident, 'name', '')}" + (f" (시행 {eff}, {status})" if eff else "")
+        next_cmds.append({"why": why, "cmd": cmd})
     return {"flags": flags, "discipline": discipline, "next": next_cmds}
 
 
@@ -589,13 +671,19 @@ def _id_next(hits: list[Any], command: str) -> list[dict[str, str]]:
     for h in hits[:2]:
         val = getattr(h.identity, id_field, None)
         if val:
-            out.append({"why": f"본문 로드: {getattr(h.identity, 'title', getattr(h.identity, 'name', val))}", "cmd": f"moleg {command} --id {val}"})
+            cmd = f"moleg {command} --id {val}"
+            # 부처 해석 본문 로드는 --id만으론 안 되고 --source ministry --ministry <기관>이 필수다.
+            if command == "get-interpretation" and getattr(h.identity, "source_type", None) == "ministry":
+                ministry = getattr(h.identity, "ministry", None)
+                if ministry:
+                    cmd += f" --source ministry --ministry {ministry}"
+            out.append({"why": f"본문 로드: {getattr(h.identity, 'title', getattr(h.identity, 'name', val))}", "cmd": cmd})
     return out
 
 
 def _searched_scope(command: str, args: argparse.Namespace) -> dict[str, Any]:
     scope: dict[str, Any] = {}
-    for key in ("query", "concept", "basis", "ministry", "law_type", "court", "source", "annex_type", "rule_type", "as_of"):
+    for key in ("query", "concept", "basis", "ministry", "law_type", "court", "source", "search_scope", "annex_type", "rule_type", "search_body", "as_of"):
         val = getattr(args, key, None)
         if val:
             scope[key] = val
@@ -682,7 +770,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("search-annex-forms", help="별표·서식 후보 검색.")
     p.add_argument("query")
     p.add_argument("--source", choices=["law", "administrative_rule"], default="law")
-    p.add_argument("--search-scope", dest="search_scope", choices=["title", "source", "body"], default="source")
+    p.add_argument("--search-scope", dest="search_scope", choices=["title", "source", "body"], default="title",
+                   help="title=별표 제목 매칭(기본) / source=소관 법령명 매칭 / body=본문 전체. 제목으로 0건이면 source로 재시도.")
     p.add_argument("--annex-type", dest="annex_type", default=None)
     p.add_argument("--ministry", default=None); p.add_argument("--display", type=int, default=20)
 
@@ -690,7 +779,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query")
     p.add_argument("--source", choices=["moleg", "ministry", "all", "all_ministries"], default="moleg")
     p.add_argument("--ministry", default=None)
-    p.add_argument("--search-body", dest="search_body", action="store_true")
+    p.add_argument("--search-body", dest="search_body", action="store_true", help="제목이 아니라 본문(판시사항·주문·이유·해석 전문) 전체를 검색. doctrine·본문 키워드로 0건이면 이 옵션으로 재시도.")
     p.add_argument("--interpreted-on", dest="interpreted_on", default=None)
     p.add_argument("--display", type=int, default=20)
 
@@ -698,14 +787,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query")
     p.add_argument("--court", choices=["all", "supreme", "lower"], default="all")
     p.add_argument("--court-name", dest="court_name", default=None)
-    p.add_argument("--search-body", dest="search_body", action="store_true")
+    p.add_argument("--search-body", dest="search_body", action="store_true", help="제목이 아니라 본문(판시사항·주문·이유·해석 전문) 전체를 검색. doctrine·본문 키워드로 0건이면 이 옵션으로 재시도.")
     p.add_argument("--decided-on", dest="decided_on", default=None)
     p.add_argument("--case-number", dest="case_number", default=None)
     p.add_argument("--display", type=int, default=20)
 
     p = sub.add_parser("search-constitutional-decisions", help="헌재 결정 검색.")
     p.add_argument("query")
-    p.add_argument("--search-body", dest="search_body", action="store_true")
+    p.add_argument("--search-body", dest="search_body", action="store_true", help="제목이 아니라 본문(판시사항·주문·이유·해석 전문) 전체를 검색. doctrine·본문 키워드로 0건이면 이 옵션으로 재시도.")
     p.add_argument("--decided-on", dest="decided_on", default=None)
     p.add_argument("--case-number", dest="case_number", default=None)
     p.add_argument("--display", type=int, default=20)
@@ -739,7 +828,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-follow-moved", dest="no_follow_moved", action="store_true")
 
     p = sub.add_parser("get-annex-form-body", help="별표·서식 본문 로드.")
-    p.add_argument("--id", dest="identifier", required=True, help="annex_id(검색이 준 값).")
+    p.add_argument("--id", "--annex-id", dest="identifier", required=True, help="annex_id(검색이 준 값). --annex-id로도 받음.")
     p.add_argument("--source", choices=["law", "administrative_rule"], default="law")
     p.add_argument("--title", default=None)
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
@@ -808,6 +897,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _call(api: MolegApi, args: argparse.Namespace) -> Any:
     c = args.command
+    # Strictly validate --as-of once, for every command that carries it, so a
+    # malformed date is a usage error rather than a silent wrong-version load.
+    if getattr(args, "as_of", None):
+        args.as_of = parse_as_of(args.as_of)
     if c == "search-laws":
         return api.search_laws(args.query, as_of=args.as_of, basis=args.basis,
                                law_type=args.law_type, ministry=args.ministry, display=args.display)
@@ -922,7 +1015,9 @@ CATALOG = {
         "0건·호출 실패 ≠ 부재. 종료코드로 구분: 0 ok(0건 포함) · 2 모호 · 3 소스접근실패 · 4 no-result · 5 usage/순서위반.",
         "load 계열에 법령명을 주면 needs_search_first(exit 5) — 먼저 search-laws로 law_id를 얻어라.",
         "deferred는 data.deferred[i]를 load-followup --json -로 파이프(손타이핑 금지).",
-        "로더(get-law/get-article)는 기본이 현행 통합본, --as-of <날짜>면 그 시점에 시행 중이던 역사 버전 본문을 로드한다(버전 자동 해결). 반환 effective_date를 확인하라 — flags.version_request_unfulfilled가 뜨면 그 시점 이전엔 시행 이력이 없다는 뜻. 개정 전후 델타는 compare-law-versions로.",
+        "로더(get-law/get-article)는 기본이 현행 통합본, --as-of <날짜>(YYYY-MM-DD/YYYYMMDD만)면 그 시점 시행 버전을 로드한다. 반환 effective_date를 오늘과 대조해 현행/미시행을 판정하라 — flags.not_effective_as_of=공포됐으나 미시행(미래 시행일, 현행 인용 금지), version_mismatch={requested,loaded}=요청 시점과 반환 버전 시행일 불일치, version_request_unfulfilled=요청보다 이후 버전이 반환됨. 요청 시점이 통합본 커버리지보다 이르면 kind:version_request_unfulfilled+earliest_available(→trace-law-history).",
+        "검색 스코프 뉘앙스: 헌재·판례는 기본이 제목(사건명) 검색이라 doctrine·본문 키워드는 --search-body(본문 전체)라야 매칭(0건이면 next가 재시도 제시). 별표는 --search-scope title(별표 제목)/source(소관 법령명, 토큰 근접)이라 0건이면 반대 스코프로. 부처 해석은 --source all_ministries(법제처+부처 혼합)로만 나오고, 부처 본문 로드는 --source ministry --ministry <기관> 필수(검색 hit의 follow_up.filters를 그대로 로더 인자로).",
+        "개정 전후 델타=compare-law-versions는 소스가 주는 최근 두 버전만 비교하고 changes[].article은 본문에서 파싱한 실제 조문번호(매핑 불가 시 null). 임의 두 시점 델타는 get-article --as-of를 전후 날짜로 두 번 로드해 대조.",
     ],
     "routing_rules": [
         "본문 로드: 살아있는 조문=get-article / 이동·삭제 가능성 있는 조문=load-article-context(기본이 이동추적).",
@@ -930,6 +1025,7 @@ CATALOG = {
         "이 법 아래 무엇이 있나: 계층 조망=get-law-structure(위임 증명 아님) / 조문 단위 위임 규정=find-delegated-rules.",
         "넓은 탐색: 넓은 질의의 용어·관련법 조사계획=expand-legal-query / 유사 제도(비슷한 기제)를 가진 법 후보(설계용)=find-comparable-mechanisms.",
         "묶음 로더 — authority=특정 조문의 해석/판례/헌재 권위 / bundle=진입점 모를 때 단일법·넓은 질문(--mode) / institutional=명시된 다법령 집합(--statute 반복) / delegated=단일법의 하위규칙·별표 집행기준 본문.",
+        "별표 금액·기준표: 위임된 시행령·시행규칙의 별표를 search-annex-forms --search-scope source <법령명> → get-annex-form-body --id(=--annex-id)로 로드. 표 파싱이 무너지면 structured_data.parsing_confidence=low — 금액은 text를 1차로 인용하라. bare id 로드는 소관법령ID·pdf_link 등 링크 메타를 복구하지 못하니 현행성은 모법 버전으로 확인.",
     ],
     "commands": {
         "검색·계획(후보)": [
@@ -999,6 +1095,13 @@ def main(argv: list[str] | None = None, *, api: MolegApi | None = None) -> int:
         _emit({"ok": False, "command": args.command, "kind": "source_access_error", "error": str(exc),
                "discipline": ["일시적 소스 접근 실패이지 법령 부재 아님 — 잠시 후 재시도. 시행일 등은 폴백 규율로 채우되 위헌·판례류는 '1차 확인 필요'로 남겨라."]})
         return EXIT_SOURCE
+    except AsOfBeforeCoverageError as exc:
+        law_id = getattr(exc, "law_id", None) or getattr(args, "law", "")
+        _emit({"ok": False, "command": args.command, "kind": "version_request_unfulfilled", "error": str(exc),
+               "flags": {"as_of": getattr(args, "as_of", None), "earliest_available": getattr(exc, "earliest_available", None)},
+               "discipline": ["요청 시점이 이 법령의 통합본 제공 최초 시행일보다 앞선다(일시적 실패 아님) — 그 이전 본문은 통합본으로 제공되지 않으니 연혁으로 확인하라."],
+               "next": [{"why": "가용 최초 버전·개정 연혁 확인", "cmd": f"moleg trace-law-history --law {law_id}"}]})
+        return EXIT_NO_RESULT
     except ParseFailureError as exc:
         _emit({"ok": False, "command": args.command, "kind": "parse_error", "error": str(exc),
                "discipline": ["소스 응답을 정규화하지 못함(소스접근 실패·법령 부재 아님) — 다른 경로/커맨드로 확인하라."]})

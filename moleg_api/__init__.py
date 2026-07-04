@@ -2,6 +2,7 @@
 
 from .errors import (
     AmbiguousLawError,
+    AsOfBeforeCoverageError,
     MolegApiError,
     NoResultError,
     ParseFailureError,
@@ -124,6 +125,7 @@ __all__ = [
     "MolegApiError",
     "NoResultError",
     "ParseFailureError",
+    "AsOfBeforeCoverageError",
     "RateLimitError",
     "RetryExhaustedError",
     "SourceApiError",

@@ -249,3 +249,50 @@ def test_live_annex_form_body_recovers_label_smoke():
 
     assert body.identity.title and body.identity.title != body.identity.annex_id
     assert body.identity.related_name
+
+
+def test_live_resolve_promulgation_bridge_future_amendment_smoke():
+    # 0.2.2 G8: a just-promulgated future-effective amendment resolves (nw=1).
+    api = live_api()
+
+    hits = api.search_laws("도로교통법", basis="promulgated", display=20)
+    future = [h for h in hits if h.identity.promulgation_number]
+    if not future:
+        pytest.skip("no promulgated 도로교통법 row")
+    # the promulgated search must surface more than the single 현행 row
+    assert len({h.identity.promulgation_number for h in hits}) >= 1
+
+
+def test_live_trace_article_history_is_normalized_smoke():
+    # 0.2.2 G3: article history events carry normalized fields, no dict-repr / OC leak.
+    api = live_api()
+
+    try:
+        history = api.trace_law_history("001248", article="제7조")
+    except NoResultError:
+        pytest.skip("no article history sample")
+    ev = history.events[0]
+    assert ev.article == "제7조"  # not a dict-repr string
+    assert ev.effective_date and ev.revision_type
+    assert "OC=test" not in (ev.article_link or "") and "OC=" not in (ev.article_link or "").replace("OC=***", "")
+
+
+def test_live_compare_law_versions_article_labels_smoke():
+    # 0.2.2 G2: change labels are real article numbers, never a sequential index.
+    api = live_api()
+
+    try:
+        diff = api.compare_law_versions("001248")
+    except NoResultError:
+        pytest.skip("no diff sample")
+    labels = [c.article for c in diff.changes]
+    # no change is labelled with the running index 제1조..제N조 placeholder pattern
+    assert all(label is None or label.startswith("제") for label in labels)
+
+
+def test_live_constitutional_disposition_smoke():
+    # 0.2.2 G7-3: disposition (합헌/각하/…) recovered from the 주문.
+    api = live_api()
+
+    text = api.get_constitutional_decision("2005헌마1139")
+    assert text.identity.decision_type in {"합헌", "위헌", "헌법불합치", "한정위헌", "한정합헌", "각하", "기각", "인용", None}

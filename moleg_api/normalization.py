@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import date, datetime
 from html.parser import HTMLParser
 from typing import Any, Literal
@@ -252,9 +253,17 @@ def parse_article_references(text: str | None) -> list[ArticleReference]:
 
 
 def law_name_before_article(segment: str) -> str | None:
-    pieces = re.split(r"[:;,\n/]|(?:\s및\s)|(?:\s또는\s)", segment)
+    # '및'/'또는' are ambiguous: name-internal (부정청탁 및 …에 관한 법률) OR a
+    # separator between statutes (제15조 및 데이터기본법). Splitting on them chops
+    # the internal case; not splitting keeps a leading separator glued on. Resolve
+    # by not splitting but stripping only a LEADING 및/또는 from the candidate. Also
+    # drop a trailing promulgation parenthetical ("(2015. 3. 27. 법률 제…호…)") so
+    # LAW_NAME_RE doesn't consume it as the name.
+    pieces = re.split(r"[:;,\n/]", segment)
     for piece in reversed(pieces):
-        candidate = piece.strip(" \t\r\n,.;()[]{}「」『』\"'")
+        candidate = piece.strip(" \t\r\n,.;[]{}「」『』\"'")
+        candidate = re.sub(r"^(?:및|또는)\s+", "", candidate)
+        candidate = re.split(r"\(\s*\d{4}\.", candidate)[0].strip()
         if not candidate:
             continue
         matches = list(LAW_NAME_RE.finditer(candidate))
@@ -796,6 +805,37 @@ def normalize_judicial_decision_identity(
     )
 
 
+_DISPOSITION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("헌법불합치", (r"헌법에\s*합치되지\s*아니한다", r"헌법불합치")),
+    ("한정위헌", (r"한정위헌",)),
+    ("한정합헌", (r"한정합헌",)),
+    ("합헌", (r"헌법에\s*위반되지\s*아니한다", r"헌법에\s*위배되지\s*아니한다")),
+    ("위헌", (r"위반된다",)),
+    ("각하", (r"각하한다",)),
+    ("기각", (r"기각한다",)),
+    ("인용", (r"인용한다", r"취소한다")),
+)
+
+
+def parse_constitutional_disposition(full_text: str | None) -> str | None:
+    """Disposition(s) (합헌/위헌/헌법불합치/각하/기각 …) from the 주문 of a 헌재
+    decision's 전문. Scans ONLY the 주문 slice — the 이유 section repeats these
+    verbs (dissents) and would mislabel. Returns None when the 주문 is absent."""
+    if not full_text:
+        return None
+    marker = re.search(r"[【\[]\s*주\s*문\s*[】\]]", full_text)
+    if not marker:
+        return None
+    rest = full_text[marker.end():]
+    reason = re.search(r"[【\[]\s*이\s*유", rest)
+    section = rest[: reason.start()] if reason else rest[:2000]
+    found: list[str] = []
+    for label, patterns in _DISPOSITION_RULES:
+        if label not in found and any(re.search(p, section) for p in patterns):
+            found.append(label)
+    return " ".join(found) if found else None
+
+
 def normalize_judicial_decision_text(
     row: dict[str, Any],
     *,
@@ -810,6 +850,12 @@ def normalize_judicial_decision_text(
     holdings = string_or_none(first_value(row, "판시사항"))
     summary = string_or_none(first_value(row, "판결요지", "결정요지"))
     full_text = string_or_none(first_value(row, "판례내용", "전문"))
+    # 헌재 detail carries no 판결유형/선고 key, so decision_type is always null —
+    # recover the disposition from the 주문 so 각하/기각 aren't mistaken for merits.
+    if source_target == "detc" and not identity.decision_type:
+        disposition = parse_constitutional_disposition(full_text)
+        if disposition:
+            identity = replace(identity, decision_type=disposition)
     referenced_statutes = string_or_none(first_value(row, "참조조문"))
     reviewed_statutes = string_or_none(first_value(row, "심판대상조문"))
     referenced_cases = string_or_none(first_value(row, "참조판례"))
@@ -1338,6 +1384,13 @@ def article_text_marks_deleted(text: str) -> bool:
     )
 
 
+def mask_oc_param(link: str | None) -> str | None:
+    """Mask the OC credential in a law.go.kr link before it is surfaced."""
+    if not link:
+        return link
+    return re.sub(r"(OC=)[^&]*", r"\1***", link)
+
+
 def normalize_history_events(
     payload: dict[str, Any],
     identity: LawIdentity,
@@ -1359,23 +1412,31 @@ def normalize_history_events(
     for row in rows:
         if not isinstance(row, dict):
             continue
+        # The article-scoped (lsJoHstInf) payload nests fields under 조문정보
+        # /법령정보; the whole-law (lsHistory HTML) payload is already flat.
+        # Merge both so the flat first_value reads below work on either shape —
+        # otherwise the article path loses changed_date/effective_date/revision
+        # _type/reason and lets `article` fall through to a dict-repr string.
+        jo = row.get("조문정보") if isinstance(row.get("조문정보"), dict) else {}
+        li = row.get("법령정보") if isinstance(row.get("법령정보"), dict) else {}
+        lookup = {**row, **jo, **li} if (jo or li) else row
         try:
             row_identity = normalize_law_identity(row, basis=identity.basis)
         except ParseFailureError:
             row_identity = identity
-        changed_date = string_or_none(compact_date(first_value(row, "조문변경일", "조문개정일", "regDt", "공포일자")))
-        effective_date = string_or_none(compact_date(first_value(row, "조문시행일", "시행일자")))
+        changed_date = string_or_none(compact_date(first_value(lookup, "조문변경일", "조문개정일", "regDt", "공포일자")))
+        effective_date = string_or_none(compact_date(first_value(lookup, "조문시행일", "시행일자")))
         article_text = history_event_article_text(
-            row,
+            lookup,
             changed_date=changed_date,
             effective_date=effective_date,
             article_text_map=article_text_map,
         )
         promulgation_law_name = string_or_none(
-            first_value(row, "법령명한글", "법령명_한글", "법령명")
+            first_value(lookup, "법령명한글", "법령명_한글", "법령명")
         ) or row_identity.name
-        promulgation_date = string_or_none(compact_date(first_value(row, "공포일자")))
-        promulgation_number = compact_promulgation_number(first_value(row, "공포번호"))
+        promulgation_date = string_or_none(compact_date(first_value(lookup, "공포일자")))
+        promulgation_number = compact_promulgation_number(first_value(lookup, "공포번호"))
         event = HistoryEvent(
             identity=row_identity,
             changed_date=changed_date,
@@ -1389,13 +1450,14 @@ def normalize_history_events(
                 promulgation_number=promulgation_number,
                 promulgation_date=promulgation_date,
             ),
-            revision_type=string_or_none(first_value(row, "제개정구분명", "제개정구분")),
+            revision_type=string_or_none(first_value(lookup, "제개정구분명", "제개정구분")),
             article=article_label_from_parts(
-                first_value(row, "조문번호", "조문정보", "JO"),
-                first_value(row, "조문가지번호", "조가지번호"),
+                first_value(lookup, "조문번호", "JO"),
+                first_value(lookup, "조문가지번호", "조가지번호"),
             ),
             article_text=article_text,
-            reason=string_or_none(first_value(row, "변경사유")),
+            article_link=mask_oc_param(string_or_none(first_value(lookup, "조문링크"))),
+            reason=string_or_none(first_value(lookup, "변경사유")),
             raw=row,
         )
         events.append(event)
@@ -1526,6 +1588,26 @@ class LawHistoryTableParser(HTMLParser):
             self._current_row = None
 
 
+def _diff_article_header(text: str) -> str | None:
+    """The real 제N조[의M] label from the start of a diff row's content, if any."""
+    match = re.match(r"\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?", text or "")
+    if not match:
+        return None
+    main = int(match.group(1))
+    branch = int(match.group(2) or 0)
+    return f"제{main}조의{branch}" if branch else f"제{main}조"
+
+
+def _diff_row_has_real_article(row: dict[str, Any]) -> bool:
+    """True when a diff row carries a genuine article identifier (제N조 in `no`, a
+    6-digit 조문번호, or explicit 조문번호/조가지번호 fields) rather than a bare
+    running row index — the latter must not be treated as an article number."""
+    no = str(first_value(row, "no") or "").strip()
+    if no.startswith("제") or "조" in no or re.fullmatch(r"\d{6}", no):
+        return True
+    return first_value(row, "조문번호", "조가지번호", "조문가지번호") not in (None, "")
+
+
 def normalize_diff_changes(payload: dict[str, Any], *, article: str | int | None = None) -> list[LawDiffChange]:
     before_rows = article_rows_from_diff(payload, "구조문목록")
     after_rows = article_rows_from_diff(payload, "신조문목록")
@@ -1533,24 +1615,73 @@ def normalize_diff_changes(payload: dict[str, Any], *, article: str | int | None
 
     before_by_no = {article_key(row): row for row in before_rows}
     after_by_no = {article_key(row): row for row in after_rows}
-    keys = sorted(set(before_by_no) | set(after_by_no))
+    # `no` is a sequential ROW index (1,2,3…), a correct index-parallel JOIN key
+    # for the before/after lists — but NOT the real article number. Walk rows in
+    # document order (numeric `no`) and derive the DISPLAYED article label from
+    # the content's 제N조 header, carrying it forward across continuation rows
+    # (항·호 fragments with no header). Never emit the sequential index as 제N조.
+    keys = sorted(set(before_by_no) | set(after_by_no), key=lambda k: int(_digits(k) or "0"))
     changes: list[LawDiffChange] = []
+    current_article: str | None = None
     for key in keys:
         before_row = before_by_no.get(key, {})
         after_row = after_by_no.get(key, {})
-        label = article_label(key) or key
-        if wanted and label != wanted and key != wanted:
+        before_text = str(first_value(before_row, "content", "조문내용", "text") or "")
+        after_text = str(first_value(after_row, "content", "조문내용", "text") or "")
+        header = _diff_article_header(after_text) or _diff_article_header(before_text)
+        if header:
+            current_article = header
+        elif (_diff_row_has_real_article(after_row) or _diff_row_has_real_article(before_row)) and key:
+            # The row carries a genuine article number (not the sequential index).
+            current_article = key
+        label = current_article
+        if wanted and label != wanted:
             continue
         changes.append(
             LawDiffChange(
                 article=label,
                 title=string_or_none(first_value(after_row, "title", "조문제목") or first_value(before_row, "title", "조문제목")),
-                before_text=str(first_value(before_row, "content", "조문내용", "text") or ""),
-                after_text=str(first_value(after_row, "content", "조문내용", "text") or ""),
+                before_text=before_text,
+                after_text=after_text,
                 raw={"before": before_row, "after": after_row},
             )
         )
     return changes
+
+
+def _digits(value: Any) -> str:
+    return "".join(ch for ch in str(value) if ch.isdigit())
+
+
+# Target-defining keys used to detect/size a parallel-array 위임정보 dict. Does
+# NOT include 위임법령조문정보 (article-detail, a different length).
+_DELEGATION_TARGET_KEYS = (
+    "위임구분", "법종구분",
+    "위임법령제목", "위임행정규칙제목", "위임자치법규제목", "위임행정규칙명", "법령명",
+    "법령ID", "위임법령ID",
+    "위임법령일련번호", "위임행정규칙일련번호", "위임자치법규일련번호", "법령일련번호",
+    "위임법령조문번호", "위임행정규칙조번호",
+    "라인텍스트", "조내용", "링크텍스트",
+)
+
+
+def _transpose_delegation_info(info: dict[str, Any]) -> list[dict[str, Any]]:
+    """A single 위임정보 dict can carry parallel lists (one article delegating to
+    N targets). Transpose into N per-target dicts (scalars broadcast); otherwise
+    return it unchanged. Prevents delegated_type/name/mst from serializing as a
+    stringified list and recovers every collapsed multi-target delegation."""
+    lengths = [len(info[k]) for k in _DELEGATION_TARGET_KEYS if isinstance(info.get(k), list)]
+    if not lengths:
+        return [info]
+    n = max(lengths)
+    out: list[dict[str, Any]] = []
+    for i in range(n):
+        item = dict(info)
+        for key, value in info.items():
+            if isinstance(value, list):
+                item[key] = value[i] if i < len(value) else None
+        out.append(item)
+    return out
 
 
 def normalize_delegated_rules(payload: dict[str, Any]) -> list[DelegatedRule]:
@@ -1562,14 +1693,14 @@ def normalize_delegated_rules(payload: dict[str, Any]) -> list[DelegatedRule]:
         if "위임정보" in row or "조정보" in row:
             source = row.get("조정보") if isinstance(row.get("조정보"), dict) else {}
             raw_info = row.get("위임정보")
-            # 위임정보 is list-valued when one article delegates to several
-            # targets (e.g. 과태료·범칙금액 amount tables). Collapsing it to {}
-            # silently drops every multi-target article, so emit one rule per
-            # delegation target instead.
+            # 위임정보 has three shapes when one article delegates to several
+            # targets: a list of dicts, OR a single dict whose target fields are
+            # parallel lists. Both must emit one rule per target — collapsing to
+            # {} (or a single dict) drops/ stringifies multi-target delegations.
             if isinstance(raw_info, list):
                 infos = [item for item in raw_info if isinstance(item, dict)]
             elif isinstance(raw_info, dict):
-                infos = [raw_info]
+                infos = _transpose_delegation_info(raw_info)
             else:
                 infos = [{}]
         else:

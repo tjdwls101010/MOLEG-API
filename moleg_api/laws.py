@@ -8,6 +8,7 @@ from typing import Any
 
 from .errors import (
     AmbiguousLawError,
+    AsOfBeforeCoverageError,
     MolegApiError,
     NoResultError,
     ParseFailureError,
@@ -644,6 +645,11 @@ class MolegApi:
         query = require_query(query)
         target = target_for(basis, "list")
         params: dict[str, Any] = {"query": query, "display": display}
+        if basis == "promulgated":
+            # The `law` search endpoint hides 시행예정(future-effective) rows by
+            # default; a promulgated-basis search (and the promulgation bridge)
+            # must see just-promulgated future amendments, so include them.
+            params["nw"] = 1
         if as_of:
             params["efYd" if basis == "effective" else "date"] = compact_date(as_of)
         if law_type:
@@ -747,6 +753,26 @@ class MolegApi:
             # failed, so current-law loads keep their single source call.
             mst = identity_hint.mst or (self._resolve_version_mst(identity_hint, as_of) if as_of else None)
             if not mst:
+                # No version in force at as_of. If the law has version rows but
+                # all postdate the request, the requested date is before
+                # law.go.kr's consolidated coverage for this law — a permanent
+                # coverage-floor condition, not a transient parse failure.
+                if as_of:
+                    effs = sorted(
+                        e
+                        for e in (
+                            compact_date(str(row.get("시행일자") or ""))
+                            for row in self._law_version_rows(identity_hint)
+                        )
+                        if e and len(e) == 8
+                    )
+                    if effs and compact_date(as_of) < effs[0]:
+                        raise AsOfBeforeCoverageError(
+                            f"요청 시점({compact_date(as_of)})은 law.go.kr이 이 법령의 통합본으로 제공하는 "
+                            f"가장 이른 시행일({effs[0]})보다 앞선다 — 그 이전 시점 본문은 통합본으로 제공되지 않는다.",
+                            law_id=identity_hint.law_id,
+                            earliest_available=effs[0],
+                        )
                 raise
             raw_law = self._load_versioned_law_raw(identity_hint, mst)
         identity = normalize_law_identity(raw_law, basis=basis)
@@ -1311,7 +1337,7 @@ class MolegApi:
         query: str,
         *,
         source: AnnexFormSource = "law",
-        search_scope: AnnexSearchScope = "source",
+        search_scope: AnnexSearchScope = "title",
         annex_type: AnnexType | None = None,
         ministry: str | None = None,
         display: int = 20,
@@ -3164,6 +3190,7 @@ class MolegApi:
 
         return replace(
             bundle,
+            request=replace(bundle.request, query=explicit_query, mode="delegated_criteria"),
             loaded=replace(
                 bundle.loaded,
                 administrative_rules=loaded_administrative_rules,
@@ -4134,6 +4161,12 @@ def structured_table_from_rows(
     body_rows = table_rows[1:]
     if not body_rows or any(len(row) != len(headers) for row in body_rows):
         return None
+    # A cleanly delimited table has its separators stripped. Residual box-drawing
+    # glyphs (┃│┏…) inside cells mean the splitter matched the wrong delimiter and
+    # produced a junk table (the real amount rows get dropped). Never report that
+    # as high confidence — fall back to plain text so amounts are read from .text.
+    if any(ch in _ANNEX_BOX_CHARS for row in table_rows for cell in row for ch in cell):
+        return low_confidence_table(identity)
     keys = normalized_table_keys(headers)
     rows = [dict(zip(keys, row, strict=True)) for row in body_rows]
     return StructuredTableData(
@@ -5264,8 +5297,9 @@ def interpretation_sources_for(source: str, ministry: str | None) -> list[Interp
         return [ministry_interpretation_source(ministry)]
     if source == "all":
         if not ministry:
-            raise NoResultError(
-                "ministry is required for source='all'; use source='moleg' or source='all_ministries'"
+            raise UnsupportedFormatError(
+                "source='all'에는 --ministry가 필요하다 — 법제처 해석만이면 source='moleg', "
+                "부처 해석까지 한 번에 보려면 source='all_ministries'."
             )
         specs = [OFFICIAL_INTERPRETATION_SOURCE]
         specs.append(ministry_interpretation_source(ministry))
@@ -5277,7 +5311,10 @@ def interpretation_sources_for(source: str, ministry: str | None) -> list[Interp
 
 def ministry_interpretation_source(ministry: str | None) -> InterpretationSourceSpec:
     if not ministry:
-        raise NoResultError("ministry is required for ministry interpretation search")
+        raise UnsupportedFormatError(
+            "부처 해석 검색·로드에는 --source ministry와 함께 --ministry <기관명>이 필요하다 "
+            "(부처 해석을 법제처 해석과 한 번에 보려면 --source all_ministries)."
+        )
     if ministry in MINISTRY_INTERPRETATION_SOURCES:
         return MINISTRY_INTERPRETATION_SOURCES[ministry]
     for spec in MINISTRY_INTERPRETATION_SOURCES.values():
