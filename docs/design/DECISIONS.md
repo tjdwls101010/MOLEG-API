@@ -2,6 +2,26 @@
 
 Newest first. Each entry: `## YYYY-MM-DD — short title`, then 1-3 sentences with context, decision, and why.
 
+## 2026-07-03 — Shell CLI wraps the 27 methods, one JSON envelope per call
+
+The skill's Claude consumer previously reached `MolegApi` only through hand-written Python heredocs (quoting hazards, a per-session introspection ritual, serialization boilerplate). `moleg_api.cli` now exposes each of the 27 task-level methods as a `python -m moleg_api <subcommand>` command (plus a `moleg` console script) that prints one JSON envelope (`ok/kind/source/data/flags/discipline/next`). The stateless CLI preserves the search→select→load discipline mechanically: loaders accept only a numeric `law_id` string (the SDK rejects a law name with a "search first" error), so a candidate must be discovered before any body can be loaded.
+
+## 2026-07-03 — Discipline signals are derived from the result type and fire only when the trap is live
+
+The law.go.kr traps (candidate≠loaded, deleted/moved articles, 부칙 separation, admin-rule issuing vs effective date, authority article-mismatch, doctrine as free text, empty≠absent, ambiguity) previously lived only as prose the skill had to hold in context. The CLI now derives `flags`/`discipline`/`next` from the *result dataclass fields* (dispatched on result type, so the 27 methods collapse onto ~14 shapes and a `load-followup` result is typed by what it executed, not by the subcommand), and emits a discipline line only when the result state actually triggers that trap — a deleted article, a `not_effective_as_of` gap, a low-confidence annex table. This moves the discipline from always-loaded prose to just-in-time output (progressive disclosure), keeping frequent calls quiet and letting the rare dangerous states speak up, so `SKILL.md` can shrink.
+
+## 2026-07-04 — Historical version loading resolves an MST from `as_of`
+
+law.go.kr's `ID`+`efYd` detail lookups do not select a past version — `get_law` returned nothing and `get_article` silently returned current text for a historical `as_of`. The version-specific master sequence (`MST`) is the only key that pins a version, and `eflaw` list search exposes each version's `MST`, `시행일자`, and name. `get_law`/`get_article` now resolve the version in force at `as_of` (latest `시행일 ≤ as_of`) and reload it by `MST` — via `law{MST}` (promulgated detail, no `efYd`) on `get_law`, and `lawjosub{MST}` on `get_article`. This runs try-then-correct: the current-law fast path keeps its single source call, and the extra list lookup happens only when the fast path failed (`get_law`) or returned a version newer than the requested date (`get_article`), so the many internal `as_of` callers are undisturbed. The same version list recovers a real statute name for a bare-`law_id` identity, which is why `trace_law_history` no longer crashes the `lsHistory` parser by searching for the numeric id.
+
+## 2026-07-04 — `--as-of` is the version selector, not `--mst`
+
+A same-name, different-effective-date statute is selected by date (`--as-of <시행일>`), which the loader resolves to the version in force. The CLI dropped `--mst`: passing an MST without an `as_of` is treated as current by design (a tested invariant), so an `--mst` flag would silently mislead. `search-laws` flags `ambiguous_versions` and offers `--as-of`-based `next` commands per candidate version.
+
+## 2026-07-03 — Authority citation gated by loaded-vs-current split
+
+Eager-loaded interpretations/cases/decisions in a context bundle are loaded `*_text`, so the candidate≠loaded rule cannot gate them. The CLI envelope therefore surfaces `loaded` vs `current_authorities` separately plus `authority_gaps` from `ContextGap.kind`, and the discipline restricts target-article citation to `current_authorities` — the strongest of the two available gates, chosen because trap-elimination was the stated priority.
+
 ## 2026-06-23 — Ship a shared default OC credential
 
 law.go.kr's OC credential is free and non-secret (an account email id), so the package now ships a shared default (`chunghun1`) used when no `oc=` argument or `MOLEG_OC` is set, letting consumers call the API without registering. Trade-off accepted: all default-credential traffic funnels through one OC, so heavy use can hit law.go.kr rate limits or risk suspension of that OC, and callers who need isolation set their own `MOLEG_OC`. Chose the personal OC over a separate publish-only OC for now because the package is alpha with low adoption; revisit if traffic grows.

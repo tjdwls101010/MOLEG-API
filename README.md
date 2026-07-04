@@ -55,6 +55,22 @@ article = api.get_article(selected, "제26조", basis="effective")
 print(article.text)
 ```
 
+## Command-line interface
+
+Every method is also a `moleg` subcommand, so an agent can load sources from a
+shell without writing Python. Each call prints one JSON envelope
+(`ok/kind/source/data/flags/discipline/next`); `moleg catalog` lists the
+commands, conventions, and routing rules.
+
+```bash
+python -m moleg_api catalog                       # self-documenting entry point
+python -m moleg_api search-laws "자동차관리법"      # → candidates with law_id, mst
+python -m moleg_api get-article --law 001760 제26조 # load a chosen candidate
+```
+
+See [docs/cli.md](docs/cli.md) for the envelope contract, exit codes, and the
+search→load discipline.
+
 For broader questions, use a staged bundle and inspect deferred follow-ups:
 
 ```python
@@ -95,6 +111,7 @@ json_text = bundle.to_json_string()
 ## Documentation
 
 - [Quickstart](https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/quickstart.md)
+- [CLI](https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/cli.md)
 - [API guide](https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/api-guide.md)
 - [Follow-up lookups](https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/followups.md)
 - [Source coverage and limits](https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/source-coverage.md)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moleg-api"
-version = "0.1.1"
+version = "0.2.0"
 description = "Task-level Python interface for loading Korean legal sources from law.go.kr"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,9 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = []
+
+[project.scripts]
+moleg = "moleg_api.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/tjdwls101010/MOLEG-API"

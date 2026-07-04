@@ -297,6 +297,8 @@ If the skill sandbox cannot install from PyPI, vendor the source tree into the s
   vendored/
     moleg_api/
       __init__.py
+      __main__.py
+      cli.py
       errors.py
       laws.py
       models.py

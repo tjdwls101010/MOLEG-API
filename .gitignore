@@ -5,6 +5,7 @@
 .Seongjin/
 .agents/
 .claude
+.tmp/
 __pycache__/
 .pytest_cache/
 .venv/

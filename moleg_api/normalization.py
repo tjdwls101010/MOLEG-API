@@ -1420,11 +1420,15 @@ def parse_law_history_html(html: str) -> list[dict[str, Any]]:
     parser = LawHistoryTableParser()
     parser.feed(html)
     data_rows = [row for row in parser.rows if row]
-    malformed = [row for row in data_rows if len(row) != 9]
-    if malformed:
+    # A results table has 9-column rows; a "no results" page carries a single
+    # message cell. Treat 1-column rows as non-data (empty result), but a row
+    # that looks like data with the wrong width is a genuine parse breakage.
+    structured = [row for row in data_rows if len(row) == 9]
+    suspicious = [row for row in data_rows if len(row) not in (1, 9)]
+    if suspicious:
         raise ParseFailureError("Could not parse lsHistory HTML table: unexpected column count")
     rows: list[dict[str, Any]] = []
-    for row in data_rows:
+    for row in structured:
         href = row[1]["href"]
         link_params = parse_link_params(href)
         mst = first_query_value(link_params, "MST")
@@ -1444,8 +1448,8 @@ def parse_law_history_html(html: str) -> list[dict[str, Any]]:
                 "법령상세링크": href,
             }
         )
-    if not rows and "법령 연혁정보 목록" in html:
-        raise ParseFailureError("Could not parse lsHistory HTML table rows")
+    # An empty result (no structured rows) is a legitimate "no history" page,
+    # not a parse failure — let the caller surface NoResultError instead.
     return rows
 
 
