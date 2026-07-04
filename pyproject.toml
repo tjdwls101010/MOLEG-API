@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moleg-api"
-version = "0.2.2"
+version = "0.2.3"
 description = "Task-level Python interface for loading Korean legal sources from law.go.kr"
 readme = "README.md"
 requires-python = ">=3.10"
