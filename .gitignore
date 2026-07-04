@@ -16,3 +16,6 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+
+# dev-process artifacts kept locally, never pushed
+trash/

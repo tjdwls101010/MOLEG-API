@@ -51,7 +51,7 @@ jobs:
           python -m pip install build twine
 
       - name: Compile package
-        run: python -m compileall moleg_api scripts tests -q
+        run: python -m compileall moleg_api tests -q
 
       - name: Check patch hygiene
         run: git diff --check
