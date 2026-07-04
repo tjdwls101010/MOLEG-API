@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any, Literal
 
 from moleg_api.errors import ParseFailureError
