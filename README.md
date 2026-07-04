@@ -36,6 +36,8 @@ python -m moleg_api get-article --law 001248 제3조    # load the current artic
 python -m moleg_api get-article --law 001248 --as-of 2021-01-01 제3조  # the version in force then
 ```
 
+The CLI exposes 27 task subcommands plus `catalog`; `catalog` is the source of truth for the command list, routing rules, and result `kind` values.
+
 Public dataclasses serialize recursively with `to_dict()` / `to_json_string()` (raw payloads omitted unless `include_raw=True`).
 
 ## What it covers
@@ -58,6 +60,7 @@ Full documentation is in the [`wiki/`](wiki/Home.md) folder:
 - [CLI Reference](wiki/CLI-Reference.md) · [API Reference](wiki/API-Reference.md)
 - [Historical Versions](wiki/Historical-Versions.md) · [Sources & Coverage](wiki/Sources-and-Coverage.md)
 - [Gotchas](wiki/Gotchas.md) · [Error Handling](wiki/Error-Handling.md)
+- [Maintainer Notes](wiki/Maintainer-Notes.md)
 
 ## Status
 

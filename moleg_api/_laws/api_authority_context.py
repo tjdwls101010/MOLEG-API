@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from .authority_context_details import (
+    append_authority_context_followups,
+    current_authorities_from_state,
+    load_authority_details,
+)
+from .authority_context_pipeline import (
+    load_authority_target_articles,
+    new_authority_context_state,
+    search_authority_candidates,
+)
 from .support import *
 
-SIZE_OK = "load_authority_context is preserved as one method until behavior-neutral extraction can split the staged authority pipeline"
+
 class AuthorityContextMixin:
     def load_authority_context(
         self,
@@ -30,6 +40,7 @@ class AuthorityContextMixin:
         """
         if not articles:
             raise NoResultError("articles must contain at least one article")
+
         limits = authority_load_limits(budget)
         reference_date = compact_date(as_of) if as_of else None
         ranking_query = require_query(query) if query is not None else None
@@ -44,262 +55,39 @@ class AuthorityContextMixin:
             law_identifier=law_identifier,
             as_of=reference_date,
         )
-        source_notes: list[str] = [
-            "AuthorityContext is scoped source context for Claude inspection, not a legal conclusion."
-        ]
-        gaps: list[ContextGap] = []
-        deferred: list[DeferredLookup] = []
-        target_articles: list[ArticleText] = []
-        loaded_article_rows: list[ArticleText] = []
 
-        for article in requested_articles:
-            try:
-                article_context = self.load_article_context(
-                    identity,
-                    article,
-                    as_of=reference_date,
-                    basis="effective",
-                )
-            except MolegApiError as exc:
-                append_requested_article_load_gap(
-                    exc,
-                    identity,
-                    article,
-                    gaps,
-                    deferred,
-                    as_of=reference_date,
-                )
-                continue
-            loaded_article_rows.extend(article_context.loaded_articles)
-            gaps.extend(article_context.gaps)
-            deferred.extend(article_context.deferred)
-            source_notes.extend(article_context.source_notes)
-            if article_context.current_article is not None:
-                target_articles.append(article_context.current_article)
-
+        state = new_authority_context_state()
+        load_authority_target_articles(self, identity, requested_articles, reference_date, state)
         search_queries = article_target_search_queries(
             identity,
             requested_articles,
-            target_articles,
+            state.target_articles,
             ranking_query=ranking_query,
         )
         authority_ranking_query = " ".join(search_queries)
-
-        interpretation_candidates = dedupe_candidates(
-            [
-                candidate
-                for candidate_query in search_queries
-                for candidate in safe_list(
-                    lambda candidate_query=candidate_query: self.search_interpretations(
-                        candidate_query,
-                        display=limits["interpretations"],
-                    ),
-                    source_notes,
-                    "Authority interpretation search",
-                    gaps=gaps,
-                    deferred=deferred,
-                    query=candidate_query,
-                    recommended_interface="search_interpretations",
-                    source_type="interpretation",
-                )
-            ]
-        )
-        case_candidates = dedupe_candidates(
-            [
-                candidate
-                for candidate_query in search_queries
-                for candidate in safe_list(
-                    lambda candidate_query=candidate_query: self.search_cases(
-                        candidate_query,
-                        display=limits["cases"],
-                    ),
-                    source_notes,
-                    "Authority case search",
-                    gaps=gaps,
-                    deferred=deferred,
-                    query=candidate_query,
-                    recommended_interface="search_cases",
-                    source_type="case",
-                )
-            ]
-        )
-        constitutional_candidates = dedupe_candidates(
-            [
-                candidate
-                for candidate_query in search_queries
-                for candidate in safe_list(
-                    lambda candidate_query=candidate_query: self.search_constitutional_decisions(
-                        candidate_query,
-                        display=limits["constitutional_decisions"],
-                    ),
-                    source_notes,
-                    "Authority Constitutional Court search",
-                    gaps=gaps,
-                    deferred=deferred,
-                    query=candidate_query,
-                    recommended_interface="search_constitutional_decisions",
-                    source_type="constitutional",
-                )
-            ]
-        )
-
-        loaded_interpretations: list[InterpretationText] = []
-        loaded_cases: list[JudicialDecisionText] = []
-        loaded_constitutional_decisions: list[JudicialDecisionText] = []
-        loaded_detail_keys: set[tuple[str | None, str]] = set()
-
-        for candidate in ranked_candidates(
-            interpretation_candidates,
-            authority_ranking_query,
-            limit=limits["interpretations"],
-        ):
-            try:
-                text = self.get_interpretation(candidate.identity, include_metadata=False)
-            except MolegApiError as exc:
-                source_notes.append(f"Authority interpretation detail load skipped: {exc}")
-                append_eager_detail_failure_gap(
-                    exc,
-                    gaps,
-                    candidate=candidate,
-                    recommended_interface="get_interpretation",
-                    source_label="Authority interpretation detail load",
-                )
-                continue
-            loaded_interpretations.append(text)
-            loaded_detail_keys.add(candidate_identity_key(candidate))
-
-        for candidate in ranked_candidates(
-            case_candidates,
-            authority_ranking_query,
-            limit=limits["cases"],
-        ):
-            try:
-                text = self.get_case(candidate.identity, include_metadata=False)
-            except MolegApiError as exc:
-                source_notes.append(f"Authority case detail load skipped: {exc}")
-                append_eager_detail_failure_gap(
-                    exc,
-                    gaps,
-                    candidate=candidate,
-                    recommended_interface="get_case",
-                    source_label="Authority case detail load",
-                )
-                continue
-            loaded_cases.append(text)
-            loaded_detail_keys.add(candidate_identity_key(candidate))
-
-        for candidate in ranked_candidates(
-            constitutional_candidates,
-            authority_ranking_query,
-            limit=limits["constitutional_decisions"],
-        ):
-            try:
-                text = self.get_constitutional_decision(candidate.identity, include_metadata=False)
-            except MolegApiError as exc:
-                source_notes.append(f"Authority constitutional detail load skipped: {exc}")
-                append_eager_detail_failure_gap(
-                    exc,
-                    gaps,
-                    candidate=candidate,
-                    recommended_interface="get_constitutional_decision",
-                    source_label="Authority constitutional detail load",
-                )
-                continue
-            loaded_constitutional_decisions.append(text)
-            loaded_detail_keys.add(candidate_identity_key(candidate))
-
-        append_authority_article_mismatch_gaps(
-            target_article_refs_from_loaded_articles(target_articles),
-            interpretations=loaded_interpretations,
-            cases=loaded_cases,
-            constitutional_decisions=loaded_constitutional_decisions,
-            gaps=gaps,
-        )
-        append_authority_temporal_mismatch_gaps(
-            target_articles,
-            interpretations=loaded_interpretations,
-            cases=loaded_cases,
-            constitutional_decisions=loaded_constitutional_decisions,
-            gaps=gaps,
-            deferred=deferred,
-            reference_date=reference_date,
-        )
-
-        current_interpretations = [
-            item
-            for item in loaded_interpretations
-            if authority_references_current_targets(
-                item.referenced_articles,
-                item.identity.interpretation_date,
-                target_articles,
-                reference_date=reference_date,
-            )
-        ]
-        current_cases = [
-            item
-            for item in loaded_cases
-            if authority_references_current_targets(
-                item.referenced_articles,
-                item.identity.decision_date,
-                target_articles,
-                reference_date=reference_date,
-            )
-        ]
-        current_constitutional_decisions = [
-            item
-            for item in loaded_constitutional_decisions
-            if authority_references_current_targets(
-                item.reviewed_articles,
-                item.identity.decision_date,
-                target_articles,
-                reference_date=reference_date,
-            )
-        ]
-
-        deferred.extend(
-            deferred_from_candidates(
-                unloaded_candidates(interpretation_candidates, loaded_detail_keys),
-                "get_interpretation",
-                "interpretation",
-            )
-        )
-        deferred.extend(
-            deferred_from_candidates(
-                unloaded_candidates(case_candidates, loaded_detail_keys),
-                "get_case",
-                "case",
-            )
-        )
-        deferred.extend(
-            deferred_from_candidates(
-                unloaded_candidates(constitutional_candidates, loaded_detail_keys),
-                "get_constitutional_decision",
-                "constitutional",
-            )
-        )
+        search_authority_candidates(self, search_queries, limits, state)
+        load_authority_details(self, authority_ranking_query, limits, state)
+        append_authority_context_followups(state, reference_date)
 
         return AuthorityContext(
             request=request,
-            target_articles=target_articles,
+            target_articles=state.target_articles,
             loaded=LoadedContext(
-                articles=loaded_article_rows,
-                interpretations=loaded_interpretations,
-                cases=loaded_cases,
-                constitutional_decisions=loaded_constitutional_decisions,
+                articles=state.loaded_article_rows,
+                interpretations=state.loaded_interpretations,
+                cases=state.loaded_cases,
+                constitutional_decisions=state.loaded_constitutional_decisions,
             ),
-            current_authorities=LoadedContext(
-                interpretations=current_interpretations,
-                cases=current_cases,
-                constitutional_decisions=current_constitutional_decisions,
-            ),
+            current_authorities=current_authorities_from_state(state, reference_date),
             candidates=CandidateContext(
-                interpretations=interpretation_candidates,
-                cases=case_candidates,
-                constitutional_decisions=constitutional_candidates,
+                interpretations=state.interpretation_candidates,
+                cases=state.case_candidates,
+                constitutional_decisions=state.constitutional_candidates,
             ),
-            deferred=deferred,
-            gaps=gaps,
-            source_notes=source_notes,
+            deferred=state.deferred,
+            gaps=state.gaps,
+            source_notes=state.source_notes,
         )
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]
