@@ -60,6 +60,8 @@ from ..models import (
     LawStructure,
     LawStructureNode,
     LawText,
+    LawToc,
+    LawTocEntry,
     RevisionReason,
     StructuredTableData,
 )

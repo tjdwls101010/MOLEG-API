@@ -15,6 +15,7 @@ from .constants import (
 from .data import _to_data
 from .dispatch import _call
 from .parser import build_parser
+from .payload_size import large_payload_signals
 from .signals import signals_for
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -119,6 +120,16 @@ def main(argv: list[str] | None = None, *, api: MolegApi | None = None) -> int:
     if "count" in sig:
         envelope["count"] = sig["count"]
     envelope["data"] = _to_data(result, include_raw=include_raw)
+    # Measured on the serialized data, after every narrowing option has had its
+    # effect — a guess from a row count would fire on 139 short articles and stay
+    # quiet on 20 long ones, and would need updating for every command added later.
+    size_flags, size_discipline = large_payload_signals(
+        args.command,
+        len(json.dumps(envelope["data"], ensure_ascii=False)),
+        {"articles": len(result.articles)} if isinstance(getattr(result, "articles", None), list) else None,
+    )
+    sig["flags"].update(size_flags)
+    sig["discipline"].extend(size_discipline)
     if sig["flags"]:
         envelope["flags"] = sig["flags"]
     if sig["discipline"]:

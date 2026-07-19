@@ -3,9 +3,22 @@ from __future__ import annotations
 from .foundation import *
 from .constants import CliError, EXIT_USAGE, FOLLOWUP_HANDOFFS, FOLLOWUP_INTERFACES
 from .data import _statute_args
+from .brief_mode import brief_dropped, to_brief
 from .signals_meta import parse_as_of
 
 def _call(api: MolegApi, args: argparse.Namespace) -> Any:
+    result = _dispatch(api, args)
+    if getattr(args, "brief", False):
+        # Record what was actually withheld *before* blanking it. Signals only
+        # sees the trimmed result, and "empty because brief" must stay
+        # distinguishable from "empty because the source had none" — otherwise a
+        # caller goes hunting for a section that never existed.
+        args.brief_dropped = brief_dropped(result)
+        return to_brief(result)
+    return result
+
+
+def _dispatch(api: MolegApi, args: argparse.Namespace) -> Any:
     c = args.command
     # Strictly validate --as-of once, for every command that carries it, so a
     # malformed date is a usage error rather than a silent wrong-version load.
@@ -36,6 +49,8 @@ def _call(api: MolegApi, args: argparse.Namespace) -> Any:
     if c == "find-comparable-mechanisms":
         return api.find_comparable_mechanisms(args.concept, display=args.display)
     if c == "get-law":
+        if args.toc:
+            return api.get_law_toc(args.law, as_of=args.as_of, basis=args.basis)
         return api.get_law(args.law, as_of=args.as_of, basis=args.basis,
                            articles=args.article or None, include_metadata=not args.no_metadata)
     if c == "get-article":

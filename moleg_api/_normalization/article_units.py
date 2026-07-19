@@ -22,7 +22,7 @@ def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText
         identity=identity,
         article=article_label_from_parts(number, branch) or "",
         title=string_or_none(title),
-        text=join_article_text(row, str(text or "")),
+        text=join_article_text(row, article_text_value(text)),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
         article_kind=string_or_none(first_value(row, "조문여부")),
         revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
@@ -30,7 +30,7 @@ def normalize_article(row: dict[str, Any], identity: LawIdentity) -> ArticleText
         moved_to=article_label(first_value(row, "조문이동이후", "조문이동이후번호")),
         has_changes=yes_no_or_none(first_value(row, "조문변경여부")),
         is_deleted=is_deleted_article(
-            str(text or ""),
+            article_text_value(text),
             title=string_or_none(title),
             revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
         ),
@@ -67,7 +67,7 @@ def normalize_administrative_rule_article(
         identity=identity,
         article=article_label_from_parts(number, branch),
         title=string_or_none(title),
-        text=join_article_text(row, str(text or "")),
+        text=join_article_text(row, article_text_value(text)),
         effective_date=string_or_none(compact_date(first_value(row, "조문시행일자", "시행일자"))),
         article_kind=string_or_none(first_value(row, "조문여부")),
         revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
@@ -75,13 +75,29 @@ def normalize_administrative_rule_article(
         moved_to=article_label(first_value(row, "조문이동이후", "조문이동이후번호")),
         has_changes=yes_no_or_none(first_value(row, "조문변경여부")),
         is_deleted=is_deleted_article(
-            str(text or ""),
+            article_text_value(text),
             title=string_or_none(title),
             revision_type=string_or_none(first_value(row, "조문제개정유형", "제개정유형")),
         ),
         **source_reference,
         raw=row,
     )
+
+
+def article_text_value(value: Any) -> str:
+    """Flatten 조문내용 into text, whatever nesting law.go.kr wrapped it in.
+
+    A row carrying both a 장 and a 절 heading returns them as a nested array, and
+    `str()` on that yields a Python repr — `[['제3장 …', '제1절 …']]` — which then
+    travels as if it were the statute's own wording. Rare enough to survive this
+    long, wrong in a way a reader cannot detect from the output.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        parts = [article_text_value(item) for item in value]
+        return "\n".join(part for part in parts if part.strip())
+    return "" if value is None else str(value)
 
 
 def join_article_text(row: dict[str, Any], base_text: str) -> str:

@@ -19,11 +19,21 @@ def _model_to_json_string(self: Any, *, include_raw: bool = False) -> str:
 
 
 def _serialize_dataclass(value: Any, *, include_raw: bool) -> dict[str, Any]:
+    # A model may declare `_omit_when_empty` to drop fields that carry nothing.
+    # Normally the opposite is right — a present-but-null field tells a consumer
+    # the concept exists and is unset. It stops being right when a model is a
+    # long list of small rows: on a 139-entry statute map, the null and false
+    # placeholders were most of the payload, and a table of contents that costs
+    # what the full text costs is not a table of contents.
+    omit = getattr(type(value), "_omit_when_empty", ())
     data: dict[str, Any] = {}
     for item in fields(value):
         if item.name == "raw" and not include_raw:
             continue
-        data[item.name] = _serialize_value(getattr(value, item.name), include_raw=include_raw)
+        current = getattr(value, item.name)
+        if item.name in omit and current in (None, "", False, [], {}):
+            continue
+        data[item.name] = _serialize_value(current, include_raw=include_raw)
     return data
 
 

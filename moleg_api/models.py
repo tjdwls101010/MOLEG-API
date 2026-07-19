@@ -56,6 +56,8 @@ from ._models import (
     LegalLawCandidate,
     LegalQueryExpansion,
     LegalTermCandidate,
+    LawToc,
+    LawTocEntry,
     LoadedContext,
     RevisionReason,
     StructuredTableData,
