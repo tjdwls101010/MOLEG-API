@@ -66,7 +66,8 @@ def main(argv: list[str] | None = None, *, api: MolegApi | None = None) -> int:
         return EXIT_NO_RESULT
     except ParseFailureError as exc:
         _emit({"ok": False, "command": args.command, "kind": "parse_error", "error": str(exc),
-               "discipline": ["소스 응답을 정규화하지 못함(소스접근 실패·법령 부재 아님) — 다른 경로/커맨드로 확인하라."]})
+               "discipline": ["소스가 인식 불가한 형태의 응답을 줌 — 같은 호출을 재시도해도 대개 그대로다(일시 장애와 다름).",
+                              "식별자 오류 가능성을 먼저 배제하라(search-*로 신원 재확인). 그래도 같으면 다른 경로/커맨드로 확인하고, 부재로 단정하지 마라."]})
         return EXIT_SOURCE
     except NoResultError as exc:
         msg = str(exc)
@@ -84,7 +85,8 @@ def main(argv: list[str] | None = None, *, api: MolegApi | None = None) -> int:
             return EXIT_USAGE
         else:
             _emit({"ok": False, "command": args.command, "kind": "no_result", "error": msg,
-                   "discipline": ["이 식별자·조회로 소스 본문 없음 — 검색어·범위를 밝히고 대체 경로를 시도하기 전 부재로 단정 금지."]})
+                   "discipline": ["이 식별자·조회로 소스 본문 없음 — 일시 장애가 아니니 재시도는 무의미하다. 식별자가 틀렸을 수 있으니 search-* 계열로 신원을 재확인하라.",
+                                  "검색어·범위를 밝히고 대체 경로를 시도하기 전 부재로 단정 금지."]})
             return EXIT_NO_RESULT
     except UnsupportedFormatError as exc:
         _emit({"ok": False, "command": args.command, "kind": "unsupported", "error": str(exc),
