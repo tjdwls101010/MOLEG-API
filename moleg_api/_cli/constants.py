@@ -4,8 +4,11 @@ from .foundation import *
 
 EXIT_OK = 0            # includes a zero-hit search (ok:true, count:0)
 EXIT_AMBIGUOUS = 2     # multiple plausible identities — surface, don't pick
-EXIT_SOURCE = 3        # transient source access failure (rate limit / retry / source)
-EXIT_NO_RESULT = 4     # a load found no source text for a valid identifier
+EXIT_SOURCE = 3        # source could not be read OR could not be parsed — kind splits it:
+                       #   source_access_error = transient (rate limit / retry / 5xx), retry is right
+                       #   parse_error         = unrecognized response shape, retry won't help
+EXIT_NO_RESULT = 4     # a well-formed lookup found no source text — includes a bad identifier,
+                       # which law.go.kr signals with an empty detail body (see unwrap_service_payload)
 EXIT_USAGE = 5         # bad arguments, or a loader was handed a law name (search first)
 
 # Public MolegApi methods reachable through load-followup rehydration. Guards the

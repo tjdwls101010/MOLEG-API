@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from moleg_api.errors import NoResultError
+from moleg_api.errors import NoResultError, ParseFailureError
 
 from .primitives import AI_ROW_KEYS, LAW_SEARCH_ENVELOPES, ensure_list
 from .row_format import collect_rows
@@ -104,7 +104,35 @@ def unwrap_service_payload(payload: dict[str, Any], target: str) -> dict[str, An
             raise NoResultError(str(only))
     if "기본정보" in payload or "조문" in payload:
         return payload
+    if is_empty_payload(payload):
+        # law.go.kr answers a detail lookup for a nonexistent identifier with an
+        # empty body ({} on eflawjosub) rather than the "일치하는 …" sentence it
+        # returns on target=law. That is a permanent fact about the identifier,
+        # not a transient source failure — classifying it as a parse failure told
+        # callers to retry a lookup that can never succeed. Route it to
+        # NoResultError so the CLI emits no_result (exit 4) and steers to search.
+        raise NoResultError(
+            f"Source returned an empty body for target {target} — no record for this identifier"
+        )
     raise ParseFailureError(f"Could not unwrap service payload for target {target}")
+
+
+def is_empty_payload(payload: dict[str, Any]) -> bool:
+    """True when a service response carries no content at all.
+
+    Conservative on purpose: only whitespace-ish scalars and empty containers
+    count as empty, so a payload we merely failed to *recognize* still raises
+    ParseFailureError instead of being mislabeled as a missing record.
+    """
+    if not payload:
+        return True
+    for value in payload.values():
+        if isinstance(value, str):
+            if value.strip():
+                return False
+        elif value is not None and value != [] and value != {}:
+            return False
+    return True
 
 
 def is_no_result_message(value: Any) -> bool:
