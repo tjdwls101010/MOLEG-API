@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
+from .._version import __version__
 from .catalog import CATALOG
 from .constants import (
     CliError,
@@ -17,7 +18,18 @@ from .parser import build_parser
 from .signals import signals_for
 
 def _emit(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    # Stamped here rather than at each call site so no envelope — success, error,
+    # or catalog — can ship without it. A consumer that cannot tell which version
+    # answered cannot tell whether a missing field means "not supported yet" or
+    # "the call failed", which is how a stale install reads as a data gap.
+    stamped: dict[str, Any] = {}
+    for key, value in payload.items():
+        stamped[key] = value
+        if key == "command":
+            stamped["version"] = __version__
+    if "version" not in stamped:
+        stamped["version"] = __version__
+    print(json.dumps(stamped, ensure_ascii=False, indent=2))
 
 
 def main(argv: list[str] | None = None, *, api: MolegApi | None = None) -> int:
