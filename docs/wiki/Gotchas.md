@@ -131,14 +131,28 @@ An **empty** `search_annex_forms()` result is scoped evidence for "this exact se
 
 ## Preserve source authority — interpretations, cases, decisions are different levels
 
-MOLEG official interpretations, ministry first-instance interpretations, ordinary court cases, and Constitutional Court decisions are distinct authority levels and must not be flattened. Their identity carries the distinguishing metadata:
+MOLEG official interpretations, ministry first-instance interpretations, ordinary court cases, Constitutional Court decisions, committee decisions, and administrative appeal rulings are distinct authority levels and must not be flattened. Their identity carries the distinguishing metadata:
 
 - `InterpretationIdentity.source_type` / `source_target` — MOLEG interpretation vs. ministry interpretation. In search, `source="all"` means MOLEG **plus one specified ministry**; `source="all_ministries"` is a registry-wide fan-out — use it only when that breadth is intentional.
 - `JudicialDecisionIdentity.source_type` / `court` — ordinary court case (`prec`) vs. Constitutional Court decision (`detc`).
+- `AdjudicationIdentity.source_type` / `source_authority` — a committee decision (`committee_decision`) vs. an administrative appeal ruling (`administrative_appeal` / `special_administrative_appeal`).
+
+**Neither kind of adjudication is precedent.** A 위원회 결정 is an administrative disposition by the regulator that administers the statute — it shows how that agency applies the law, not what the law means, and it can be overturned in 행정소송. An 행정심판 재결 reviews *another* agency's disposition from inside the executive branch, and a losing party can still take it to court. Citing either as 판례 overstates what it settles. They carry separate `kind` values (`committee_decision_text`, `administrative_appeal_text`) for exactly this reason.
 
 The CLI preserves these via `flags.source_type` / `flags.source_authority` and a discipline line on loaded interpretation and decision bodies. Carry the label into any answer that cites the source.
 
 Use `referenced_articles` (interpretations, cases) and `reviewed_articles` (decisions) to confirm a loaded authority actually concerns your target article before citing it for that article. In a bundle, `authority_article_mismatch` / `authority_article_unverified` / `authority_article_partial_match` gaps flag when eager-loaded authority points to different articles — cite only what `current_authorities` contains, not everything in `loaded`.
+
+## An agency with no records is not an agency that did nothing
+
+`search-committee-decisions` and `search-administrative-appeals` get used to ask whether a regulator acted — which makes a zero-hit result the most dangerous result in the package, because the wrong reading points in exactly the direction the question was aimed. Zero hits are returned by all of: the agency never receiving a complaint, receiving one and not opening a case, deciding it but not publishing the 의결서, and the matter belonging to a different body's docket. None of those is "nothing happened."
+
+Two concrete traps:
+
+- **Wrong docket reads as absence.** 소청, 조세, and 해양안전 rulings are *not* in the general `decc` list; they live in the special tribunals (`--tribunal acr|adap|tt|kmst`). A search that only asked `decc` has not covered them.
+- **Wrong agency reads as absence.** The same conduct can sit with different regulators depending on which statute frames it. Try the other plausible `--committee` code before concluding anything.
+
+When the public record runs out, that is the point to reach for an official document request rather than to record a negative finding.
 
 ## Constitutional doctrines are free-text search terms, not an index
 
@@ -174,6 +188,13 @@ Two distinct outcomes both mean "not found here, now" — neither means "does no
 | Law name given to a loader | `needs_search_first` | 5 | Search for the `law_id` first |
 
 See [CLI reference](CLI-Reference.md) for the full exit-code contract.
+
+## A table of contents is not the statute, and a 요지 is not the ruling
+
+`get-law --toc` and `--brief` exist to keep a load from costing more than the question is worth, and both re-open the candidate-vs-body gap *inside* a single document.
+
+- `--toc` returns `kind: law_toc_map`, not `*_text`. An article's number and title tell you where to look, never what it requires — 「제15조(개인정보의 수집·이용)」 does not tell you which conditions apply or what the exceptions are. Load the article before saying what it does.
+- `--brief` returns the court's or agency's own précis with the full body withheld. A 결정요지 paraphrases; a verbatim quotation attributed to a ruling must come from the full text. `flags.brief.withheld` lists exactly which sections were held back, and reports only those the document actually had — so it never implies a section exists that the source never carried.
 
 ## `AmbiguousLawError` is not permission to pick the first candidate
 

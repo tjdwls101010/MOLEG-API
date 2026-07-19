@@ -81,6 +81,18 @@ Extraction preserves the `text/plain` body and, for table-like annexes, attempts
 
 Constitutional-doctrine discovery is keyword-based free-text search unless the loaded decision detail itself provides stronger structure.
 
+### Committee decisions (위원회 결정문)
+
+`search_committee_decisions` / `get_committee_decision` cover the decisions and dispositions of twelve regulators: 개인정보보호위원회 (`ppc`), 공정거래위원회 (`ftc`), 금융위원회 (`fsc`), 증권선물위원회 (`sfc`), 방송통신위원회 (`kcc`), 국가인권위원회 (`nhrck`), 국민권익위원회 (`acr`), 노동위원회 (`nlrc`), 고용보험심사위원회 (`eiac`), 산업재해보상보험재심사위원회 (`iaciac`), 중앙토지수용위원회 (`oclt`), 중앙환경분쟁조정위원회 (`ecc`).
+
+This is the record of an agency **applying** the statute it administers — a 과징금, a 시정명령, a 침해 판단. It answers a question the statute and the case law cannot: whether the supervising body actually acted, and when. It is **not precedent**; it shows one agency's enforcement practice and can be overturned in 행정소송.
+
+### Administrative appeals (행정심판 재결례)
+
+`search_administrative_appeals` / `get_administrative_appeal` cover the general 행정심판 docket (`decc`) and four special tribunals: 국민권익위원회 특별행정심판 (`acr`), 소청심사위원회 (`adap`), 조세심판원 (`tt`), 해양안전심판원 (`kmst`).
+
+A 재결 reviews another agency's disposition from inside the executive branch. **The special tribunals' rulings are not in the general `decc` list** — a 소청·조세·해양안전 question searched only against `decc` will come back empty and read as absence. A 재결 is not a court judgment; the losing party can still bring 행정소송.
+
 ### Query planning and staged bundles
 
 These interfaces plan a search or assemble a staged bundle of the source families above. They are **planning aids, not legal authority** — use their outputs to drive the primary loaders before citing anything.
@@ -93,6 +105,7 @@ These interfaces plan a search or assemble a staged bundle of the source familie
 
 ## What is not covered
 
+- **Legislative pre-announcement (입법예고).** Draft-stage notices live at 국민참여입법센터, a separate source law.go.kr's OpenAPI does not expose. Out of scope; use WebSearch.
 - **National Assembly bill data.** MOLEG-API does not query bill databases. Bill status, sponsors, votes, committee minutes, and the promulgation bridge fields are a separate source's job. (`resolve_promulgated_law` *consumes* bridge metadata that a bill source provides, but does not itself retrieve it.) Use a National Assembly / 의안정보 source for anything on the legislative-process side.
 - **Foreign or comparative law.** Only Korean law.go.kr sources are covered. Foreign statutes, treaties, and comparative-law material are out of scope — use WebSearch or another external source.
 - **Latest statistics, news, policy announcements, and social context.** These are not legal sources; use WebSearch or another current source.
@@ -113,6 +126,10 @@ Search hit metadata (titles, IDs, dates) is not citable source text. Treat searc
 ### Authority types stay separate
 
 MOLEG official interpretation, ministry first-instance interpretation, ordinary court case, and Constitutional Court decision are distinct authorities with different weight. The models preserve their authority labels; do not flatten them into one another.
+
+### A regulator's empty docket is not an inactive regulator
+
+For the two adjudication families above, zero hits are returned by an agency that never received a complaint, one that received a complaint and opened no case, one that decided and did not publish, and a matter that belongs to a different body's docket. None of those is "nothing happened," and this is the family where that misreading does the most damage, since the question being asked is usually whether the agency failed to act. Re-check the other plausible `--committee` code and the special tribunals before recording a negative, and treat an exhausted public record as the point to make an official document request rather than a finding.
 
 ### Effective date versus promulgation date
 

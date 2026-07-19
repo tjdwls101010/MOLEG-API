@@ -19,7 +19,7 @@ Every command accepts a global `--raw` flag (placed before the subcommand) that 
 moleg --raw get-article --law 001248 제3조
 ```
 
-`moleg --version` prints the installed package version and exits; `moleg --help` lists the 27 task subcommands plus `catalog`.
+`moleg --version` prints the version of the code that is running and exits — the same value every envelope carries in its `version` field. `moleg --help` lists every task subcommand plus `catalog`.
 
 Per-command flags are documented on `moleg <command> --help`. The full command list, standing conventions, and routing rules live in `moleg catalog` (see [Start with `catalog`](#start-with-catalog)).
 
@@ -31,6 +31,7 @@ Every successful command prints a JSON object with this shape:
 {
   "ok": true,
   "command": "get-article",
+  "version": "0.3.0",
   "kind": "article_text",
   "source": "법제처 / 법령 조문",
   "count": 3,
@@ -45,6 +46,7 @@ Every successful command prints a JSON object with this shape:
 |-------|---------|
 | `ok` | `true` for a completed call (**including a zero-hit search**), `false` for any error envelope. |
 | `command` | the subcommand that ran (e.g. `"get-article"`); `null` on an argument-parsing failure. |
+| `version` | the moleg-api version that produced this envelope. Present on **every** envelope — success, error, and `catalog` — because a consumer that cannot tell which version answered cannot tell whether a missing field means "not supported in this release" or "the call went wrong". It reports the version of the *code that ran*, which is not necessarily the installed distribution: a checkout on `sys.path` shadows site-packages. |
 | `kind` | the typed result category. Its suffix carries the **candidate vs. loaded** distinction (see [The `kind` suffix convention](#the-kind-suffix-convention)). On errors this is an error kind like `needs_search_first` or `source_access_error`. |
 | `source` | a human-readable Korean source label, e.g. `"법제처 / 법령검색"`, `"법제처 / 헌재결정 본문"`. Present on success envelopes. |
 | `count` | present only on list-returning searches — the number of hits. `0` on a zero-hit search. |
@@ -74,11 +76,13 @@ The exit code lets a script branch on the outcome without reading the JSON:
 |------|------|---------|
 | `0` | success | the call completed — **including a zero-hit search** (`ok:true`, `count:0`). |
 | `2` | ambiguous | multiple plausible identities matched; the envelope lists candidates. Surface them, do not silently pick the first. |
-| `3` | source access | a transient source-access failure (rate limit, retry exhausted, parse failure, or other source error) — **not** proof of absence. |
-| `4` | no result | a loader found no source text for an otherwise valid identifier. |
+| `3` | source access | the source side went wrong. **Check `kind` before retrying** — `source_access_error` is transient and worth a retry; `parse_error` is an unrecognized response shape that a retry will reproduce exactly. Neither is proof of absence. |
+| `4` | no result | a loader found no source text — including an identifier law.go.kr has no record of, which it signals with an empty body. Re-confirm the identifier with `search-*`; retrying will not help. |
 | `5` | usage | a bad argument, an unsupported format/path, **or** a loader handed a law *name* instead of a law ID (search first). |
 
 Two outcomes are deliberately kept distinct: a **zero-hit search** is a scoped `ok:true` result with exit `0` and `count:0`, whereas a **source-access failure** is `ok:false` with `kind:"source_access_error"` and exit `3`. Neither is proof that a source does not exist.
+
+**A bad identifier is exit 4, not exit 3.** Before 0.3.0, `get-article --law 999999 제3조` exited `3` with discipline telling the caller to retry shortly — advice for a lookup that could never succeed, since law.go.kr answers an unknown identifier with an empty body rather than an error. That case now maps to `no_result` (exit `4`) and steers back to `search-*`.
 
 Error kinds map to exit codes as follows:
 
@@ -162,6 +166,21 @@ $ moleg search-cases "존재하지않는판례검색어" --display 3
   "discipline": ["0건 — 이 검색어·범위로 못 찾음일 뿐, 부재의 증명 아님."]
 }
 ```
+
+## Budgeting context
+
+Three commands exist because the default load can be far larger than the question needs. Measured live on 2026-07-19:
+
+| call | bytes |
+|---|---|
+| `get-law --law 011357` (139 articles) | 276,748 |
+| `get-law --law 011357 --toc` | 18,831 |
+| `get-case --id 193332` | 82,700 |
+| `get-case --id 193332 --brief` | 14,046 |
+
+- **`get-law --toc`** returns the article map — chapter headings, article numbers and titles, deleted/moved status — with no article text. Its `kind` is `law_toc_map`, not `*_text`: **a table of contents is not the statute**, and an article title is not grounds to state what the article requires. Load the ones you picked with `--article` or `get-article`.
+- **`--brief`** on `get-case`, `get-constitutional-decision`, `get-interpretation`, `get-committee-decision`, and `get-administrative-appeal` returns the 요지 and the structured extract without the full body. Verbatim quotation needs the full load; `flags.brief.withheld` lists exactly what was held back.
+- **`flags.large_payload`** appears when a response is big enough that a narrowing option was probably available, with the character count and command-specific advice. It is measured on the serialized output, so it also covers commands added later. Searches are exempt — returning a breadth of candidates is what they are for.
 
 ## Historical versions with `--as-of`
 

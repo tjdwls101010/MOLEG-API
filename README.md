@@ -36,7 +36,7 @@ python -m moleg_api get-article --law 001248 제3조    # load the current artic
 python -m moleg_api get-article --law 001248 --as-of 2021-01-01 제3조  # the version in force then
 ```
 
-The CLI exposes 27 task subcommands plus `catalog`; `catalog` is the source of truth for the command list, routing rules, and result `kind` values.
+The CLI exposes every interface as a subcommand plus `catalog`; `catalog` is the source of truth for the command list, routing rules, and result `kind` values. Each envelope carries the `version` that produced it.
 
 Public dataclasses serialize recursively with `to_dict()` / `to_json_string()` (raw payloads omitted unless `include_raw=True`).
 
@@ -48,9 +48,13 @@ Public dataclasses serialize recursively with `to_dict()` / `to_json_string()` (
 - Delegated rules, legal hierarchy, and administrative rules (고시·훈령·예규)
 - Law and administrative-rule annex/form bodies (별표·서식)
 - MOLEG and ministry legal interpretations, Supreme Court cases, and Constitutional Court (헌재) decisions
+- Amendment rationale — the 「개정이유 및 주요내용」 text for a specific statute version
+- Committee decisions from twelve regulators (개인정보보호위·공정위·금융위·인권위·노동위 등) and 행정심판 재결례 including four special tribunals — the record of an agency applying the law it administers, kept distinct from precedent
 - Query expansion, comparable-mechanism discovery, and staged context bundles with executable follow-up lookups
 
-Out of scope: legal advice, National Assembly bill data (status, votes, minutes), and latest statistics/news.
+Context budgeting: `get-law --toc` returns a statute's article map without the text (276KB → 19KB on 개인정보 보호법), `--brief` returns a decision's 요지 without the full body, and `flags.large_payload` warns when a narrowing option was available.
+
+Out of scope: legal advice, National Assembly bill data (status, votes, minutes), legislative pre-announcement (입법예고 — a separate 국민참여입법센터 source), and latest statistics/news.
 
 ## Documentation
 
