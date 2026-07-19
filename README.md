@@ -12,7 +12,7 @@ The PyPI package is `moleg-api`; import it as `moleg_api`.
 pip install moleg-api
 ```
 
-Live calls use a law.go.kr OpenAPI credential (the "OC" — a free, non-secret account id). The package ships a shared default, so calls work out of the box with **no registration required**. To use your own OC (recommended for heavy use), register at law.go.kr and set `MOLEG_OC`, or pass `oc=` to `LawGoKrClient`. See [Installation](wiki/Installation.md).
+Live calls use a law.go.kr OpenAPI credential (the "OC" — a free, non-secret account id). The package ships a shared default, so calls work out of the box with **no registration required**. To use your own OC (recommended for heavy use), register at law.go.kr and set `MOLEG_OC`, or pass `oc=` to `LawGoKrClient`. See [Installation](docs/wiki/Installation.md).
 
 ## Quickstart
 
@@ -54,13 +54,13 @@ Out of scope: legal advice, National Assembly bill data (status, votes, minutes)
 
 ## Documentation
 
-Full documentation is in the [`wiki/`](wiki/Home.md) folder:
+Full documentation is in the [`docs/wiki/`](docs/wiki/Home.md) folder:
 
-- [Installation](wiki/Installation.md) · [Quickstart](wiki/Quickstart.md) · [Core Concepts](wiki/Core-Concepts.md)
-- [CLI Reference](wiki/CLI-Reference.md) · [API Reference](wiki/API-Reference.md)
-- [Historical Versions](wiki/Historical-Versions.md) · [Sources & Coverage](wiki/Sources-and-Coverage.md)
-- [Gotchas](wiki/Gotchas.md) · [Error Handling](wiki/Error-Handling.md)
-- [Maintainer Notes](wiki/Maintainer-Notes.md)
+- [Installation](docs/wiki/Installation.md) · [Quickstart](docs/wiki/Quickstart.md) · [Core Concepts](docs/wiki/Core-Concepts.md)
+- [CLI Reference](docs/wiki/CLI-Reference.md) · [API Reference](docs/wiki/API-Reference.md)
+- [Historical Versions](docs/wiki/Historical-Versions.md) · [Sources & Coverage](docs/wiki/Sources-and-Coverage.md)
+- [Gotchas](docs/wiki/Gotchas.md) · [Error Handling](docs/wiki/Error-Handling.md)
+- [Maintainer Notes](docs/wiki/Maintainer-Notes.md)
 
 ## Status
 
