@@ -15,6 +15,7 @@ from .api_interpretations import InterpretationMixin
 from .api_judicial import JudicialDecisionMixin
 from .api_law_loaders import LawLoadersMixin
 from .api_query_expansion import QueryExpansionMixin
+from .api_revision_reason import RevisionReasonMixin
 from .api_search import LawSearchMixin
 from .api_structure import LawStructureMixin
 from .api_versions import LawVersionMixin
@@ -26,6 +27,7 @@ class MolegApi(
     ArticleContextMixin,
     LawHistoryMixin,
     LawVersionMixin,
+    RevisionReasonMixin,
     LawCompareMixin,
     LawStructureMixin,
     AnnexMixin,

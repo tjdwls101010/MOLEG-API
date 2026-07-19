@@ -17,7 +17,7 @@ CATALOG = {
     ],
     "routing_rules": [
         "본문 로드: 살아있는 조문=get-article / 이동·삭제 가능성 있는 조문=load-article-context(기본이 이동추적).",
-        "개정: 무엇이 바뀌었나(전후 문구 델타)=compare-law-versions / 어떤 개정들이 있었나(연혁)=trace-law-history.",
+        "개정 3분해: 왜 바뀌었나(제안 취지 원문)=get-revision-reason / 무엇이 바뀌었나(전후 문구 델타)=compare-law-versions / 어떤 개정들이 있었나(연혁)=trace-law-history. 연혁 이벤트의 identity.mst가 곧 get-revision-reason --mst 입력이다.",
         "이 법 아래 무엇이 있나: 계층 조망=get-law-structure(위임 증명 아님) / 조문 단위 위임 규정=find-delegated-rules.",
         "넓은 탐색: 넓은 질의의 용어·관련법 조사계획=expand-legal-query / 유사 제도(비슷한 기제)를 가진 법 후보(설계용)=find-comparable-mechanisms.",
         "묶음 로더 — authority=특정 조문의 해석/판례/헌재 권위 / bundle=진입점 모를 때 단일법·넓은 질문(--mode) / institutional=명시된 다법령 집합(--statute 반복) / delegated=단일법의 하위규칙·별표 집행기준 본문.",
@@ -34,7 +34,7 @@ CATALOG = {
             "load-administrative-rule-context", "get-annex-form-body", "get-interpretation",
             "get-case", "get-constitutional-decision",
         ],
-        "연혁·체계·위임": ["trace-law-history", "compare-law-versions", "find-delegated-rules", "get-law-structure"],
+        "연혁·체계·위임": ["trace-law-history", "get-revision-reason", "compare-law-versions", "find-delegated-rules", "get-law-structure"],
         "권위·묶음": ["load-authority-context", "load-legal-context-bundle", "load-institutional-system", "load-delegated-criteria", "load-followup"],
     },
     "kinds": [
@@ -42,7 +42,7 @@ CATALOG = {
         "case_hit_list", "constitutional_hit_list", "comparable_planning_list", "query_expansion_planning",
         "law_text", "article_text", "article_context", "admin_rule_text", "admin_rule_context",
         "annex_form_text", "interpretation_text", "case_text", "constitutional_text", "law_identity",
-        "law_history", "law_diff", "delegation_graph", "law_structure_hierarchy_only",
+        "law_history", "revision_reason_text", "law_diff", "delegation_graph", "law_structure_hierarchy_only",
         "legal_context_bundle", "authority_context",
         "ambiguous", "source_access_error", "parse_error", "no_result",
         "needs_search_first", "usage_error", "unsupported", "error",

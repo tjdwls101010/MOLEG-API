@@ -60,6 +60,7 @@ from ..models import (
     LawStructure,
     LawStructureNode,
     LawText,
+    RevisionReason,
     StructuredTableData,
 )
 from ..normalization import (

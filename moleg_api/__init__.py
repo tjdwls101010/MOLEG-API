@@ -64,6 +64,7 @@ from .models import (
     LawStructure,
     LawStructureNode,
     LawText,
+    RevisionReason,
     SupplementaryProvision,
     StructuredTableData,
 )
@@ -122,6 +123,7 @@ __all__ = [
     "LawStructure",
     "LawStructureNode",
     "LawText",
+    "RevisionReason",
     "MolegApi",
     "MolegApiError",
     "NoResultError",
