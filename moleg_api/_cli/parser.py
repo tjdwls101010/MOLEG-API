@@ -95,6 +95,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--case-number", dest="case_number", default=None)
     p.add_argument("--display", type=int, default=20)
 
+    p = sub.add_parser("search-committee-decisions", help="위원회 결정문 검색(개보위·공정위·금융위·인권위 등 12종).")
+    p.add_argument("query", nargs="?", default=None, help="안건명·사건명 키워드(생략 시 최신 목록).")
+    p.add_argument("--committee", required=True,
+                   help="기관 코드: ppc(개인정보보호위) ftc(공정위) fsc(금융위) sfc(증선위) kcc(방통위) nhrck(인권위) acr(권익위) nlrc(노동위) eiac(고용보험심사위) iaciac(산재재심사위) oclt(중앙토지수용위) ecc(중앙환경분쟁조정위).")
+    p.add_argument("--display", type=int, default=20)
+
+    p = sub.add_parser("get-committee-decision", help="위원회 결정문 본문 로드(--brief면 요지만).")
+    p.add_argument("--id", dest="identifier", required=True, help="decision_id(검색이 준 값).")
+    p.add_argument("--committee", required=True, help="검색에 쓴 기관 코드와 동일해야 한다.")
+    _add_brief(p)
+
+    p = sub.add_parser("search-administrative-appeals", help="행정심판 재결례 검색(일반 + 특별심판 4종).")
+    p.add_argument("query", nargs="?", default=None, help="사건명 키워드(생략 시 최신 목록).")
+    p.add_argument("--tribunal", default="decc",
+                   help="decc(일반 행정심판위) acr(권익위 특별) adap(소청심사위) tt(조세심판원) kmst(해양안전심판원).")
+    p.add_argument("--display", type=int, default=20)
+
+    p = sub.add_parser("get-administrative-appeal", help="행정심판 재결 본문 로드(--brief면 요지만).")
+    p.add_argument("--id", dest="identifier", required=True)
+    p.add_argument("--tribunal", default="decc", help="검색에 쓴 심판기관 코드와 동일해야 한다.")
+    _add_brief(p)
+
     p = sub.add_parser("expand-legal-query", help="질의 확장·관련법/용어/조문 조사 계획.")
     p.add_argument("query"); p.add_argument("--display", type=int, default=5)
     p.add_argument("--no-websearch-hint", dest="no_websearch_hint", action="store_true")

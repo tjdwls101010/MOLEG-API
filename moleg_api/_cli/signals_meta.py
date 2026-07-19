@@ -11,6 +11,8 @@ LIST_META: dict[str, tuple[str, str]] = {
     "search-cases": ("case_hit", "법제처 / 판례 검색"),
     "search-constitutional-decisions": ("constitutional_hit", "법제처 / 헌재결정 검색"),
     "find-comparable-mechanisms": ("comparable_planning", "법제처 / 유사제도 탐색"),
+    "search-committee-decisions": ("committee_decision_hit", "법제처 / 위원회 결정문 검색"),
+    "search-administrative-appeals": ("administrative_appeal_hit", "법제처 / 행정심판 재결례 검색"),
 }
 
 # element dataclass name -> (canonical command, element kind, source). Keys
@@ -34,6 +36,14 @@ def _resolve_list_kind(command: str, result: list[Any]) -> tuple[str, str, str]:
     """
     if result:
         et = type(result[0]).__name__
+        if et == "AdjudicationHit":
+            # Split by the body that decided, not by the invoking command: a hit
+            # reached through load-followup must still carry the authority it was
+            # decided under, and 위원회 처분 ≠ 행정심판 재결.
+            st = str(getattr(result[0].identity, "source_type", "") or "")
+            if "appeal" in st:
+                return "search-administrative-appeals", "administrative_appeal_hit", "법제처 / 행정심판 재결례 검색"
+            return "search-committee-decisions", "committee_decision_hit", "법제처 / 위원회 결정문 검색"
         if et == "JudicialDecisionHit":
             st = getattr(result[0].identity, "source_type", "") or ""
             if "detc" in str(st) or command == "search-constitutional-decisions":
@@ -63,6 +73,15 @@ def _standing_list_discipline(eff_command: str, flags: dict[str, Any]) -> list[s
         flags["source_authority"] = "법제처 해석 ≠ 부처 1차 해석 — 답에서 출처 유형 보존"
     elif eff_command == "search-administrative-rules":
         flags["issued_on_is"] = "발령일자 필터(시행일 아님)"
+    elif eff_command == "search-committee-decisions":
+        flags["source_authority"] = "행정기관 처분·의결 ≠ 판례 — 답에서 출처 유형 보존"
+        # 이 계열은 감독기관의 부작위를 묻는 자리에서 쓰인다. 0건을 '처분한 적 없다'로
+        # 읽으면 정확히 반대 방향으로 틀린 결론에 도달한다 — 미공개·미접수·타 기관 소관
+        # 모두 0건으로 나온다.
+        lines.append("0건은 '그 기관이 처분한 적 없음'의 증명이 아님 — 비공개·미접수·타 기관 소관일 수 있다. 기관 코드를 바꿔 재검색하거나 자료요구로 확인하라.")
+    elif eff_command == "search-administrative-appeals":
+        flags["source_authority"] = "행정심판 재결 ≠ 법원 판결 — 답에서 출처 유형 보존"
+        lines.append("일반(decc)에 없으면 특별행정심판(--tribunal acr/adap/tt/kmst)도 확인하라 — 소청·조세·해양안전 사건은 일반 목록에 없다.")
     return lines
 
 SINGLE_META: dict[str, tuple[str, str]] = {
@@ -78,6 +97,7 @@ SINGLE_META: dict[str, tuple[str, str]] = {
     "LawHistory": ("law_history", "법제처 / 개정 연혁"),
     "RevisionReason": ("revision_reason_text", "법제처 / 개정이유·공포문 원문"),
     "LawToc": ("law_toc_map", "법제처 / 조문 목차(본문 아님)"),
+    "AdjudicationText": ("adjudication_text", "법제처 / 행정기관 의결·재결 본문"),
     "LawDiff": ("law_diff", "법제처 / 개정 전후 비교"),
     "DelegationGraph": ("delegation_graph", "법제처 / 위임 규정"),
     "LawStructure": ("law_structure_hierarchy_only", "법제처 / 법령 체계도"),

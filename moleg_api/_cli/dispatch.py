@@ -44,6 +44,14 @@ def _dispatch(api: MolegApi, args: argparse.Namespace) -> Any:
     if c == "search-constitutional-decisions":
         return api.search_constitutional_decisions(args.query, search_body=args.search_body,
                                                     decided_on=args.decided_on, case_number=args.case_number, display=args.display)
+    if c == "search-committee-decisions":
+        return api.search_committee_decisions(args.query, committee=args.committee, display=args.display)
+    if c == "get-committee-decision":
+        return api.get_committee_decision(args.identifier, committee=args.committee)
+    if c == "search-administrative-appeals":
+        return api.search_administrative_appeals(args.query, tribunal=args.tribunal, display=args.display)
+    if c == "get-administrative-appeal":
+        return api.get_administrative_appeal(args.identifier, tribunal=args.tribunal)
     if c == "expand-legal-query":
         return api.expand_legal_query(args.query, display=args.display, include_websearch_hint=not args.no_websearch_hint)
     if c == "find-comparable-mechanisms":

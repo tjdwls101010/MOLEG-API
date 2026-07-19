@@ -57,6 +57,8 @@ SEARCH_COMMANDS = frozenset(
         "search-interpretations",
         "search-cases",
         "search-constitutional-decisions",
+        "search-committee-decisions",
+        "search-administrative-appeals",
     }
 )
 

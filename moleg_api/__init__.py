@@ -14,6 +14,9 @@ from .errors import (
 )
 from .laws import MolegApi
 from .models import (
+    AdjudicationHit,
+    AdjudicationIdentity,
+    AdjudicationText,
     AdministrativeRuleArticleText,
     AdministrativeRuleContext,
     AdministrativeRuleHit,
@@ -124,6 +127,9 @@ __all__ = [
     "LawIdentity",
     "LawStructure",
     "LawStructureNode",
+    "AdjudicationHit",
+    "AdjudicationIdentity",
+    "AdjudicationText",
     "LawText",
     "LawToc",
     "LawTocEntry",

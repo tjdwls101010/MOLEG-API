@@ -6,7 +6,7 @@ CATALOG = {
     "convention": [
         "kind 접미사가 후보≠본문을 구조로 표시: *_hit/*_candidate/*_planning = 검색 후보(인용 불가), *_text/*_context/*_identity = 로드된 본문.",
         "인용은 항상 로드된 본문에서만 — search/expand/find-comparable 결과는 '다음에 무엇을 로드할지의 메뉴'일 뿐.",
-        "출처 권위 보존: 법제처 법령 > 법제처 해석 > 부처 해석 ≠ 판례 ≠ 헌재. flags.source_type/라벨을 답에 반영.",
+        "출처 권위 보존: 법제처 법령 > 법제처 해석 > 부처 해석 ≠ 판례 ≠ 헌재 ≠ 위원회 결정 ≠ 행정심판 재결. flags.source_type/source_authority를 답에 반영하고 평탄화 금지 — 위원회 결정·행정심판 재결은 행정기관의 판단이라 행정소송으로 뒤집힐 수 있고 판례가 아니다.",
         "0건·호출 실패 ≠ 부재. 종료코드로 구분: 0 ok(0건 포함) · 2 모호 · 3 소스 접근·응답 문제 · 4 no-result · 5 usage/순서위반.",
         "exit 3의 두 얼굴을 kind로 갈라라 — source_access_error=진짜 일시 장애(타임아웃·429·5xx)라 재시도가 맞고, parse_error=인식 불가 응답이라 재시도해도 그대로다(식별자 오류부터 의심). 불량 식별자로 본문이 없으면 exit 3이 아니라 no_result(exit 4)로 온다 — '일시 장애'로 읽지 마라.",
         "load 계열에 법령명을 주면 needs_search_first(exit 5) — 먼저 search-laws로 law_id를 얻어라.",
@@ -22,6 +22,7 @@ CATALOG = {
         "이 법 아래 무엇이 있나: 계층 조망=get-law-structure(위임 증명 아님) / 조문 단위 위임 규정=find-delegated-rules.",
         "넓은 탐색: 넓은 질의의 용어·관련법 조사계획=expand-legal-query / 유사 제도(비슷한 기제)를 가진 법 후보(설계용)=find-comparable-mechanisms.",
         "묶음 로더 — authority=특정 조문의 해석/판례/헌재 권위 / bundle=진입점 모를 때 단일법·넓은 질문(--mode) / institutional=명시된 다법령 집합(--statute 반복) / delegated=단일법의 하위규칙·별표 집행기준 본문.",
+        "감독기관이 실제로 판단했나(견제): 규제기관의 처분·의결서=search-committee-decisions --committee <ppc|ftc|fsc|sfc|kcc|nhrck|acr|nlrc|eiac|iaciac|oclt|ecc> / 그 처분에 불복한 재결=search-administrative-appeals --tribunal <decc|acr|adap|tt|kmst>. 둘 다 0건이어도 부재의 증명이 아니다(비공개·미접수 가능).",
         "별표 금액·기준표: 위임된 시행령·시행규칙의 별표를 search-annex-forms --search-scope source <법령명> → get-annex-form-body --id(=--annex-id)로 로드. 표 파싱이 무너지면 structured_data.parsing_confidence=low — 금액은 text를 1차로 인용하라. bare id 로드는 소관법령ID·pdf_link 등 링크 메타를 복구하지 못하니 현행성은 모법 버전으로 확인.",
     ],
     "commands": {
@@ -29,11 +30,13 @@ CATALOG = {
             "search-laws", "resolve-promulgated-law", "search-administrative-rules", "search-annex-forms",
             "search-interpretations", "search-cases", "search-constitutional-decisions",
             "expand-legal-query", "find-comparable-mechanisms",
+            "search-committee-decisions", "search-administrative-appeals",
         ],
         "본문 로드": [
             "get-law", "get-article", "load-article-context", "get-administrative-rule",
             "load-administrative-rule-context", "get-annex-form-body", "get-interpretation",
             "get-case", "get-constitutional-decision",
+            "get-committee-decision", "get-administrative-appeal",
         ],
         "연혁·체계·위임": ["trace-law-history", "get-revision-reason", "compare-law-versions", "find-delegated-rules", "get-law-structure"],
         "권위·묶음": ["load-authority-context", "load-legal-context-bundle", "load-institutional-system", "load-delegated-criteria", "load-followup"],
@@ -41,6 +44,8 @@ CATALOG = {
     "kinds": [
         "law_hit_list", "admin_rule_hit_list", "annex_form_hit_list", "interpretation_hit_list",
         "case_hit_list", "constitutional_hit_list", "comparable_planning_list", "query_expansion_planning",
+        "committee_decision_hit_list", "administrative_appeal_hit_list",
+        "committee_decision_text", "administrative_appeal_text",
         "law_text", "article_text", "article_context", "admin_rule_text", "admin_rule_context",
         "annex_form_text", "interpretation_text", "case_text", "constitutional_text", "law_identity",
         "law_history", "revision_reason_text", "law_toc_map", "law_diff", "delegation_graph", "law_structure_hierarchy_only",

@@ -94,6 +94,33 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         if moved:
             next_cmds.append({"why": "이동 목적지 로드", "cmd": f"moleg load-article-context --law {result.identity.law_id or ''} {moved}"})
 
+    elif tname == "AdjudicationText":
+        ident = result.identity
+        # The kind carries the authority, not just the shape. An 행정심판 재결 and
+        # a 위원회 처분 are both "an agency decided something" structurally, and
+        # collapsing them into one kind is how a reader ends up treating a
+        # reviewable disposition as a settled one.
+        kind = ("administrative_appeal_text" if "appeal" in (ident.source_type or "")
+                else "committee_decision_text")
+        source = f"법제처 / {ident.body_name}"
+        flags["source_type"] = ident.source_type
+        flags["source_authority"] = ident.source_authority
+        flags["body"] = {"code": ident.body, "name": ident.body_name}
+        if ident.respondent_agency:
+            flags["respondent_agency"] = ident.respondent_agency
+        if ident.review_agency:
+            flags["review_agency"] = ident.review_agency
+        discipline.append(ident.source_authority)
+        # 감독기관이 "확인했는가"를 묻는 것이 이 계열의 용도다. 처분이 있었다는 사실은
+        # 그 기관이 그 사안을 인지·판단했다는 1차 증거이고, 없다는 것은 부재의 증명이
+        # 아니라 이 검색 범위에서 못 찾았다는 뜻일 뿐이다.
+        discipline.append(
+            "이 결정의 존재는 해당 기관이 그 사안을 실제로 판단했다는 1차 기록 — "
+            "다만 '이 기관에 기록이 없다'가 '문제가 없었다'는 뜻은 아니다(미접수·미조사·비공개 가능)."
+        )
+        if ident.decided_on:
+            flags["decided_on"] = ident.decided_on
+
     elif tname == "LawToc":
         tf, tl = _law_time_flags(result.identity, as_of)
         flags.update(tf); discipline.extend(tl)

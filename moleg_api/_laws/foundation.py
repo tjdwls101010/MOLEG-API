@@ -14,6 +14,9 @@ from ..errors import (
     UnsupportedFormatError,
 )
 from ..models import (
+    AdjudicationHit,
+    AdjudicationIdentity,
+    AdjudicationText,
     AdministrativeRuleHit,
     AdministrativeRuleArticleText,
     AdministrativeRuleContext,
@@ -66,6 +69,10 @@ from ..models import (
     StructuredTableData,
 )
 from ..normalization import (
+    adjudication_detail,
+    adjudication_rows,
+    normalize_adjudication_identity,
+    normalize_adjudication_text,
     compact_date,
     compact_promulgation_number,
     extract_administrative_rule_articles,
