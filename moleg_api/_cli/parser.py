@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
+from .._version import __version__
 from .signals_meta import parse_as_of
 
 def _add_law(p: argparse.ArgumentParser, required: bool = True) -> None:
@@ -32,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"moleg-api {_pkg_version()}",
-        help="설치된 moleg-api 버전을 출력하고 종료.",
+        version=f"moleg-api {__version__}",
+        help="실행 중인 moleg-api 버전을 출력하고 종료(엔벨로프의 version과 같은 값).",
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 

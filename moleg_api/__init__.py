@@ -1,5 +1,6 @@
 """Public MOLEG-API interface."""
 
+from ._version import __version__
 from .errors import (
     AmbiguousLawError,
     AsOfBeforeCoverageError,
@@ -132,4 +133,5 @@ __all__ = [
     "SupplementaryProvision",
     "StructuredTableData",
     "UnsupportedFormatError",
+    "__version__",
 ]
