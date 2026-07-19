@@ -12,7 +12,7 @@ The PyPI package is `moleg-api`; import it as `moleg_api`.
 pip install moleg-api
 ```
 
-Live calls use a law.go.kr OpenAPI credential (the "OC" — a free, non-secret account id). The package ships a shared default, so calls work out of the box with **no registration required**. To use your own OC (recommended for heavy use), register at law.go.kr and set `MOLEG_OC`, or pass `oc=` to `LawGoKrClient`. See [Installation](wiki/Installation.md).
+Live calls use a law.go.kr OpenAPI credential (the "OC" — a free, non-secret account id). The package ships a shared default, so calls work out of the box with **no registration required**. To use your own OC (recommended for heavy use), register at law.go.kr and set `MOLEG_OC`, or pass `oc=` to `LawGoKrClient`. See [Installation](docs/wiki/Installation.md).
 
 ## Quickstart
 
@@ -36,7 +36,7 @@ python -m moleg_api get-article --law 001248 제3조    # load the current artic
 python -m moleg_api get-article --law 001248 --as-of 2021-01-01 제3조  # the version in force then
 ```
 
-The CLI exposes 27 task subcommands plus `catalog`; `catalog` is the source of truth for the command list, routing rules, and result `kind` values.
+The CLI exposes every interface as a subcommand plus `catalog`; `catalog` is the source of truth for the command list, routing rules, and result `kind` values. Each envelope carries the `version` that produced it.
 
 Public dataclasses serialize recursively with `to_dict()` / `to_json_string()` (raw payloads omitted unless `include_raw=True`).
 
@@ -48,19 +48,23 @@ Public dataclasses serialize recursively with `to_dict()` / `to_json_string()` (
 - Delegated rules, legal hierarchy, and administrative rules (고시·훈령·예규)
 - Law and administrative-rule annex/form bodies (별표·서식)
 - MOLEG and ministry legal interpretations, Supreme Court cases, and Constitutional Court (헌재) decisions
+- Amendment rationale — the 「개정이유 및 주요내용」 text for a specific statute version
+- Committee decisions from twelve regulators (개인정보보호위·공정위·금융위·인권위·노동위 등) and 행정심판 재결례 including four special tribunals — the record of an agency applying the law it administers, kept distinct from precedent
 - Query expansion, comparable-mechanism discovery, and staged context bundles with executable follow-up lookups
 
-Out of scope: legal advice, National Assembly bill data (status, votes, minutes), and latest statistics/news.
+Context budgeting: `get-law --toc` returns a statute's article map without the text (276KB → 19KB on 개인정보 보호법), `--brief` returns a decision's 요지 without the full body, and `flags.large_payload` warns when a narrowing option was available.
+
+Out of scope: legal advice, National Assembly bill data (status, votes, minutes), legislative pre-announcement (입법예고 — a separate 국민참여입법센터 source), and latest statistics/news.
 
 ## Documentation
 
-Full documentation is in the [`wiki/`](wiki/Home.md) folder:
+Full documentation is in the [`docs/wiki/`](docs/wiki/Home.md) folder:
 
-- [Installation](wiki/Installation.md) · [Quickstart](wiki/Quickstart.md) · [Core Concepts](wiki/Core-Concepts.md)
-- [CLI Reference](wiki/CLI-Reference.md) · [API Reference](wiki/API-Reference.md)
-- [Historical Versions](wiki/Historical-Versions.md) · [Sources & Coverage](wiki/Sources-and-Coverage.md)
-- [Gotchas](wiki/Gotchas.md) · [Error Handling](wiki/Error-Handling.md)
-- [Maintainer Notes](wiki/Maintainer-Notes.md)
+- [Installation](docs/wiki/Installation.md) · [Quickstart](docs/wiki/Quickstart.md) · [Core Concepts](docs/wiki/Core-Concepts.md)
+- [CLI Reference](docs/wiki/CLI-Reference.md) · [API Reference](docs/wiki/API-Reference.md)
+- [Historical Versions](docs/wiki/Historical-Versions.md) · [Sources & Coverage](docs/wiki/Sources-and-Coverage.md)
+- [Gotchas](docs/wiki/Gotchas.md) · [Error Handling](docs/wiki/Error-Handling.md)
+- [Maintainer Notes](docs/wiki/Maintainer-Notes.md)
 
 ## Status
 

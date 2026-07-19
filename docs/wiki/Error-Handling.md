@@ -53,9 +53,10 @@ except MolegApiError as exc:
 
 The source API returned no usable result for a valid, well-formed request — for example, a load that found no article text for an identifier, or a history lookup that returned no events. This is a *scoped* absence: it means nothing was found for **this identifier, article, or query**, not that the material does not exist anywhere. Widen the search terms or scope before concluding a source is absent.
 
-Two callers of `NoResultError` deserve special note:
+Three callers of `NoResultError` deserve special note:
 
 - **A loader handed a law name instead of a law ID.** `get_law`, `get_article`, and the other loaders expect a `LawIdentity`, a `LawHit`, or a numeric source identifier — not a free-text statute name. Passing a name raises `NoResultError` whose message tells you to search first. The CLI surfaces this distinctly as `needs_search_first` (exit code **5**); see below.
+- **A nonexistent identifier is a `no_result`, not a source failure.** law.go.kr answers a detail lookup for an identifier it does not have with an *empty body* (`{}`), not with the `일치하는 …` sentence it returns for a law-name miss. Before 0.3.0 that empty body raised `ParseFailureError` and exited **3**, whose discipline told the caller to retry — advice for a lookup that can never succeed. It is now a `NoResultError` (exit **4**) that steers back to `search-*`.
 - **A zero-hit search is not an error.** The search methods themselves may raise internally when nothing matches, but at the CLI a search that finds nothing is reported as a normal, scoped success (`ok:true`, `count:0`, exit **0**). Only *loads* raise a surfaced `no_result`.
 
 ```python
@@ -109,7 +110,9 @@ A retryable source failure — a timeout, a connection error, or a retryable HTT
 
 ### `ParseFailureError`
 
-A source response was retrieved but could not be normalized into the public data model — for example, an identity payload missing its law name, or a law-structure payload with an unexpected shape. This is neither a source-access failure nor a legal absence: the data arrived but did not fit the expected structure. Try a different command or path to confirm the material by another route before drawing any conclusion.
+A source response was retrieved but could not be normalized into the public data model — for example, an identity payload missing its law name, or a law-structure payload with an unexpected shape. This is neither a source-access failure nor a legal absence: the data arrived but did not fit the expected structure.
+
+**Retrying will not help.** It shares exit code 3 with the transient errors, but only because both mean "the source side went wrong"; a response shape the package does not recognize will be just as unrecognizable on the next call. Rule out an identifier mistake first (`search-*` to re-confirm the identity), then try a different command or path before drawing any conclusion.
 
 ## Transient failure versus absence
 
@@ -118,8 +121,8 @@ The single most important distinction when handling these errors:
 | Meaning | Exceptions | How to react |
 | --- | --- | --- |
 | **Temporary access failure** — could not reach or read the source right now | `RateLimitError`, `RetryExhaustedError`, `SourceApiError` | Retry later. Do **not** treat as "no such law." Fill time-sensitive facts (e.g. effective dates) from a fallback only with an "unverified" label; leave constitutionality/case-law claims as "needs primary confirmation." |
-| **Response could not be normalized** | `ParseFailureError` | Not an absence. Try another command or path to reach the same material. |
-| **Scoped absence** — a valid request found nothing for this exact scope | `NoResultError` (surfaced as `no_result`) | Widen the query/scope. Never conclude the material does not exist without stating the exact query, source family, and filters used. |
+| **Response could not be normalized** | `ParseFailureError` | Not an absence, and **not transient** — a retry returns the same shape. Rule out an identifier mistake, then try another command or path. |
+| **Scoped absence** — a valid request found nothing for this exact scope, *including an identifier the source has no record of* | `NoResultError` (surfaced as `no_result`) | Widen the query/scope, or re-confirm the identifier with `search-*`. Never conclude the material does not exist without stating the exact query, source family, and filters used. |
 | **Wrong input / ordering** — a name where an ID was needed, bad arguments | `NoResultError` (surfaced as `needs_search_first`), argument errors | Search first to get the identity, or fix the arguments. |
 | **Multiple matches** | `AmbiguousLawError` | Present the `candidates`; choose one deliberately, then re-load. |
 
@@ -150,15 +153,19 @@ The `moleg` command prints one JSON envelope per invocation and maps each error 
 | --- | --- | --- | --- |
 | **0** | (varies) | Success — **including a zero-hit search** (`ok:true`, `count:0`) | — |
 | **2** | `ambiguous` | Multiple plausible identities; candidates in `flags.candidates` | `AmbiguousLawError` |
-| **3** | `source_access_error` | Transient source access failure — retry later | `RateLimitError`, `RetryExhaustedError` |
-| **3** | `parse_error` | A response could not be normalized | `ParseFailureError` |
+| **3** | `source_access_error` | Transient source access failure — **retry later** | `RateLimitError`, `RetryExhaustedError` |
+| **3** | `parse_error` | Unrecognized response shape — **a retry will not help** | `ParseFailureError` |
 | **3** | `error` | Other source-side failure | `SourceApiError` and other `MolegApiError` |
-| **4** | `no_result` | A load found no source text for a valid identifier | `NoResultError` |
+| **4** | `no_result` | A load found no source text — including an identifier the source has no record of | `NoResultError` |
 | **5** | `needs_search_first` | A loader was handed a law name — search for the ID first | `NoResultError` (name-not-ID) |
 | **5** | `unsupported` | The source cannot provide this format/path | `UnsupportedFormatError` |
 | **5** | `usage_error` | Bad arguments, missing subcommand, or unknown command | argument parsing |
 
-There is no exit code 1: the errors that scripts must branch on each get a dedicated code (2–5), and everything else that succeeds is 0. Note that both `source_access_error` and `parse_error` share exit **3** (source-side failure), and that `no_result` (exit 4) is deliberately kept apart from `needs_search_first` (exit 5) — the former is a genuine scoped absence, the latter a fixable input-ordering mistake.
+There is no exit code 1: the errors that scripts must branch on each get a dedicated code (2–5), and everything else that succeeds is 0.
+
+**Exit 3 carries two kinds, and only one of them is worth retrying.** `source_access_error` means the source could not be reached — back off and try again. `parse_error` means it answered with something the package cannot read, which the next identical call will do too. Branch on `kind`, not on the exit code alone, or a retry loop will spin on a permanent condition.
+
+`no_result` (exit 4) is deliberately kept apart from `needs_search_first` (exit 5): the former is a genuine scoped absence, the latter a fixable input-ordering mistake.
 
 ### CLI error envelope
 
