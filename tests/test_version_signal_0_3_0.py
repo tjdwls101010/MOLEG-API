@@ -9,7 +9,7 @@ artifact a consumer actually sees.
 """
 
 import json
-import tomllib
+import re
 from pathlib import Path
 
 import moleg_api
@@ -48,10 +48,14 @@ def test_pyproject_reads_the_version_from_the_package():
     and the other is forgotten — and the resulting wheel reports a version its own
     code disagrees with.
     """
-    pyproject = tomllib.loads(Path(__file__).resolve().parents[1].joinpath("pyproject.toml").read_text())
-    assert "version" in pyproject["project"].get("dynamic", []), "version must stay dynamic"
-    assert pyproject["project"].get("version") is None, "a static version would shadow the package literal"
-    assert pyproject["tool"]["setuptools"]["dynamic"]["version"] == {"attr": "moleg_api._version.__version__"}
+    # Read as text rather than with tomllib: that is stdlib only from 3.11, and
+    # this package supports 3.10 with zero dependencies.
+    text = Path(__file__).resolve().parents[1].joinpath("pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'^dynamic\s*=\s*\["version"\]', text, re.M), "version must stay dynamic"
+    assert not re.search(r'^version\s*=\s*"', text, re.M), "a static version would shadow the package literal"
+    assert re.search(
+        r'^version\s*=\s*\{attr\s*=\s*"moleg_api\._version\.__version__"\}', text, re.M
+    ), "pyproject must read the version from the package literal"
 
 
 def test_catalog_envelope_carries_version(capsys):
