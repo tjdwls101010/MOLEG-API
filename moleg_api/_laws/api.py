@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .api_adjudications import AdjudicationMixin
 from .api_admin_rules import AdministrativeRuleMixin
 from .api_annex import AnnexMixin
 from .api_article_context import ArticleContextMixin
@@ -36,6 +37,7 @@ class MolegApi(
     AdministrativeRuleMixin,
     InterpretationMixin,
     JudicialDecisionMixin,
+    AdjudicationMixin,
     AuthorityContextMixin,
     QueryExpansionMixin,
     ComparableMechanismsMixin,

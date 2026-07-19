@@ -9,6 +9,9 @@ from typing import Any, Literal
 from ._models import (
     AdministrativeRuleArticleText,
     AdministrativeRuleContext,
+    AdjudicationHit,
+    AdjudicationIdentity,
+    AdjudicationText,
     AdministrativeRuleHit,
     AdministrativeRuleIdentity,
     AdministrativeRuleText,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .adjudications import *
 from .annex import *
 from .article_units import *
 from .articles import *

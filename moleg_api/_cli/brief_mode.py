@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import MISSING, fields, replace
 from typing import Any
 
 # A decision detail ships the same reasoning twice over: `text` and `full_text`
@@ -13,7 +13,7 @@ from typing import Any
 # Brief mode drops the full-body fields and keeps the extract. It does *not* drop
 # `summary`: 요지 is the entire reason to ask for a brief, and cutting it would
 # shrink the payload further while removing the only thing brief mode is for.
-_BRIEF_DROPPED_FIELDS = ("text", "full_text")
+_BRIEF_DROPPED_FIELDS = ("text", "full_text", "reasoning")
 
 
 def to_brief(result: Any) -> Any:
@@ -23,12 +23,17 @@ def to_brief(result: Any) -> Any:
     every consumer's field access stay valid — the difference is signalled on the
     envelope, not encoded in a second shape of the same thing.
     """
-    blanked = {}
-    for name in _BRIEF_DROPPED_FIELDS:
-        if not hasattr(result, name):
-            continue
-        current = getattr(result, name)
-        blanked[name] = "" if isinstance(current, str) else None
+    # Reset each field to its declared default rather than to a blanket "" or
+    # None. `text: str = ""` and `reasoning: str | None = None` mean different
+    # things by absence, and blanking a nullable field to "" turns "not loaded"
+    # into "loaded and empty" — a distinction a caller reads as a fact about the
+    # document rather than about the request.
+    defaults = {f.name: f.default for f in fields(result)}
+    blanked = {
+        name: defaults[name]
+        for name in _BRIEF_DROPPED_FIELDS
+        if name in defaults and defaults[name] is not MISSING
+    }
     return replace(result, **blanked) if blanked else result
 
 

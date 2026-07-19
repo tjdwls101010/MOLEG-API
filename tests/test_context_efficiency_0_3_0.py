@@ -175,7 +175,11 @@ def _decision(**overrides):
 
 def test_brief_blanks_the_full_body_and_keeps_the_precis():
     brief = to_brief(_decision())
-    assert brief.text == "" and brief.full_text == ""
+    # Each field resets to its own declared default, not a blanket "": `text: str`
+    # is empty-string-absent, `full_text: str | None` is None-absent. Blanking a
+    # nullable field to "" turns "not loaded" into "loaded and empty", which a
+    # caller reads as a fact about the document rather than about the request.
+    assert brief.text == "" and brief.full_text is None
     assert brief.summary == "결정요지" and brief.holdings == "판시사항"
 
 
