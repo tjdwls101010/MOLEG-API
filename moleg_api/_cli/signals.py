@@ -94,6 +94,26 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         if moved:
             next_cmds.append({"why": "이동 목적지 로드", "cmd": f"moleg load-article-context --law {result.identity.law_id or ''} {moved}"})
 
+    elif tname == "LawToc":
+        tf, tl = _law_time_flags(result.identity, as_of)
+        flags.update(tf); discipline.extend(tl)
+        flags["article_count"] = result.article_count
+        gone = [e.article for e in result.entries if e.is_deleted or e.moved_to]
+        if gone:
+            flags["articles_deleted_or_moved"] = len(gone)
+        # kind ends in _map, not _text — the naming convention already says this
+        # is not citable, but a목차 is close enough to content to be misread as
+        # having been read, so say it outright.
+        discipline.append(
+            "목차는 본문이 아님 — 조번호·조제목만으로 조문 내용을 단정하거나 인용하지 마라. "
+            "인용은 get-article/get-law --article로 본문을 로드한 뒤에."
+        )
+        if result.identity.law_id:
+            next_cmds.append({
+                "why": "목차에서 고른 조문 본문 로드",
+                "cmd": f"moleg get-article --law {result.identity.law_id} <제N조>",
+            })
+
     elif tname == "RevisionReason":
         tf, tl = _law_time_flags(result.identity, as_of)
         flags.update(tf); discipline.extend(tl)
@@ -238,6 +258,17 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         next_cmds.extend(nx)
         if ov:
             flags["more_followups"] = ov
+
+    if getattr(args, "brief", False):
+        dropped = getattr(args, "brief_dropped", []) or []
+        flags["brief"] = {"withheld": dropped}
+        # The candidate-vs-body rule applies *within* a loaded document too: a
+        # 요지 is the court's own précis, and quoting it as the ruling's wording
+        # is the same error as quoting a search hit as text.
+        discipline.append(
+            "요지·판시사항만 로드됨(전문 미로드) — 판시 문구의 축자 인용은 --brief 없이 전문을 로드한 뒤에."
+            + (f" 생략된 항목: {', '.join(dropped)}." if dropped else " 이 문서에는 생략할 전문 항목이 없었다.")
+        )
 
     return {"kind": kind, "source": source, "flags": flags,
             "discipline": discipline, "next": next_cmds[:3]}

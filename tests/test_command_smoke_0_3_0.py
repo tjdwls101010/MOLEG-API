@@ -19,6 +19,7 @@ import argparse
 import inspect
 import json
 import re
+import sys
 
 import pytest
 
@@ -50,11 +51,16 @@ PLACEHOLDERS = {
 # --statute it short-circuits before reaching the code that lost its import.
 EXTRA_ARGS = {
     "load-institutional-system": ["--statute", "001638", "--article", "제3조"],
-    "load-legal-context-bundle": ["개인정보 유출", "--law", "011357"],
+    "load-legal-context-bundle": ["--query", "개인정보 유출", "--law", "011357"],
     "load-delegated-criteria": ["--article", "제3조"],
     "trace-law-history": ["--article", "제3조"],
     "compare-law-versions": ["--article", "제3조"],
     "find-delegated-rules": ["--article", "제3조"],
+    # narrowing modes are separate dispatch branches, not just formatting
+    "get-law": ["--toc"],
+    "get-case": ["--brief"],
+    "get-constitutional-decision": ["--brief"],
+    "get-interpretation": ["--brief"],
 }
 
 
@@ -133,6 +139,11 @@ def test_every_command_dispatches_to_an_envelope(command, mode, capsys):
     out = capsys.readouterr().out
     assert code in VALID_EXIT_CODES, f"{command} ({mode}) returned exit {code}"
     envelope = json.loads(out)  # exactly one JSON document, always
+    # A usage error means argparse rejected the argv *this file* built, so
+    # dispatch never ran and the case proved nothing. It once passed silently for
+    # load-legal-context-bundle, whose query is --query and not positional — the
+    # smoke was green while covering nothing.
+    assert envelope["kind"] != "usage_error", f"{command} ({mode}): smoke argv is malformed, dispatch never ran"
     assert envelope["command"] in (command, None)
     assert "version" in envelope
     assert isinstance(envelope["ok"], bool)
@@ -155,8 +166,11 @@ def _catalog_commands() -> set[str]:
 
 
 def _dispatch_commands() -> set[str]:
-    # _call is a flat `if c == "name"` ladder; read the literals it can match.
-    return set(re.findall(r'c == "([a-z0-9-]+)"', inspect.getsource(_call)))
+    # Read the whole module rather than one function: dispatch is a flat
+    # `if c == "name"` ladder, but which function holds it is an implementation
+    # detail that has already moved once. Pinning the function name made this
+    # test fail on a refactor that changed nothing it was meant to protect.
+    return set(re.findall(r'c == "([a-z0-9-]+)"', inspect.getsource(sys.modules[_call.__module__])))
 
 
 def test_catalog_advertises_nothing_the_parser_lacks():

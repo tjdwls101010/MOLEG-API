@@ -116,6 +116,44 @@ class LawHistory:
 
 
 @dataclass(frozen=True)
+class LawTocEntry:
+    """One line of a statute's table of contents — a heading or an article stub.
+
+    Empty fields are omitted on serialization: with 139 entries, the null and
+    false placeholders outweighed the content they surrounded, and `is_deleted`
+    absent reads the same as `is_deleted: false` while `is_deleted: true` still
+    stands out — which is the only case a reader has to notice.
+    """
+
+    _omit_when_empty = ("article", "title", "heading", "is_deleted", "moved_to")
+
+    article: str | None = None
+    title: str | None = None
+    heading: str | None = None
+    entry_kind: str = "article"
+    is_deleted: bool = False
+    moved_to: str | None = None
+
+
+@dataclass(frozen=True)
+class LawToc:
+    """A statute's article map without any article text.
+
+    Exists because the alternative was loading everything: a full 개인정보 보호법
+    is 139 articles and ~174,000 characters, and the only narrowing tool was
+    `--article`, which presumes you already know which article you want. Reading
+    the whole statute to find that out is the expensive way to ask a cheap
+    question. The table of contents answers "what is in here" in a few KB and
+    turns the follow-up into a targeted load.
+    """
+
+    identity: LawIdentity
+    entries: list[LawTocEntry]
+    article_count: int = 0
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class RevisionReason:
     """The 「개정이유 및 주요내용」 block for one statute version.
 

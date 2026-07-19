@@ -20,6 +20,11 @@ def _add_articles(p: argparse.ArgumentParser, required: bool = False) -> None:
     p.add_argument("--article", dest="article", action="append", default=[], required=required, help="조문(예: 제3조). 반복 지정 가능.")
 
 
+def _add_brief(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--brief", action="store_true",
+                   help="전문(text/full_text) 없이 요지·판시사항·참조 관계만. 인용은 전문 로드 후.")
+
+
 def _add_budget(p: argparse.ArgumentParser) -> None:
     p.add_argument("--budget", choices=["minimal", "standard", "broad"], default="standard")
 
@@ -98,9 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("concept"); p.add_argument("--display", type=int, default=5)
 
     # ---- loaders -------------------------------------------------------- #
-    p = sub.add_parser("get-law", help="법령 본문 로드.")
+    p = sub.add_parser("get-law", help="법령 본문 로드(--toc면 본문 없이 조문 목차만).")
     _add_law(p); _add_as_of(p); _add_basis(p); _add_articles(p)
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
+    p.add_argument("--toc", action="store_true",
+                   help="본문 대신 조문 목차(장·절 표제 + 조번호·조제목 + 삭제/이동)만. 큰 법의 지도를 수 KB로.")
 
     p = sub.add_parser("get-article", help="조문 하나 로드.")
     _add_law(p); p.add_argument("article"); _add_as_of(p); _add_basis(p)
@@ -125,19 +132,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
     p.add_argument("--no-structuring", dest="no_structuring", action="store_true")
 
-    p = sub.add_parser("get-interpretation", help="법령해석례 본문 로드.")
+    p = sub.add_parser("get-interpretation", help="법령해석례 본문 로드(--brief면 질의·회답만).")
     p.add_argument("--id", dest="identifier", required=True)
     p.add_argument("--source", choices=["moleg", "ministry", "all", "all_ministries"], default=None)
     p.add_argument("--ministry", default=None)
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
+    _add_brief(p)
 
-    p = sub.add_parser("get-case", help="판례 본문 로드.")
+    p = sub.add_parser("get-case", help="판례 본문 로드(--brief면 요지만).")
     p.add_argument("--id", dest="identifier", required=True)
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
+    _add_brief(p)
 
-    p = sub.add_parser("get-constitutional-decision", help="헌재 결정 본문 로드.")
+    p = sub.add_parser("get-constitutional-decision", help="헌재 결정 본문 로드(--brief면 요지만).")
     p.add_argument("--id", dest="identifier", required=True)
     p.add_argument("--no-metadata", dest="no_metadata", action="store_true")
+    _add_brief(p)
 
     # ---- history / structure / delegation ------------------------------ #
     p = sub.add_parser("trace-law-history", help="개정 연혁 이벤트.")
