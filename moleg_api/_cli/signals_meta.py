@@ -76,6 +76,7 @@ SINGLE_META: dict[str, tuple[str, str]] = {
     "JudicialDecisionText": ("judicial_text", "법제처 / 판결·결정 본문"),
     "LawIdentity": ("law_identity", "법제처 / 공포 bridge 신원 확정"),
     "LawHistory": ("law_history", "법제처 / 개정 연혁"),
+    "RevisionReason": ("revision_reason_text", "법제처 / 개정이유·공포문 원문"),
     "LawDiff": ("law_diff", "법제처 / 개정 전후 비교"),
     "DelegationGraph": ("delegation_graph", "법제처 / 위임 규정"),
     "LawStructure": ("law_structure_hierarchy_only", "법제처 / 법령 체계도"),

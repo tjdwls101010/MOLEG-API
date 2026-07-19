@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
-    sub.add_parser("catalog", help="27개 서브커맨드·규약·kind 목록을 한 번에.")
+    sub.add_parser("catalog", help="전체 서브커맨드·규약·kind 목록을 한 번에.")
 
     # ---- searches / planning ------------------------------------------- #
     p = sub.add_parser("search-laws", help="현행/공포 법령 신원 후보 검색.")
@@ -144,6 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_law(p); p.add_argument("--article", default=None)
     p.add_argument("--date-from", dest="date_from", default=None)
     p.add_argument("--date-to", dest="date_to", default=None)
+
+    p = sub.add_parser("get-revision-reason", help="특정 버전의 「개정이유 및 주요내용」·공포문 원문.")
+    _add_law(p)
+    p.add_argument("--mst", default=None, help="버전 MST(trace-law-history 이벤트의 identity.mst). 미지정이면 최신 버전.")
+    p.add_argument("--as-of", dest="as_of", default=None, help="그 시점 시행 버전의 개정이유(YYYY-MM-DD/YYYYMMDD).")
 
     p = sub.add_parser("compare-law-versions", help="개정 전후 조문 문구 비교(소스 제공 전후 쌍).")
     _add_law(p); p.add_argument("--article", default=None)

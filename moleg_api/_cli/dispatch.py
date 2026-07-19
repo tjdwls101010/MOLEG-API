@@ -60,6 +60,8 @@ def _call(api: MolegApi, args: argparse.Namespace) -> Any:
     if c == "trace-law-history":
         date_range = (args.date_from, args.date_to) if (args.date_from and args.date_to) else None
         return api.trace_law_history(args.law, date_range=date_range, article=args.article)
+    if c == "get-revision-reason":
+        return api.get_revision_reason(args.law, mst=args.mst, as_of=args.as_of)
     if c == "compare-law-versions":
         return api.compare_law_versions(args.law, article=args.article)
     if c == "find-delegated-rules":

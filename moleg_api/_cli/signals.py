@@ -94,6 +94,31 @@ def signals_for(command: str, result: Any, args: argparse.Namespace) -> dict[str
         if moved:
             next_cmds.append({"why": "이동 목적지 로드", "cmd": f"moleg load-article-context --law {result.identity.law_id or ''} {moved}"})
 
+    elif tname == "RevisionReason":
+        tf, tl = _law_time_flags(result.identity, as_of)
+        flags.update(tf); discipline.extend(tl)
+        if result.mst:
+            flags["mst"] = result.mst
+        flags["has_promulgation_text"] = bool(result.promulgation_text)
+        # 개정이유는 입법자·정부가 스스로 밝힌 취지 서술이지 중립적 사실 확인이 아니다.
+        # 이걸 "그 법이 왜 바뀌었는지"의 확정 답으로 평탄화하면 제안자의 주장을 근거로
+        # 둔갑시키게 된다 — 실제 효과·부작용은 별도 확인이 필요하다.
+        discipline.append(
+            "개정이유는 제안자(정부·의원)가 밝힌 취지 서술이지 효과의 검증이 아님 — "
+            "'왜 바뀌었나'의 자기 진술로 인용하고, 실제 효과·부작용은 별도 근거로 확인하라."
+        )
+        # 이 텍스트는 오직 이 한 버전의 것이다. 법 전체의 개정 서사로 일반화하면
+        # 다른 개정들의 이유를 조용히 이 하나로 대체하게 된다.
+        discipline.append(
+            "이 개정이유는 이 버전(mst) 한 건의 것 — 법 전체의 개정 서사로 일반화 금지. "
+            "다른 개정의 이유는 각 버전 mst로 따로 로드하라."
+        )
+        if result.identity.law_id:
+            next_cmds.append({
+                "why": "다른 개정 버전(mst) 목록 확인",
+                "cmd": f"moleg trace-law-history --law {result.identity.law_id}",
+            })
+
     elif tname == "ArticleContext":
         gf, gl = _gap_signals(getattr(result, "gaps", []))
         flags.update(gf); discipline.extend(gl)

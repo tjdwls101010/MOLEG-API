@@ -7,7 +7,7 @@ from .annex import AnnexFormHit, AnnexFormIdentity, AnnexFormText, StructuredTab
 from .authority import ArticleReference, InterpretationHit, InterpretationIdentity, InterpretationText, JudicialDecisionHit, JudicialDecisionIdentity, JudicialDecisionText
 from .bundles import AuthorityContext, BundleRequest, CandidateContext, LegalContextBundle, LoadedContext
 from .followups import Ambiguity, ContextGap, DeferredLookup, FollowUpSearch
-from .laws import ArticleContext, ArticleText, DelegatedRule, DelegationGraph, HistoryEvent, LawDiff, LawDiffChange, LawHit, LawHistory, LawIdentity, LawStructure, LawStructureNode, LawText, SupplementaryProvision
+from .laws import ArticleContext, ArticleText, DelegatedRule, DelegationGraph, HistoryEvent, LawDiff, LawDiffChange, LawHit, LawHistory, LawIdentity, LawStructure, LawStructureNode, LawText, RevisionReason, SupplementaryProvision
 from .query import LegalArticleCandidate, LegalLawCandidate, LegalQueryExpansion, LegalTermCandidate
 from .serialization import install_serialization_methods
 from .types import AnnexFormSource, AnnexSearchScope, AnnexType, Basis, BundleBudget, BundleMode, BundleRequestMode, CaseCourt, InterpretationSearchSource

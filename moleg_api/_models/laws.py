@@ -116,6 +116,27 @@ class LawHistory:
 
 
 @dataclass(frozen=True)
+class RevisionReason:
+    """The 「개정이유 및 주요내용」 block for one statute version.
+
+    Distinct from `HistoryEvent.revision_type`, which only carries a change-type
+    label such as 일부개정 or 본조신설. This is the drafter's stated *why* — the
+    problem the amendment claims to answer — which is what a policy reading
+    actually needs and which no other command reaches.
+
+    Scoped to one version by design: law.go.kr embeds each version's reason in
+    that version's own detail response, so `mst` is what pins which amendment
+    this text explains.
+    """
+
+    identity: LawIdentity
+    mst: str | None = None
+    reason: str | None = None
+    promulgation_text: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class LawDiffChange:
     """One before/after article comparison row."""
 

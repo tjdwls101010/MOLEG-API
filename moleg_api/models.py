@@ -57,6 +57,7 @@ from ._models import (
     LegalQueryExpansion,
     LegalTermCandidate,
     LoadedContext,
+    RevisionReason,
     StructuredTableData,
     SupplementaryProvision,
     install_serialization_methods,
