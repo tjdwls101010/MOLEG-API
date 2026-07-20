@@ -36,7 +36,7 @@ moleg = "moleg_api.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/tjdwls101010/MOLEG-API"
-Documentation = "https://github.com/tjdwls101010/MOLEG-API/tree/main/wiki"
+Documentation = "https://github.com/tjdwls101010/MOLEG-API/blob/main/docs/wiki/Home.md"
 Repository = "https://github.com/tjdwls101010/MOLEG-API"
 Issues = "https://github.com/tjdwls101010/MOLEG-API/issues"
 

@@ -1,171 +1,198 @@
-# Sources and Coverage
+# 출처와 커버리지
 
-MOLEG-API loads Korean legal sources from [law.go.kr](https://www.law.go.kr/). It covers the source families most useful for recurring legal source-loading tasks, and it deliberately does **not** expose every law.go.kr OpenAPI endpoint as a one-to-one SDK method. This page describes what is covered, what is out of scope, and the coverage limits you should keep in mind when citing what you load.
+법제처 OpenAPI의 모든 엔드포인트를 1:1 메서드로 노출하지 않는다. **반복적으로 필요한 법적 출처 계열**을 골라 깊게 감쌌다. 이 페이지는 무엇이 덮여 있고, 무엇이 범위 밖이며, 인용할 때 무엇을 염두에 둬야 하는지를 다룬다.
 
-Every method listed here has a matching `moleg` CLI subcommand. Run `python -m moleg_api catalog` for the full command list and routing rules.
+여기 나오는 모든 메서드에 대응하는 `moleg` 서브커맨드가 있다. 전체 목록과 라우팅 규칙은 `moleg catalog`.
 
-## What is covered
+## 대응표
 
-| Source family | Python interfaces | CLI subcommands |
+| 출처 계열 | Python | CLI |
 |---|---|---|
-| Current and promulgated statutes | `search_laws`, `resolve_promulgated_law`, `get_law`, `get_article`, `load_article_context` | `search-laws`, `resolve-promulgated-law`, `get-law`, `get-article`, `load-article-context` |
-| Supplementary provisions (부칙) | returned inside `get_law` | inside `get-law` |
-| Law history and before/after text | `trace_law_history`, `compare_law_versions` | `trace-law-history`, `compare-law-versions` |
-| Delegated rules and legal hierarchy | `find_delegated_rules`, `get_law_structure` | `find-delegated-rules`, `get-law-structure` |
-| Administrative rules (고시·훈령·예규 등) | `search_administrative_rules`, `get_administrative_rule`, `load_administrative_rule_context` | `search-administrative-rules`, `get-administrative-rule`, `load-administrative-rule-context` |
-| Annexes and forms (별표·서식) | `search_annex_forms`, `get_annex_form_body` | `search-annex-forms`, `get-annex-form-body` |
-| MOLEG and ministry interpretations | `search_interpretations`, `get_interpretation` | `search-interpretations`, `get-interpretation` |
-| Ordinary court cases | `search_cases`, `get_case` | `search-cases`, `get-case` |
-| Constitutional Court decisions | `search_constitutional_decisions`, `get_constitutional_decision` | `search-constitutional-decisions`, `get-constitutional-decision` |
-| Query planning and staged bundles | `expand_legal_query`, `find_comparable_mechanisms`, `load_legal_context_bundle`, `load_institutional_system`, `load_delegated_criteria` | `expand-legal-query`, `find-comparable-mechanisms`, `load-legal-context-bundle`, `load-institutional-system`, `load-delegated-criteria` |
+| 법령 (현행·공포) | `search_laws`, `resolve_promulgated_law`, `get_law`, `get_law_toc`, `get_article`, `load_article_context` | `search-laws`, `resolve-promulgated-law`, `get-law`(`--toc`), `get-article`, `load-article-context` |
+| 부칙 | `get_law` 결과에 포함 | `get-law` 안에 |
+| 연혁·개정이유·비교 | `trace_law_history`, `get_revision_reason`, `compare_law_versions` | `trace-law-history`, `get-revision-reason`, `compare-law-versions` |
+| 위임·체계 | `find_delegated_rules`, `get_law_structure` | `find-delegated-rules`, `get-law-structure` |
+| 행정규칙 (고시·훈령·예규) | `search_administrative_rules`, `get_administrative_rule`, `load_administrative_rule_context` | 동명 |
+| 별표·서식 | `search_annex_forms`, `get_annex_form_body` | 동명 |
+| 법령해석 (법제처·부처) | `search_interpretations`, `get_interpretation` | 동명 |
+| 판례 | `search_cases`, `get_case` | 동명 |
+| 헌재 결정 | `search_constitutional_decisions`, `get_constitutional_decision` | 동명 |
+| 위원회 의결 | `search_committee_decisions`, `get_committee_decision` | 동명 |
+| 행정심판 재결 | `search_administrative_appeals`, `get_administrative_appeal` | 동명 |
+| 계획·번들 | `expand_legal_query`, `find_comparable_mechanisms`, `load_legal_context_bundle`, `load_institutional_system`, `load_delegated_criteria`, `load_authority_context`, `load_followup` | 동명 |
 
-### Current and promulgated statutes
+---
 
-`search_laws` finds statute identity candidates by name or keyword; `get_law` and `get_article` load the text behind a chosen identity. Both accept a `basis` argument (`"effective"` or `"promulgated"`) — see [Effective date versus promulgation date](#effective-date-versus-promulgation-date).
+## 계열별 상세
 
-```python
-from moleg_api import MolegApi
+### 법령 본문
 
-api = MolegApi()
+`search_laws`가 이름·키워드로 신원 후보를 찾고, `get_law`·`get_article`이 고른 신원 뒤의 텍스트를 싣는다. 둘 다 `basis`(`"effective"` / `"promulgated"`)를 받는다.
 
-hits = api.search_laws("주택임대차보호법", basis="effective", display=2)
-law = api.get_law(hits[0].identity, basis="effective")
-article = api.get_article(hits[0].identity, "제7조", basis="effective")
-print(article.text)
-```
+`get_law_toc`(CLI: `get-law --toc`)는 본문 없이 조문 지도만 준다. 컨텍스트 예산 장치다.
 
-```bash
-python -m moleg_api search-laws "주택임대차보호법" --display 2
-python -m moleg_api get-article --law 001248 제7조
-```
+`resolve_promulgated_law`는 더 엄격한 해석기다. 공포 메타데이터(법령명·공포번호·공포일)에서 자유 탐색 없이 **정확히 하나의** 공포 기준 신원으로 잇는다.
 
-`resolve_promulgated_law` is a stricter bridge resolver: given the promulgation metadata of an enacted bill (law name, promulgation number, promulgation date) it resolves to one promulgated `LawIdentity`, rather than doing free-text discovery.
+### 조문 — 이동·삭제 상태 포함
 
-### Statute articles, including moved and deleted status
+`get_article`은 `제10조의2` 같은 사람 표기로 조문 하나를 싣는다. `ArticleText`가 `moved_from`/`moved_to` 쌍과 `is_deleted` 플래그를 들고 있어, 이동·삭제 표시가 운용 조문으로 오인되지 않는다.
 
-`get_article` loads one provision by human notation such as `제10조의2`, without you formatting MOLEG's six-digit `JO` value. `ArticleText` carries a `moved_from` / `moved_to` pair and an `is_deleted` flag, so a moved or deleted article marker is not mistaken for operative text.
+`load_article_context`는 여기에 얹혀서, 조문이 이동했으면 **현재 목적지를 해소한다.** 요청 조문, 목적지(안전하게 실린 경우), 실린 행 전체, 그리고 실질 주장 전에 해소해야 할 gap과 후속 조회를 함께 준다.
 
-`load_article_context` builds on this: it loads the requested article and, when the article has moved, resolves the current destination article. It returns the requested article, the current destination (when one is safely loaded), all loaded rows, and any context gaps or deferred lookups you should resolve before making a substance claim.
+### 부칙
 
-### Supplementary provisions (부칙)
+`get_law`가 본 조문과 함께 추출해 `LawText.supplementary_provisions`에 담는다. 별도 로더는 없다.
 
-`get_law` extracts supplementary provisions alongside the main articles and returns them in `LawText.supplementary_provisions` when the source law exposes them. There is no separate loader — 부칙 come back with the statute body.
+### 연혁·개정이유·비교
 
-### Law history and before/after text comparison
+세 명령이 서로 다른 질문에 답한다.
 
-`trace_law_history` loads amendment-history events for a whole statute, a date range, or a single article (`article="제7조"`). Events carry chronology, amendment reasons, promulgation numbers, and effective dates.
+| 질문 | 명령 |
+|---|---|
+| 어떤 개정들이 있었나 | `trace_law_history` |
+| 그 개정은 **왜** 했나 | `get_revision_reason` |
+| **무엇이** 바뀌었나 | `compare_law_versions` |
 
-`compare_law_versions` loads MOLEG's `oldAndNew` before/after comparison surface for a statute or article. Note: the source does not support arbitrary two-date windows. Calling `compare_law_versions` with `before=`/`after=` raises `UnsupportedFormatError`; call it without those arguments to load the source-supplied before/after pair, and use `trace_law_history` to pick dates or amendment events.
+`trace_law_history`는 전체 법령, 날짜 범위, 또는 조문 하나(`article="제7조"`)에 대해 개정 이력을 싣는다. 전체 법령 연혁은 law.go.kr이 **HTML로만** 주는 경로를 파싱해 온다.
 
-### Delegated rules and legal hierarchy
+`get_revision_reason`은 특정 **판본**의 「개정이유 및 주요내용」을 준다. `trace_law_history` 이벤트의 `identity.mst`를 `mst=`에 넣으면 그 개정으로 정확히 내려간다. 오래된 판본에는 없는 경우가 흔하다.
 
-`find_delegated_rules` returns the delegated lower-rule context for a statute (enforcement decrees, enforcement rules, notices, administrative rules), optionally filtered by source article. `get_law_structure` loads the broader 법률 → 시행령 / 시행규칙 / 행정규칙 hierarchy from MOLEG's `lsStmd` structural view. The two differ: `find_delegated_rules` preserves article-level delegation links; `lsStmd` gives the hierarchy but does not provide source-article links.
+`compare_law_versions`는 law.go.kr이 자체적으로 노출하는 전후 비교 표면을 쓴다. **임의의 두 날짜 구간은 지원하지 않으며** `before=`/`after=`에 날짜를 주면 `UnsupportedFormatError`가 난다.
 
-### Administrative rules (행정규칙)
+### 위임과 체계
 
-`search_administrative_rules` searches notices, directives, established rules, and other ministry-level administrative rules (고시·훈령·예규 등) — the practical execution criteria that often live outside statute text. `get_administrative_rule` loads a selected rule body, and `load_administrative_rule_context` stages the surrounding context for one rule.
+`find_delegated_rules`는 법령(또는 조문)의 위임 하위규범 맥락을 준다 — 시행령·시행규칙·고시·행정규칙. 조문 단위 위임 링크를 보존한다.
 
-### Annexes and forms (별표·서식) — text extraction only
+`get_law_structure`는 법률 → 시행령 / 시행규칙 / 행정규칙의 계층도를 준다. **조문 단위 링크는 없다.** 계층 맥락일 뿐 조문 단위 위임의 증거가 아니다.
 
-Operative content often lives in annex material: tables, thresholds, criteria, amounts, and required forms. `search_annex_forms` finds annex/form candidates attached to a statute (`source="law"`) or an administrative rule (`source="administrative_rule"`), filterable by `annex_type` (별표, 서식, 별지, 별도, 부록 and their English aliases). `get_annex_form_body` loads the body of a selected candidate as **plain text**.
+> **위임 목록에 별표는 없다.** 과태료 기준표·수수료표 같은 것은 `search_annex_forms`로 따로 찾아야 한다.
 
-Extraction preserves the `text/plain` body and, for table-like annexes, attempts best-effort structuring into `structured_data`. **This interface does not parse HWP or PDF files directly** — it uses law.go.kr's text export endpoints. When table structuring is low confidence, empty structured rows do not necessarily mean no criteria exist; the plain text is still preserved and authoritative.
+### 행정규칙
 
-### MOLEG and ministry interpretations
+고시·훈령·예규 등 — 법령 본문 밖에 사는 실무 집행 기준. `search_administrative_rules`의 `issued_on`은 **발령일자**이지 시행일이 아니다.
 
-`search_interpretations` searches official legal interpretations, distinct from court decisions. The `source` argument selects the authority scope: `"moleg"` (MOLEG official interpretations, the default), `"ministry"` (a named ministry's first-instance interpretations), `"all"` (MOLEG plus one specified ministry), or `"all_ministries"` (registry-wide fan-out, for deep institutional analysis only). `get_interpretation` loads the question, answer, reason, and related-law text for a selected interpretation. MOLEG interpretation and ministry interpretation are separate authority types and are not interchangeable — see [Authority types stay separate](#authority-types-stay-separate).
+### 별표·서식 — 텍스트 추출
 
-### Court cases and Constitutional Court decisions
+운용적 내용이 첨부 자료에 사는 경우가 많다. 표, 임계값, 기준, 금액, 필수 서식.
 
-`search_cases` / `get_case` cover ordinary court decisions (Supreme Court and lower courts). `search_constitutional_decisions` / `get_constitutional_decision` cover Constitutional Court decisions — reviewed statutes, holdings, and constitutional reasoning. These are distinct sources: ordinary court precedent and Constitutional Court decisions are not interchangeable, and neither is interchangeable with an interpretation.
+`search_annex_forms`가 법령(`source="law"`)이나 행정규칙(`source="administrative_rule"`)에 붙은 후보를 찾는다. `annex_type`으로 별표·서식·별지·별도·부록(및 영문 별칭)을 거를 수 있다. `get_annex_form_body`가 고른 후보의 본문을 **평문**으로 싣는다.
 
-Constitutional-doctrine discovery is keyword-based free-text search unless the loaded decision detail itself provides stronger structure.
+**HWP나 PDF 파일을 직접 파싱하지 않는다** — law.go.kr의 텍스트 내보내기 엔드포인트를 쓴다. 표 구조화는 최선의 시도이며, 신뢰도가 낮아도 평문은 보존된다. 구조화 행이 비었다고 기준이 없는 것이 아니다.
 
-### Committee decisions (위원회 결정문)
+### 법령해석
 
-`search_committee_decisions` / `get_committee_decision` cover the decisions and dispositions of twelve regulators: 개인정보보호위원회 (`ppc`), 공정거래위원회 (`ftc`), 금융위원회 (`fsc`), 증권선물위원회 (`sfc`), 방송통신위원회 (`kcc`), 국가인권위원회 (`nhrck`), 국민권익위원회 (`acr`), 노동위원회 (`nlrc`), 고용보험심사위원회 (`eiac`), 산업재해보상보험재심사위원회 (`iaciac`), 중앙토지수용위원회 (`oclt`), 중앙환경분쟁조정위원회 (`ecc`).
+법원 판단과 구분되는 공식 해석. `source`가 권위 범위를 정한다.
 
-This is the record of an agency **applying** the statute it administers — a 과징금, a 시정명령, a 침해 판단. It answers a question the statute and the case law cannot: whether the supervising body actually acted, and when. It is **not precedent**; it shows one agency's enforcement practice and can be overturned in 행정소송.
+| `source` | 범위 |
+|---|---|
+| `"moleg"` (기본) | 법제처 법령해석례 |
+| `"ministry"` | 지정한 부처 하나의 1차 해석 (40개 부처 등록) |
+| `"all"` | 법제처 **+ 지정한 부처 하나** |
+| `"all_ministries"` | 40개 부처 전체 팬아웃. 비용이 크므로 깊은 분석에만 |
 
-### Administrative appeals (행정심판 재결례)
+부처 해석 **본문**을 실으려면 `--source ministry --ministry <기관>`이 필요하다. `--id`만으로는 안 실린다.
 
-`search_administrative_appeals` / `get_administrative_appeal` cover the general 행정심판 docket (`decc`) and four special tribunals: 국민권익위원회 특별행정심판 (`acr`), 소청심사위원회 (`adap`), 조세심판원 (`tt`), 해양안전심판원 (`kmst`).
+두 부처(국세청·재정경제부)는 **검색은 되지만 본문 조회가 안 된다.** `get_interpretation`이 `UnsupportedFormatError`를 낸다.
 
-A 재결 reviews another agency's disposition from inside the executive branch. **The special tribunals' rulings are not in the general `decc` list** — a 소청·조세·해양안전 question searched only against `decc` will come back empty and read as absence. A 재결 is not a court judgment; the losing party can still bring 행정소송.
+### 판례와 헌재 결정
 
-### Query planning and staged bundles
+`search_cases` / `get_case`는 일반 법원(대법원·하급심), `search_constitutional_decisions` / `get_constitutional_decision`은 헌재를 다룬다. **서로 대체되지 않으며** 해석과도 대체되지 않는다.
 
-These interfaces plan a search or assemble a staged bundle of the source families above. They are **planning aids, not legal authority** — use their outputs to drive the primary loaders before citing anything.
+로더가 태그를 교차 검증한다 — 헌재 신원을 `get_case`에 넘기면 `UnsupportedFormatError`다.
 
-- `expand_legal_query` — turns broad wording into candidate laws, legal and everyday terms, related articles/laws, and follow-up recommendations.
-- `find_comparable_mechanisms` — finds source-backed law candidates that use a similar legal mechanism (예: 과징금, 인허가, 신고제), for comparative 제도 design.
-- `load_legal_context_bundle` — a staged bundle for a broad question, with executable deferred follow-up lookups (see [Follow-up lookups](Core-Concepts.md)).
-- `load_institutional_system` — one staged bundle across an explicitly selected set of statutes.
-- `load_delegated_criteria` — subordinate administrative-rule and annex/form bodies from a known statute anchor.
+헌재 결정 상세에는 판결유형 키가 없어서 `decision_type`이 항상 비어 있다. 패키지는 **주문(【주 문】)에서 처분을 복구해** 각하·기각이 본안 판단으로 오인되지 않게 한다. 이유 부분은 반대의견 때문에 같은 표현을 반복하므로 주문만 훑는다.
 
-## What is not covered
+헌법 도그마틱 탐색은 자유 텍스트 검색이다 → [Gotchas](Gotchas.md) 13번
 
-- **Legislative pre-announcement (입법예고).** Draft-stage notices live at 국민참여입법센터, a separate source law.go.kr's OpenAPI does not expose. Out of scope; use WebSearch.
-- **National Assembly bill data.** MOLEG-API does not query bill databases. Bill status, sponsors, votes, committee minutes, and the promulgation bridge fields are a separate source's job. (`resolve_promulgated_law` *consumes* bridge metadata that a bill source provides, but does not itself retrieve it.) Use a National Assembly / 의안정보 source for anything on the legislative-process side.
-- **Foreign or comparative law.** Only Korean law.go.kr sources are covered. Foreign statutes, treaties, and comparative-law material are out of scope — use WebSearch or another external source.
-- **Latest statistics, news, policy announcements, and social context.** These are not legal sources; use WebSearch or another current source.
-- **Legal advice.** MOLEG-API is a legal-source *loader*. It retrieves and normalizes source text; it does not interpret or advise.
+### 위원회 의결 — 12개 기관
 
-## Coverage limits
+| 코드 | 기관 | 코드 | 기관 |
+|---|---|---|---|
+| `ppc` | 개인정보보호위원회 | `acr` | 국민권익위원회 |
+| `ftc` | 공정거래위원회 | `nlrc` | 노동위원회 |
+| `fsc` | 금융위원회 | `eiac` | 고용보험심사위원회 |
+| `sfc` | 증권선물위원회 | `iaciac` | 산업재해보상보험재심사위원회 |
+| `kcc` | 방송통신위원회 | `oclt` | 중앙토지수용위원회 |
+| `nhrck` | 국가인권위원회 | `ecc` | 중앙환경분쟁조정위원회 |
 
-Keep these in mind when you cite what you load.
+**감독기관이 자기가 집행하는 법을 *적용한* 기록**이다 — 과징금, 시정명령, 침해 판단. 법령과 판례가 답하지 못하는 질문에 답한다: 그 감독기관이 실제로 움직였는가, 언제.
 
-### Empty results are scoped, not proof of absence
+**판례가 아니다.** 한 기관의 집행 실무를 보여줄 뿐이며 행정소송에서 뒤집힐 수 있다.
 
-An empty search result is scoped to the exact query, source family, and filters you used. It means "no source rows for this query," **not** "no relevant law, rule, case, interpretation, or annex exists." Broaden the query or try a related source family before concluding that something does not exist.
+### 행정심판 재결 — 일반 + 특별 4종
 
-### Search hits are candidates, not citable text
+| 코드 | 기관 |
+|---|---|
+| `decc` (기본) | 일반 행정심판위원회 |
+| `acr` | 국민권익위원회 특별행정심판 |
+| `adap` | 소청심사위원회 |
+| `tt` | 조세심판원 |
+| `kmst` | 해양안전심판원 |
 
-Search hit metadata (titles, IDs, dates) is not citable source text. Treat search results as *candidates*: load the selected detail with the matching loader (`get_law`, `get_article`, `get_interpretation`, `get_case`, `get_annex_form_body`, and so on) before quoting or reasoning from source content.
+재결은 행정부 내부에서 다른 기관의 처분을 심사한 것이다.
 
-### Authority types stay separate
+**특별 심판기관의 재결은 일반 `decc` 목록에 없다.** 소청·조세·해양안전 사안을 `decc`에서만 찾으면 0건이 나오고, 그건 부재로 읽힌다. 재결은 법원 판결이 아니며 패소한 쪽은 여전히 행정소송을 낼 수 있다.
 
-MOLEG official interpretation, ministry first-instance interpretation, ordinary court case, and Constitutional Court decision are distinct authorities with different weight. The models preserve their authority labels; do not flatten them into one another.
+### 계획과 번들
 
-### A regulator's empty docket is not an inactive regulator
+위 계열들을 조합해 검색을 계획하거나 단계적 묶음을 만든다. **계획 보조이지 권위가 아니다.**
 
-For the two adjudication families above, zero hits are returned by an agency that never received a complaint, one that received a complaint and opened no case, one that decided and did not publish, and a matter that belongs to a different body's docket. None of those is "nothing happened," and this is the family where that misreading does the most damage, since the question being asked is usually whether the agency failed to act. Re-check the other plausible `--committee` code and the special tribunals before recording a negative, and treat an exhausted public record as the point to make an official document request rather than a finding.
+- `expand_legal_query` — 넓은 표현을 후보 법령·법률 용어·일상 용어·관련 조문·후속 조회 권고로 바꾼다
+- `find_comparable_mechanisms` — 유사한 법적 장치(과징금·인허가·신고제 등)를 쓰는 법령 후보. 입법 설계 비교용
+- `load_legal_context_bundle` — 넓은 질문에 대한 단계적 묶음
+- `load_institutional_system` — **이미 고른** 법령 집합을 하나로
+- `load_delegated_criteria` — 법령 하나에서 하위 행정규칙·별표 본문까지
+- `load_authority_context` — 지정 조문에 스코프를 건 권위 수집
+- `load_followup` — 위 결과가 준 후속 조회 실행
 
-### Effective date versus promulgation date
+---
 
-A promulgated law can be loadable while **not yet effective** on your reference date. Use effective-date lookups (`basis="effective"`) for current-force questions, and promulgated-basis lookups (`basis="promulgated"`) to resolve enacted-law bridge metadata or historical promulgation context.
+## 범위 밖
 
-When the reference date matters, pass `as_of="YYYY-MM-DD"` and inspect the returned `ContextGap` values such as `not_effective_as_of`.
+- **법률 자문.** 이 패키지는 법적 출처를 *싣는다*. 해석하거나 조언하지 않는다.
+- **입법예고.** 입법예고는 국민참여입법센터라는 별개 시스템에 있고 law.go.kr OpenAPI가 노출하지 않는다.
+- **국회 의안 데이터.** 의안 진행·발의자·표결·회의록은 별개 출처 소관이다. `resolve_promulgated_law`는 다른 출처가 제공한 공포 메타데이터를 *소비*할 뿐 직접 가져오지 않는다.
+- **외국법·비교법.** 한국 law.go.kr 출처만 다룬다.
+- **최신 통계·뉴스·정책 발표·사회적 맥락.** 법적 출처가 아니다.
 
-```python
-api.get_law("001248", basis="effective", as_of="2026-01-01")
-```
+`load_followup`에 `websearch`나 `congress-db` 인터페이스를 넘기면 `UnsupportedFormatError`가 난다 — 버그가 아니라 **경계 표시**다.
 
-```bash
-python -m moleg_api get-law --law 001248 --basis effective --as-of 2026-01-01
-```
+---
 
-### Source failures are not legal absence
+## 커버리지 한계
 
-`RateLimitError`, `RetryExhaustedError`, and other `SourceApiError` states mean source access failed. Treat them as temporary source-access problems or explicit gaps — never as evidence that a law or decision does not exist. See [Errors and Reliability](Error-Handling.md) for handling.
+인용할 때 염두에 둘 것들. 상세는 [Gotchas](Gotchas.md).
 
-### Annex extraction preserves plain text
+**0건은 범위 한정이다.** 그 질의·출처 계열·필터로 행이 없었다는 뜻이다.
 
-Annex/form body extraction keeps the plain text even when table structuring is low confidence. Empty `structured_data` rows do not mean the annex has no criteria — read the plain text.
+**검색 결과는 인용할 수 없다.** 제목·ID·날짜는 본문이 아니다.
 
-## Raw payloads
+**권위 층위는 분리된다.** 법제처 해석 ≠ 부처 해석 ≠ 판례 ≠ 헌재 결정 ≠ 위원회 의결 ≠ 행정심판 재결.
 
-Public return models put normalized fields first and omit raw law.go.kr payloads by default. When you need to debug a parser or inspect the underlying source shape, pass `include_raw=True`:
+**빈 감독기관 기록은 무활동의 증명이 아니다.** 이 계열에서 오독의 손해가 가장 크다. 질문 자체가 대개 "그 기관이 안 움직였나"이기 때문이다. 다른 `--committee` 코드와 특별 심판기관을 확인하고, 공개 기록이 소진되면 그건 부정적 결론을 기록할 자리가 아니라 **공식 자료요구를 할 자리**다.
+
+**공포 ≠ 시행.** 현행 효력 질문에는 `basis="effective"`를, 공포 사실 연결이나 과거 공포 맥락에는 `basis="promulgated"`를 쓴다.
+
+**출처 실패는 법적 부재가 아니다.** `RateLimitError`·`RetryExhaustedError`·기타 `SourceApiError`는 접근 실패다.
+
+**별표 추출은 평문을 보존한다.** 구조화 신뢰도가 낮아도 평문은 남는다.
+
+---
+
+## 원본 페이로드
+
+공개 반환 모델은 정규화된 필드를 앞세우고 law.go.kr 원본 페이로드는 기본적으로 뺀다. 파서를 디버깅하거나 원본 모양을 확인할 때만 켠다.
 
 ```python
 bundle.to_dict(include_raw=True)
 ```
 
-Normal application context should use the default `include_raw=False`.
+CLI에서는 전역 `--raw` 플래그다. 평상시에는 기본값을 쓰라.
 
-## See also
+## 관련 문서
 
-- [Effective vs Promulgated](Core-Concepts.md) — choosing the right `basis`
-- [Follow-up lookups](Core-Concepts.md) — executing deferred bundle lookups
-- [Errors and Reliability](Error-Handling.md) — source-failure handling
-- [CLI Reference](CLI-Reference.md) — the JSON envelope contract and subcommands
+- [Core Concepts](Core-Concepts.md) — `basis` 선택과 권위 구분
+- [Agent Integration](Agent-Integration.md) — 엔벨로프 신호와 컨텍스트 예산
+- [Gotchas](Gotchas.md) — 각 한계가 실제로 어떻게 틀린 주장을 만드는지
+- [Error Handling](Error-Handling.md) — 출처 실패 처리
+- [CLI Reference](CLI-Reference.md) — 엔벨로프 계약과 서브커맨드
