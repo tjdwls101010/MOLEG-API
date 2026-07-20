@@ -1,158 +1,120 @@
-# Core Concepts
+# 핵심 개념
 
-`moleg-api` is a task-level loader for Korean legal sources from [law.go.kr](https://www.law.go.kr/). Its public interface is small and deep: you search or plan first, then load the selected legal text, authority detail, or delegated-rule context. A handful of concepts make the difference between a citation you can trust and a citation that quietly misleads. This page covers the six that matter most.
+이 패키지의 공개 표면은 작고 깊다. 그 모양을 결정한 개념이 여섯 개 있고, 이것들이 신뢰할 수 있는 인용과 조용히 오도하는 인용을 가른다.
 
-If you are looking for method signatures, see the [API Guide](API-Reference.md). If you are calling from a shell, see the [CLI](CLI-Reference.md).
+메서드 시그니처는 [API Reference](API-Reference.md), 셸에서 쓸 거라면 [CLI Reference](CLI-Reference.md)를 보라.
 
-## 1. The search → select → load discipline
+## 1. 검색 → 선택 → 로드
 
-Every source family in this SDK separates *discovery* from *loading*, and the two are not interchangeable.
+모든 출처 계열에서 *발견*과 *로딩*이 분리돼 있고, 둘은 대체 불가다.
 
-- **Search / plan** methods (`search_laws`, `search_administrative_rules`, `search_interpretations`, `search_cases`, `search_constitutional_decisions`, `expand_legal_query`, `find_comparable_mechanisms`) return **candidate identity metadata** — enough to identify a source and decide whether to load it, but *not the source text*.
-- **Load** methods (`get_law`, `get_article`, `get_administrative_rule`, `get_interpretation`, `get_case`, `get_constitutional_decision`, `get_annex_form_body`, and the `load_*_context` loaders) retrieve the actual normalized text of a source you selected.
+**검색·계획 메서드** — `search_laws`, `search_administrative_rules`, `search_annex_forms`, `search_interpretations`, `search_cases`, `search_constitutional_decisions`, `search_committee_decisions`, `search_administrative_appeals`, `expand_legal_query`, `find_comparable_mechanisms`, `resolve_promulgated_law` — 는 **후보 식별 정보**를 준다. 출처를 특정하고 실을지 말지 판단하기에 충분한 정보이되, **본문은 아니다.**
 
-**A search hit is a candidate, not a citation.** After only `search_laws()`, you have a law's identity, name, and dates — you do not have its article wording, duties, sanctions, or procedures. You must load the selected law or article before citing any of that. The same rule holds for every family: an interpretation, case, or Constitutional Court *search hit* carries title and date metadata only; the holding, reasoning, and reviewed statutes come from the corresponding `get_*` loader.
+**로드 메서드** — `get_law`, `get_article`, `get_law_toc`, `get_administrative_rule`, `get_annex_form_body`, `get_interpretation`, `get_case`, `get_constitutional_decision`, `get_committee_decision`, `get_administrative_appeal`, 그리고 `load_*_context` 계열 — 은 실제 본문을 실어 온다.
 
-Search results carry a `follow_up` field that spells out the next load step and pre-fills the identifiers, so you do not re-type keys by hand:
+**검색 결과는 인용할 수 없다.** `search_laws()`만 부른 상태에서 당신이 가진 것은 법의 이름과 날짜와 식별자다. 그 법이 무엇을 의무로 지우고 어떤 제재를 두는지는 **모른다**. 다른 계열도 같다 — 해석·판례·헌재 검색 결과는 제목과 날짜 메타데이터일 뿐, 판시사항과 이유는 대응하는 로더에서 나온다.
 
-```python
-from moleg_api import MolegApi
+`expand_legal_query()`와 `find_comparable_mechanisms()`는 그보다도 앞단이다. 이건 *계획* 도구이고, 그 결과는 다음에 무엇을 검색·로드할지의 메뉴이지 권위가 아니다.
 
-api = MolegApi()
+**0건은 범위 한정 결과이지 부재의 증명이 아니다.** "이 검색어로, 이 출처 계열에서, 이 필터 조합으로 행이 없었다"는 뜻이다. 그런 법·규칙·판례·별표가 존재하지 않는다는 증명이 아니다. 없다고 말하기 전에 검색어를 넓히거나, 다른 출처 계열을 보거나, 상세 경로를 실어 봐야 한다.
 
-hits = api.search_laws("주택임대차보호법", basis="effective", display=5)
-selected = hits[0].identity          # a LawIdentity candidate — not citable text
+## 2. 후보 vs 실린 본문 — 타입으로 강제된다
 
-law = api.get_law(selected, basis="effective")   # now you have article text
-print(law.articles[0].text)
-```
+위 구분이 데이터 모델에 그대로 박혀 있어, 손에 든 것이 후보인지 본문인지 타입만 봐도 안다.
 
-```bash
-python -m moleg_api search-laws "주택임대차보호법"          # → candidates
-python -m moleg_api get-law --law 001248                    # load a chosen candidate
-```
-
-`expand_legal_query()` and `find_comparable_mechanisms()` sit even earlier in the chain: they are *planning* tools. Their term, related-law, related-article, and comparable-mechanism suggestions are a menu of what to search or load next — never final authority. Load selected source text before citing anything from them.
-
-**Empty results are scoped, not absolute.** A zero-hit search means "this exact query, on this basis/scope, returned no rows" — it does not prove that no such law, rule, precedent, or attached material exists. Widen the terms, try an alternate source family, or load a detail path before making any absence claim.
-
-## 2. Candidate identity vs. loaded text
-
-The distinction above is reflected directly in the data model, so you can tell at a glance whether you are holding a candidate or real text.
-
-| You have… | Type | What it contains | Citable as source text? |
+| 손에 든 것 | 타입 | 내용 | 인용 가능? |
 |---|---|---|---|
-| A search hit | `LawHit`, `AdministrativeRuleHit`, `InterpretationHit`, `JudicialDecisionHit`, `AnnexFormHit` | A normalized `*Identity` plus the raw source row and a `follow_up` | No |
-| A loaded body | `LawText`, `ArticleText`, `AdministrativeRuleText`, `InterpretationText`, `JudicialDecisionText`, `AnnexFormText` | The normalized text, articles, and structured fields | Yes |
+| 검색 결과 | `LawHit`, `AdministrativeRuleHit`, `AnnexFormHit`, `InterpretationHit`, `JudicialDecisionHit`, `AdjudicationHit` | 정규화된 `*Identity` + 원본 행 + `follow_up` | **아니오** |
+| 실린 본문 | `LawText`, `ArticleText`, `LawToc`, `AdministrativeRuleText`, `AnnexFormText`, `InterpretationText`, `JudicialDecisionText`, `AdjudicationText` | 정규화된 본문·조문·구조화 필드 | 예 |
 
-A `LawHit` wraps a `LawIdentity` (the identity) plus the raw row; a `LawText` wraps that identity *and* the extracted articles and supplementary provisions. Reach for identity fields (name, dates, ministry, `law_id`, `mst`) from a hit; reach for wording, duties, and requirements only from a loaded body.
+CLI에서는 `kind` 접미사가 같은 일을 한다 — `_hit_list`·`_candidate`·`_planning`이면 후보, `_text`·`_context`·`_identity`면 본문.
 
-One caveat on loaded article text: definitions, exceptions, application targets, and requirements often live in nested 항 / 호 / 목 inside `ArticleText.text`, not in the article title (`조문제목`) or the top-level `조문내용`. Summarize from the full `text`, not from the title alone.
+경계는 실행 시점에도 강제된다. 로더에 법령 **이름**을 넘기면 호출되지 않고 "먼저 `search_laws('…')`를 부르라"는 오류가 난다. 이름은 법을 유일하게 가리키지 못하고, 그 자리에서 아무거나 고르는 것이 이 패키지가 막으려는 실패이기 때문이다.
 
-## 3. Effective (시행) vs. promulgated (공포) basis
+**한 가지 주의**: 실린 조문에서도 정의·예외·적용 대상·요건은 조문 제목이나 최상위 `조문내용`이 아니라 **중첩된 항·호·목** 안에 사는 경우가 많다. `ArticleText.text`는 그 중첩을 펼쳐 담고 있으니, 제목만 보고 요약하지 마라.
 
-Most load and search methods take a `basis` argument, typed as `Literal["effective", "promulgated"]`, defaulting to `"effective"`. It selects which legal reality you are asking about, and confusing the two produces correct-sounding but wrong answers.
+## 3. 시행(effective) vs 공포(promulgated)
 
-- **`basis="effective"` (시행일 기준)** — the text that is or was *in force*. This is the right basis for "what does current law say?", "is this in force now?", and "현재 시행" questions. It is the default.
-- **`basis="promulgated"` (공포일 기준)** — lookup keyed by promulgation date and number. Use it for two situations: resolving a promulgation bridge from enacted-bill facts, and reconstructing historical promulgation context.
+대부분의 메서드가 `basis` 인자를 받는다. `Literal["effective", "promulgated"]`, 기본값 `"effective"`.
 
-**A promulgated law is not necessarily in force.** A statute can be promulgated (공포) with an effective date (시행일) still in the future. Resolving a promulgation bridge or loading promulgated text proves *identity and wording*, not *current force*. For current-force questions, pass an explicit reference date via `as_of=` and check whether the loaded effective date is later than your reference date before calling the law current.
+- **`basis="effective"` (시행일 기준)** — 지금 또는 그때 **효력이 있던** 텍스트. "현행법이 뭐라고 하나"에 답하는 기준이며 기본값이다.
+- **`basis="promulgated"` (공포일 기준)** — 공포일·공포번호로 키를 잡는다. 국회 의안의 공포 사실에서 법령 신원을 잇거나, 과거 공포 맥락을 재구성할 때 쓴다.
 
-State the basis in your answer whenever the distinction matters — say whether a text was retrieved by effective-date or promulgation-date basis.
+**공포된 법이 시행 중인 법은 아니다.** 공포는 됐는데 시행일이 미래인 상태가 흔하다. 공포 기준으로 텍스트를 실었다는 것은 *신원과 문언*을 확인한 것이지 *현재 효력*을 확인한 것이 아니다.
 
-```python
-# Current-force text (default basis)
-current = api.get_law(selected, basis="effective")
+이건 워낙 자주 틀리는 지점이라 신호로도 나온다 — 실린 판본의 시행일이 오늘보다 미래면 `flags.not_effective_as_of`가 붙고 `source` 표기 자체가 「공포본(장래 시행 — 아직 미시행)」으로 바뀐다. 이 플래그는 `--as-of`를 줬는지와 무관하게 뜬다. 미래 판본은 어느 경로로든 도착할 수 있기 때문이다.
 
-# The version in force on a specific date
-as_filed = api.get_article(selected, "제3조", basis="effective", as_of="2023-08-01")
-```
+## 4. 식별자 — `ID`, `MST`, `LID`, `JO`
 
-For history and repealed-law (구법 / 폐지법) questions, treat the task as loading a *historical* source: carry an as-of date and preserve the history/repeal status in your answer. A current-basis search returning nothing is not proof that the historical source never existed.
+법령 하나는 시행일마다 하나씩, **판본의 계열**로 존재한다. 모든 판본이 같은 `law_id`를 공유하고, 각 판본은 자기만의 `mst`를 갖는다.
 
-## 4. Versions and MST (same law, different effective dates)
+| 필드 | 원래 이름 | 가리키는 것 |
+|---|---|---|
+| `law_id` | `ID` (법령ID) | **법 자체**. "이 법의 현행판" |
+| `mst` | 법령일련번호 | **그 법의 특정 판본**. 시간 축의 손잡이 |
+| `lid` | `LID` | 함께 보존되지만 파라미터 선택에는 쓰지 않는다 |
 
-A single statute exists as a series of **versions**, one per effective date. All versions share the same `law_id` (법령ID), but each version has its own **`mst`** (법령일련번호, the master sequence number) that pins that specific version.
+`법령ID + 시행일`로 상세를 조회하면 law.go.kr은 **오류 없이 현행 텍스트를 준다.** 판본을 고정하는 유일한 키가 `mst`다. 이게 `as_of`가 왜 존재하는지의 이유이며, [Historical Versions](Historical-Versions.md)에서 따로 다룬다. 다만 `mst`를 손으로 관리할 일은 없다 — 후보를 로더에 그대로 넘기면 판본이 함께 따라간다.
 
-This is the key that makes historical and as-of loading work. law.go.kr's `ID + efYd` detail lookups do **not** select a past version — they silently return the current text even when you pass an old effective date. The `mst` is the only key that pins a version. The SDK handles this for you: when you pass an `as_of` that resolves to a non-current version, it lists the statute's version rows, finds the version in force at that date (latest 시행일 ≤ `as_of`), and reloads the correct version by `mst`. You do not manage `mst` by hand — but knowing it exists explains why `as_of` reliably returns historical text.
+**`JO`**는 법제처의 여섯 자리 조문 코드다(`제15조의2` → `001502`, `제3조` → `000300`). **호출자는 이걸 볼 일이 없다.** 공개 메서드는 `"제15조의2"`, `"15조의2"`, 정수 `15`를 받아 내부에서 변환한다.
 
-You can see the version fan-out directly in a search. `주택임대차보호법` returns several rows sharing `law_id` `001248`, each with a distinct `mst` and effective date:
+원본 키들은 감사 목적으로 `identity.raw_keys`에 보존되지만, 코드가 딛고 설 것은 정규화된 필드다.
 
-```
-law_id  mst      promulgation_date  effective_date   promulgation_number
-001248  276291   20251001           20260102         21065
-001248  249999   20230418           20230719         19356
-```
+## 5. 권위 유형은 평탄화되지 않는다
 
-Both `LawIdentity.law_id` and `LawIdentity.mst` are exposed on every identity. When you hand a `LawHit` or `LawIdentity` straight into a loader, its `mst` carries the exact version through — so a candidate you picked is the version you load.
+법제처는 여섯 종류의 서로 다른 권위를 노출한다. 이들은 무게가 다르고 서로를 대체하지 못한다.
 
-Do not treat `law_id`, `mst`, `lid`, and other raw keys as interchangeable. `law_id` names the *law*; `mst` names a *version of that law*. The raw source keys are preserved under `identity.raw_keys` for audit, but the normalized `law_id` / `mst` fields are what you build on.
-
-## 5. Authority types are distinct (do not flatten them)
-
-MOLEG exposes four different kinds of legal authority, and they do not carry the same weight. Keep the source label attached to every citation.
-
-| Authority | Model source label | law.go.kr family | Notes |
+| 권위 | 출처 계열 | 메서드 | 성격 |
 |---|---|---|---|
-| MOLEG official interpretation (법령해석례) | `source_type` on the interpretation | `expc` | The 법제처 official interpretation. |
-| Ministry first-instance interpretation | `source_type` / `source_target` | `*CgmExpc` | A central ministry's own reading — a different authority level from a MOLEG interpretation. |
-| Supreme Court case (판례) | `JudicialDecisionIdentity.source_type` | `prec` | Ordinary court precedent. |
-| Constitutional Court decision (헌재결정) | `JudicialDecisionIdentity.source_type` | `detc` | Constitutional review — not ordinary precedent. |
+| 법제처 법령해석 (법령해석례) | `expc` | `search_interpretations(source="moleg")` / `get_interpretation` | 법제처의 공식 해석 |
+| 부처 1차 해석 | `*CgmExpc` (40개 부처) | `search_interpretations(source="ministry", ministry=…)` | 개별 부처의 자체 판단. 법제처 해석과 **다른 층위** |
+| 대법원 판례 | `prec` | `search_cases` / `get_case` | 일반 법원의 선례 |
+| 헌재 결정 (헌재결정례) | `detc` | `search_constitutional_decisions` / `get_constitutional_decision` | 위헌심사. 일반 판례가 **아니다** |
+| 위원회 의결 | 12개 위원회 | `search_committee_decisions` / `get_committee_decision` | 행정기관의 처분·의결. 판례가 **아니다** |
+| 행정심판 재결 | 5개 심판기관 | `search_administrative_appeals` / `get_administrative_appeal` | 행정심판의 재결. 법원 판결이 **아니다** |
 
-These map to distinct search and load methods (`search_interpretations` / `get_interpretation`, `search_cases` / `get_case`, `search_constitutional_decisions` / `get_constitutional_decision`), and each loaded result preserves its `source_type` / `source_target` so the authority level survives into your answer. A MOLEG interpretation, a ministry interpretation, a Supreme Court case, and a Constitutional Court decision are four different things — never merge them under a generic "the law says."
+각 결과는 `source_type` / `source_authority`를 끝까지 달고 다닌다. 답을 쓸 때 이걸 "법에 따르면"으로 뭉개면 그 보존이 무의미해진다.
 
-Two practical notes:
+실무적으로 걸리는 세 지점.
 
-- On `search_interpretations()`, `source="all"` means MOLEG **plus one specified ministry**; `source="all_ministries"` is the intentional, higher-cost fan-out across the ministry registry. They are not the same scope.
-- Constitutional doctrines such as 과잉금지원칙 or 평등원칙 are **free-text search terms**, not indexed categories. The `detc` source has no doctrine field, so a keyword search can surface candidate decisions but cannot prove exhaustive doctrine coverage or "no constitutional risk." Load selected detail with `get_constitutional_decision()` before citing 판시사항, 결정요지, or reviewed statutes.
+**`source="all"`은 전부가 아니다.** `search_interpretations()`에서 `"all"`은 법제처 **+ 지정한 부처 하나**를 뜻한다. 부처 전체를 훑는 것은 `"all_ministries"`이며, 의도적으로 비용이 큰 경로다.
 
-When you need authority scoped to specific statute articles, use `load_authority_context()` and cite from its `current_authorities`, using the `referenced_articles` / `reviewed_articles` on each loaded result to confirm the authority actually addresses your target article.
+**헌법 원칙은 색인이 아니다.** 과잉금지원칙·평등원칙 같은 도그마틱은 `detc`에 필드로 존재하지 않는다. 자유 텍스트 검색일 뿐이라, 후보를 찾을 수는 있어도 "위헌 소지 없음"이나 도그마틱 망라성을 증명하지 못한다.
 
-## 6. Staged context bundles and deferred follow-ups
+**행정기관 기록의 부재는 무사고의 증명이 아니다.** 위원회 의결과 행정심판 재결은 "그 기관이 실제로 판단했다"는 기록이다. 0건은 그 기관이 판단한 적이 없다는 뜻이지, 문제가 없었다는 뜻이 아니다. 그리고 소청·조세·해양안전 사안을 일반 행정심판위(`decc`)에서만 찾으면 조용히 0건이 나온다 — 그건 별도 심판기관 소관이다.
 
-For a broad or under-specified question — or one that begins from a statute or bill anchor — loading each source by hand is tedious. `load_legal_context_bundle()` runs one bounded first pass over the likely sources and returns a `LegalContextBundle` that separates what was actually loaded from what is only a lead.
+조문 단위로 권위를 붙여야 한다면 `load_authority_context()`를 쓰고, 그 결과의 **`current_authorities`**에서 인용하라. 여기엔 실제로 그 조문을 참조하고 날짜가 확인된 것만 남는다.
 
-A bundle has three tiers:
+## 6. 단계적 번들과 후속 조회
 
-- **`loaded`** (`LoadedContext`) — source text already retrieved and citable: laws, articles, delegations, and any eagerly loaded interpretation/case/ Constitutional Court detail.
-- **`candidates`** (`CandidateContext`) — sources discovered but *not* loaded. These are still just candidates (see concept 2): identity metadata only.
-- **`deferred`** (a list of `DeferredLookup`) — bounded next lookups the bundle chose not to run, plus `ambiguities`, `gaps`, and `source_notes`.
+넓은 질문에 대해 출처를 하나씩 손으로 싣는 것은 지루하다. 번들 로더는 한 번의 제한된 1차 통과를 돌고, 결과를 **세 층으로 분리해서** 돌려준다.
 
-**A bundle is source loading, not a conclusion.** Treat its candidates and deferred lookups as the next menu, never as proof that every relevant source body has been inspected. Do not claim exhaustive interpretation, case, Constitutional Court, administrative-rule, or annex/form coverage from a bundle alone.
+- **`loaded`** (`LoadedContext`) — 이미 실린 본문. 인용 가능.
+- **`candidates`** (`CandidateContext`) — 발견됐지만 안 실린 것. 개념 2에 따라 여전히 후보다.
+- **`deferred`** (`list[DeferredLookup]`) — 돌리지 않기로 한 다음 조회들. `ambiguities`, `gaps`, `source_notes`가 함께 온다.
 
-A **deferred follow-up** is a bounded, executable next step. Each `DeferredLookup` names an `interface`, a `query`, filters, and a `reason`. You run it through `load_followup()`, which routes it to the right task-level loader without you touching source target names, `ID`/`mst` rules, or article formatting:
+**번들은 출처 로딩이지 결론이 아니다.** 번들 하나로 해석·판례·헌재·행정규칙·별표를 망라했다고 말할 수 없다.
+
+`DeferredLookup`은 `interface`, `query`, `filters`, `reason`을 가진 실행 가능한 다음 수다. `load_followup()`에 넣으면 알맞은 로더로 라우팅된다 — 출처 target 이름도, `ID`/`MST` 규칙도, 조문 포맷도 만질 일이 없다.
 
 ```python
-bundle = api.load_legal_context_bundle(
-    query="자동차 방치 처리 기준",
-    mode="question",
-    budget="standard",
-)
-
 for lookup in bundle.deferred:
     if lookup.interface == "load_administrative_rule_context":
-        rule_context = api.load_followup(lookup)   # executes the routed loader
+        rule = api.load_followup(lookup)
         break
 ```
 
-`load_followup()` executes MOLEG-API follow-ups only. A follow-up whose `interface` is `websearch` or `congress-db` raises `UnsupportedFormatError` — a deliberate handoff signal: latest social facts belong to WebSearch, and National Assembly bill and vote facts belong to congress-db, not to this SDK.
+`interface`가 `websearch`나 `congress-db`인 항목은 `UnsupportedFormatError`를 낸다. 버그가 아니라 **의도된 경계 표시**다 — 최신 사회적 사실은 웹 검색, 국회 의안·표결 사실은 별도 시스템 소관이고, 이 패키지는 그걸 아는 척하지 않는다.
 
-Two related staged loaders share the bundle shape:
+같은 모양을 공유하는 번들 로더가 셋 더 있다.
 
-- `load_institutional_system()` — composes an explicit set of statutes you already selected (via repeated `statute_ids`) into one bundle. It composes the set; it does **not** discover it or decide which statute is primary.
-- `load_delegated_criteria()` — anchors on one statute and additionally loads bounded administrative-rule and annex/form operational criteria.
+- **`load_institutional_system()`** — 이미 고른 법령 **집합**을 하나의 제도로 훑는다. 집합을 구성해 줄 뿐, 어느 법이 주된 것인지 발견하거나 결정하지 않는다.
+- **`load_delegated_criteria()`** — 법령 하나에 닻을 내리고, 행정규칙과 별표·서식의 **본문까지** 제한적으로 실어 온다. 이름만이 아니라 구체적 집행 기준이 필요할 때 쓴다.
+- **`load_authority_context()`** — 지정한 조문들에 스코프를 건 정밀 도구. 조문과 어긋나거나 날짜가 없거나 개정 이전인 권위를 `current_authorities`에서 걸러낸다.
 
-Every public dataclass — including the whole bundle — serializes recursively, so you can inspect or persist it:
+## 다음
 
-```python
-payload = bundle.to_dict()                    # omits raw source payloads
-debug = bundle.to_dict(include_raw=True)      # keeps raw law.go.kr rows
-text = bundle.to_json_string()
-```
-
-## Where to go next
-
-- [API Guide](API-Reference.md) — every task-level method and its arguments.
-- [CLI](CLI-Reference.md) — the same methods as shell subcommands and the JSON envelope.
-- [Follow-up Lookups](Core-Concepts.md) — running deferred lookups end to end.
-- [Source Coverage and Limits](Sources-and-Coverage.md) — what each source family does and does not expose.
+- [Agent Integration](Agent-Integration.md) — 이 개념들이 엔벨로프 신호로 어떻게 표현되는지
+- [Gotchas](Gotchas.md) — 조용히 틀리는 지점 모음
+- [Historical Versions](Historical-Versions.md) — 판본과 `as_of`
+- [Sources & Coverage](Sources-and-Coverage.md) — 출처 계열별 커버리지
